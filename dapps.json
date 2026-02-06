@@ -1,0 +1,20 @@
+{
+  "apps": [
+    {
+      "name": "[TEST] Hello dapp (placeholder)",
+      "author": "Usernode Labs",
+      "url": "http://localhost:8000"
+    },
+    {
+      "name": "[DEMO] Swap UI (placeholder)",
+      "author": "Example Co",
+      "url": "https://example.com/demo-swap"
+    },
+    {
+      "name": "[TEST] Faucet (placeholder)",
+      "author": "Example Co",
+      "url": "https://example.com/test-faucet"
+    }
+  ]
+}
+

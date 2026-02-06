@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Usernode dapps</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7f8fb;
+        --fg: #0b1220;
+        --muted: #4b5568;
+        --card: #ffffff;
+        --border: rgba(15, 23, 42, 0.12);
+        --accent: #2563eb;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0f16;
+          --fg: #e7edf7;
+          --muted: #a8b3c7;
+          --card: #141b26;
+          --border: rgba(255, 255, 255, 0.12);
+          --accent: #6ea8fe;
+        }
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        background: var(--bg);
+        color: var(--fg);
+        height: 100vh;
+        height: 100dvh;
+      }
+      main {
+        height: 100vh;
+        height: 100dvh;
+        display: flex;
+        justify-content: flex-start;
+        align-items: stretch;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      .card {
+        width: 100%;
+        max-width: 820px;
+        margin: 0 auto;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        height: 100%;
+        min-height: 0;
+      }
+      .header {
+        padding: 18px 18px 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+        flex: 0 0 auto;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 22px;
+        letter-spacing: 0.2px;
+      }
+      p {
+        margin: 10px 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      ul {
+        list-style: none;
+        padding: 12px 12px 14px;
+        margin: 0;
+        display: grid;
+        gap: 10px;
+        will-change: transform;
+        /* We emulate overscroll ourselves, so disable native panning on the list. */
+        touch-action: none;
+        /* Fill the remaining space under the header. */
+        flex: 1 1 auto;
+        min-height: 0;
+        /* Don't stretch rows to fill available space; keep items top-packed. */
+        align-content: start;
+        grid-auto-rows: max-content;
+      }
+      li {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0;
+        overflow: hidden;
+      }
+      .dappLink {
+        display: grid;
+        gap: 4px;
+        padding: 12px 12px;
+        color: inherit;
+        text-decoration: none;
+        touch-action: none;
+      }
+      .dappLink:hover {
+        text-decoration: none;
+      }
+      .dappLink:active {
+        filter: brightness(0.98);
+      }
+      .name {
+        font-weight: 600;
+      }
+      .author {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .url {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 0.95em;
+        word-break: break-word;
+      }
+      .urlText {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <div class="header">
+          <h1>Dapps</h1>
+          <p>Test dapp list (name + URL). Replace this with a real directory later.</p>
+        </div>
+        <ul id="dappList"></ul>
+      </div>
+    </main>
+    <script>
+      const list = document.getElementById("dappList");
+      function clearList() {
+        if (!list) return;
+        list.textContent = "";
+      }
+
+      function addRow(text) {
+        if (!list) return;
+        const li = document.createElement("li");
+        li.style.padding = "12px 12px";
+        li.style.color = "var(--muted)";
+        li.textContent = text;
+        list.appendChild(li);
+      }
+
+      function renderDapps(dapps) {
+        if (!list) return;
+        clearList();
+
+        if (!Array.isArray(dapps) || dapps.length === 0) {
+          addRow("(no dapps configured)");
+          return;
+        }
+
+        for (const dapp of dapps) {
+          const li = document.createElement("li");
+
+          const link = document.createElement("a");
+          link.className = "dappLink";
+          link.href = dapp.url;
+          link.target = "_blank";
+          link.rel = "noopener";
+
+          const name = document.createElement("div");
+          name.className = "name";
+          name.textContent = dapp.name || "(unnamed)";
+
+          const author = document.createElement("div");
+          author.className = "author";
+          author.textContent = `by ${dapp.author || "unknown"}`;
+
+          const url = document.createElement("div");
+          url.className = "url";
+          url.innerHTML = `<span class="urlText">${dapp.url || ""}</span>`;
+
+          link.appendChild(name);
+          link.appendChild(author);
+          link.appendChild(url);
+          li.appendChild(link);
+          list.appendChild(li);
+        }
+      }
+
+      async function loadDappsJson() {
+        const resp = await fetch("./dapps.json", { cache: "no-store" });
+        if (!resp.ok) {
+          throw new Error(`Failed to load dapps.json: HTTP ${resp.status}`);
+        }
+        return await resp.json();
+      }
+
+      (async function main() {
+        addRow("(loading dapps...)");
+        try {
+          const json = await loadDappsJson();
+          const apps = Array.isArray(json) ? json : json.apps || json.items || [];
+          renderDapps(apps);
+        } catch (e) {
+          clearList();
+          addRow(
+            `(error loading dapps.json: ${e && e.message ? e.message : String(e)})`
+          );
+        }
+      })();
+
+      // --- Rubber-band (overscroll-like) stretch config ---
+      // These are the common knobs you'll see in most rubber-band implementations.
+      const RUBBER_BAND = {
+        // px before we treat it as a drag
+        deadzonePx: 6,
+        // max visual pull distance (px)
+        maxPullPx: 92,
+        // non-linear resistance constant (typical range ~0.5–0.9; higher = stretchier)
+        // Lower = stiffer (more resistance for the same drag distance).
+        constant: 0.56,
+        // snap-back animation
+        snapMs: 210,
+        snapEasing: "cubic-bezier(0.2, 0.9, 0.2, 1)",
+        // optional subtle scale during pull
+        enableScaleY: true,
+        scaleDivisor: 850,
+      };
+
+      // WebKit-style non-linear rubber-band distance:
+      // f(d) = (c * |d| * D) / (D + c * |d|)
+      // where D is a dimension (we use viewport height).
+      function rubberBandDistance(d, dimension, constant) {
+        const abs = Math.abs(d);
+        if (dimension <= 0) return 0;
+        const result = (constant * abs * dimension) / (dimension + constant * abs);
+        return Math.sign(d) * result;
+      }
+
+      (function attachRubberBand() {
+        const listEl = document.getElementById("dappList");
+        if (!listEl) return;
+
+        let startY = 0;
+        let activePointerId = null;
+        let dragging = false;
+        let moved = false;
+
+        function apply(offset) {
+          const t = offset;
+          if (RUBBER_BAND.enableScaleY) {
+            const s = 1 + Math.abs(offset) / RUBBER_BAND.scaleDivisor;
+            listEl.style.transform = `translateY(${t}px) scaleY(${s})`;
+          } else {
+            listEl.style.transform = `translateY(${t}px)`;
+          }
+        }
+
+        function reset() {
+          listEl.style.transition = `transform ${RUBBER_BAND.snapMs}ms ${RUBBER_BAND.snapEasing}`;
+          listEl.style.transform = "";
+          window.setTimeout(() => {
+            listEl.style.transition = "";
+          }, RUBBER_BAND.snapMs + 40);
+        }
+
+        // Attach to the list only so the header/title don't stretch.
+        listEl.addEventListener("pointerdown", (e) => {
+          if (e.button != null && e.button !== 0) return;
+          activePointerId = e.pointerId;
+          startY = e.clientY;
+          dragging = true;
+          moved = false;
+          listEl.style.transition = "";
+          e.preventDefault();
+          try {
+            listEl.setPointerCapture(activePointerId);
+          } catch (_) {}
+        });
+
+        listEl.addEventListener(
+          "pointermove",
+          (e) => {
+            if (!dragging || e.pointerId !== activePointerId) return;
+            const dy = e.clientY - startY;
+
+            if (Math.abs(dy) > RUBBER_BAND.deadzonePx) moved = true;
+            const effectiveDy =
+              Math.abs(dy) <= RUBBER_BAND.deadzonePx
+                ? 0
+                : dy - Math.sign(dy) * RUBBER_BAND.deadzonePx;
+
+            const dim = window.innerHeight || 800;
+            let offset = rubberBandDistance(
+              effectiveDy,
+              dim,
+              RUBBER_BAND.constant
+            );
+
+            const max = RUBBER_BAND.maxPullPx;
+            if (offset > max) offset = max;
+            if (offset < -max) offset = -max;
+
+            apply(offset);
+            e.preventDefault();
+          },
+          { passive: false }
+        );
+
+        function end(e) {
+          if (!dragging || e.pointerId !== activePointerId) return;
+          dragging = false;
+          activePointerId = null;
+          reset();
+        }
+
+        listEl.addEventListener("pointerup", end);
+        listEl.addEventListener("pointercancel", end);
+
+        // Suppress link navigation if the gesture was a drag (so it feels like scrolling).
+        listEl.addEventListener(
+          "click",
+          (e) => {
+            if (!moved) return;
+            e.preventDefault();
+            e.stopPropagation();
+            moved = false;
+          },
+          true
+        );
+      })();
+
+    </script>
+  </body>
+</html>
+
