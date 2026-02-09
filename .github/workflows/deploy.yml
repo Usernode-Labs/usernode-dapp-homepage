@@ -21,5 +21,6 @@ jobs:
           script: |
             cd ${{ secrets.APP_DIR }}
             git pull origin develop
+            docker rm -f dapp-homepage || true
             docker compose down --remove-orphans
             docker compose up -d --build
