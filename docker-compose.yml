@@ -4,8 +4,9 @@ services:
     container_name: dapp-homepage
     environment:
       PORT: "8000"
-    ports:
-      - "8000:8000"
+      VIRTUAL_HOST: testnet-mini-apps.usernodelabs.org
+      VIRTUAL_PORT: "8000"
+      LETSENCRYPT_HOST: testnet-mini-apps.usernodelabs.org
     restart: unless-stopped
     networks:
       - proxy-network
