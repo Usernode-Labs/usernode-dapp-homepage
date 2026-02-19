@@ -1,19 +1,19 @@
 {
   "apps": [
     {
-      "name": "[TEST] Hello dapp (placeholder)",
+      "name": "Collective Intelligence Service",
       "author": "Usernode Labs",
-      "url": "http://localhost:8000"
+      "url": "https://dapps.usernodelabs.org/cis"
     },
     {
-      "name": "[DEMO] Swap UI (placeholder)",
-      "author": "Example Co",
-      "url": "https://example.com/demo-swap"
+      "name": "Falling Sands Game (multiplayer)",
+      "author": "Usernode Labs",
+      "url": "https://dapps.usernodelabs.org/falling-sands"
     },
     {
-      "name": "[TEST] Faucet (placeholder)",
-      "author": "Example Co",
-      "url": "https://example.com/test-faucet"
+      "name": "Test Starter Dapp",
+      "author": "Usernode Labs",
+      "url": "https://dapps.usernodelabs.org/"
     }
   ]
 }
