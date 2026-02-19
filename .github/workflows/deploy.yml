@@ -2,7 +2,7 @@ name: Deploy on PR merge
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [main]
     types: [closed]
   workflow_dispatch:
 
@@ -20,7 +20,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd ${{ secrets.APP_DIR }}
-            git pull origin develop
+            git pull origin main
             docker rm -f dapp-homepage || true
             docker compose down --remove-orphans
             docker compose up -d --build
