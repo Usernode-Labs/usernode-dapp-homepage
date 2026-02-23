@@ -65,8 +65,14 @@
         top: 0;
         z-index: 10;
       }
+      .headerRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
       h1 {
-        margin: 0 0 6px;
+        margin: 0;
         font-size: 22px;
         letter-spacing: 0.2px;
       }
@@ -75,6 +81,71 @@
         color: var(--muted);
         line-height: 1.45;
       }
+      .sortWrap {
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .sortBtn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        padding: 6px 10px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+        font-family: inherit;
+      }
+      .sortBtn:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .sortBtn svg {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+      }
+      .sortMenu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+        z-index: 100;
+        min-width: 180px;
+        padding: 4px;
+        overflow: hidden;
+      }
+      .sortMenu.open {
+        display: block;
+      }
+      .sortOpt {
+        display: block;
+        width: 100%;
+        padding: 8px 12px;
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+        border-radius: 6px;
+        font-family: inherit;
+      }
+      .sortOpt:hover {
+        background: var(--border);
+      }
+      .sortOpt.active {
+        color: var(--accent);
+        font-weight: 600;
+      }
       ul {
         list-style: none;
         padding: 12px 12px 14px;
@@ -82,12 +153,9 @@
         display: grid;
         gap: 10px;
         will-change: transform;
-        /* We emulate overscroll ourselves, so disable native panning on the list. */
         touch-action: none;
-        /* Fill the remaining space under the header. */
         flex: 1 1 auto;
         min-height: 0;
-        /* Don't stretch rows to fill available space; keep items top-packed. */
         align-content: start;
         grid-auto-rows: max-content;
       }
@@ -111,8 +179,40 @@
       .dappLink:active {
         filter: brightness(0.98);
       }
+      .nameRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
       .name {
         font-weight: 600;
+        min-width: 0;
+      }
+      .stats {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .stat {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
+      }
+      .stat svg {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        opacity: 0.7;
+      }
+      .statsLoading {
+        font-size: 12px;
+        color: var(--muted);
+        opacity: 0.5;
       }
       .author {
         color: var(--muted);
@@ -133,13 +233,46 @@
     <main>
       <div class="card">
         <div class="header">
-          <h1>Dapps</h1>
+          <div class="headerRow">
+            <h1>Dapps</h1>
+            <div class="sortWrap">
+              <button class="sortBtn" id="sortBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
+                <span id="sortLabel">Popular</span>
+              </button>
+              <div class="sortMenu" id="sortMenu">
+                <button class="sortOpt" data-sort="popular">Popular</button>
+                <button class="sortOpt" data-sort="users">Most users</button>
+                <button class="sortOpt" data-sort="txns">Most transactions</button>
+                <button class="sortOpt" data-sort="alpha">Alphabetical</button>
+              </div>
+            </div>
+          </div>
         </div>
         <ul id="dappList"></ul>
       </div>
     </main>
     <script>
+      const EXPLORER_BASE = window.location.origin + "/explorer-api";
+      const SORT_KEY = "dapphome:sort";
+      const PERSON_WEIGHT = 20;
+
       const list = document.getElementById("dappList");
+      const sortBtn = document.getElementById("sortBtn");
+      const sortMenu = document.getElementById("sortMenu");
+      const sortLabel = document.getElementById("sortLabel");
+
+      let allApps = [];
+      let statsMap = {};
+      let currentSort = localStorage.getItem(SORT_KEY) || "popular";
+
+      const SORT_LABELS = {
+        popular: "Popular",
+        users: "Most users",
+        txns: "Most transactions",
+        alpha: "Alphabetical",
+      };
+
       function clearList() {
         if (!list) return;
         list.textContent = "";
@@ -154,6 +287,56 @@
         list.appendChild(li);
       }
 
+      function personIcon() {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "2");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        svg.innerHTML = '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>';
+        return svg;
+      }
+
+      function txIcon() {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "2");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        svg.innerHTML = '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>';
+        return svg;
+      }
+
+      function formatNum(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
+        if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+        return String(n);
+      }
+
+      function sortApps(apps) {
+        const sorted = apps.slice();
+        sorted.sort((a, b) => {
+          const sa = statsMap[a.pubkey] || { users: 0, txns: 0 };
+          const sb = statsMap[b.pubkey] || { users: 0, txns: 0 };
+          switch (currentSort) {
+            case "alpha":
+              return (a.name || "").localeCompare(b.name || "");
+            case "users":
+              return sb.users - sa.users || sb.txns - sa.txns;
+            case "txns":
+              return sb.txns - sa.txns || sb.users - sa.users;
+            case "popular":
+            default:
+              return (sb.users * PERSON_WEIGHT + sb.txns) - (sa.users * PERSON_WEIGHT + sa.txns);
+          }
+        });
+        return sorted;
+      }
+
       function renderDapps(dapps) {
         if (!list) return;
         clearList();
@@ -163,7 +346,9 @@
           return;
         }
 
-        for (const dapp of dapps) {
+        const sorted = sortApps(dapps);
+
+        for (const dapp of sorted) {
           const li = document.createElement("li");
 
           const link = document.createElement("a");
@@ -172,9 +357,41 @@
           link.target = "_blank";
           link.rel = "noopener";
 
+          const nameRow = document.createElement("div");
+          nameRow.className = "nameRow";
+
           const name = document.createElement("div");
           name.className = "name";
           name.textContent = dapp.name || "(unnamed)";
+          nameRow.appendChild(name);
+
+          if (dapp.pubkey) {
+            const s = statsMap[dapp.pubkey];
+            const statsEl = document.createElement("div");
+            statsEl.className = "stats";
+
+            if (s) {
+              const userStat = document.createElement("span");
+              userStat.className = "stat";
+              userStat.appendChild(personIcon());
+              userStat.appendChild(document.createTextNode(formatNum(s.users)));
+
+              const txStat = document.createElement("span");
+              txStat.className = "stat";
+              txStat.appendChild(txIcon());
+              txStat.appendChild(document.createTextNode(formatNum(s.txns)));
+
+              statsEl.appendChild(userStat);
+              statsEl.appendChild(txStat);
+            } else {
+              const loading = document.createElement("span");
+              loading.className = "statsLoading";
+              loading.textContent = "loading...";
+              statsEl.appendChild(loading);
+            }
+
+            nameRow.appendChild(statsEl);
+          }
 
           const author = document.createElement("div");
           author.className = "author";
@@ -184,7 +401,7 @@
           url.className = "url";
           url.innerHTML = `<span class="urlText">${dapp.url || ""}</span>`;
 
-          link.appendChild(name);
+          link.appendChild(nameRow);
           link.appendChild(author);
           link.appendChild(url);
           li.appendChild(link);
@@ -200,12 +417,101 @@
         return await resp.json();
       }
 
+      async function explorerFetch(path, opts) {
+        const resp = await fetch(`${EXPLORER_BASE}${path}`, opts);
+        if (!resp.ok) throw new Error(`Explorer ${resp.status}`);
+        return resp.json();
+      }
+
+      async function discoverChainId() {
+        const data = await explorerFetch("/active_chain");
+        return data.chain_id;
+      }
+
+      async function fetchStatsForPubkey(chainId, pubkey) {
+        const senders = new Set();
+        let totalTxns = 0;
+        let cursor = null;
+        const MAX_PAGES = 20;
+
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const body = { recipient: pubkey, limit: 50 };
+          if (cursor) body.cursor = cursor;
+          const data = await explorerFetch(`/${chainId}/transactions`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const items = data.items || [];
+          for (const tx of items) {
+            const sender = tx.source || tx.from_pubkey || tx.from;
+            if (sender) senders.add(sender);
+            totalTxns++;
+          }
+          if (!data.has_more || !data.next_cursor) break;
+          cursor = data.next_cursor;
+        }
+        return { users: senders.size, txns: totalTxns };
+      }
+
+      async function loadAllStats(apps) {
+        let chainId;
+        try {
+          chainId = await discoverChainId();
+        } catch (e) {
+          console.warn("Could not discover chain ID:", e);
+          return;
+        }
+
+        const pubkeys = apps.filter((a) => a.pubkey).map((a) => a.pubkey);
+        const fetches = pubkeys.map(async (pk) => {
+          try {
+            const stats = await fetchStatsForPubkey(chainId, pk);
+            statsMap[pk] = stats;
+            renderDapps(allApps);
+          } catch (e) {
+            console.warn(`Stats fetch failed for ${pk.slice(0, 16)}…:`, e);
+          }
+        });
+        await Promise.all(fetches);
+      }
+
+      // --- Sort menu ---
+      function updateSortUI() {
+        sortLabel.textContent = SORT_LABELS[currentSort] || "Popular";
+        sortMenu.querySelectorAll(".sortOpt").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.sort === currentSort);
+        });
+      }
+
+      sortBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        sortMenu.classList.toggle("open");
+      });
+
+      sortMenu.addEventListener("click", (e) => {
+        const opt = e.target.closest(".sortOpt");
+        if (!opt) return;
+        currentSort = opt.dataset.sort;
+        localStorage.setItem(SORT_KEY, currentSort);
+        updateSortUI();
+        renderDapps(allApps);
+        sortMenu.classList.remove("open");
+      });
+
+      document.addEventListener("click", () => {
+        sortMenu.classList.remove("open");
+      });
+
+      updateSortUI();
+
       (async function main() {
         addRow("(loading dapps...)");
         try {
           const json = await loadDappsJson();
-          const apps = Array.isArray(json) ? json : json.apps || json.items || [];
-          renderDapps(apps);
+          allApps = Array.isArray(json) ? json : json.apps || json.items || [];
+          renderDapps(allApps);
+          loadAllStats(allApps);
         } catch (e) {
           clearList();
           addRow(
@@ -215,26 +521,16 @@
       })();
 
       // --- Rubber-band (overscroll-like) stretch config ---
-      // These are the common knobs you'll see in most rubber-band implementations.
       const RUBBER_BAND = {
-        // px before we treat it as a drag
         deadzonePx: 6,
-        // max visual pull distance (px)
         maxPullPx: 92,
-        // non-linear resistance constant (typical range ~0.5–0.9; higher = stretchier)
-        // Lower = stiffer (more resistance for the same drag distance).
         constant: 0.56,
-        // snap-back animation
         snapMs: 210,
         snapEasing: "cubic-bezier(0.2, 0.9, 0.2, 1)",
-        // optional subtle scale during pull
         enableScaleY: true,
         scaleDivisor: 850,
       };
 
-      // WebKit-style non-linear rubber-band distance:
-      // f(d) = (c * |d| * D) / (D + c * |d|)
-      // where D is a dimension (we use viewport height).
       function rubberBandDistance(d, dimension, constant) {
         const abs = Math.abs(d);
         if (dimension <= 0) return 0;
@@ -269,7 +565,6 @@
           }, RUBBER_BAND.snapMs + 40);
         }
 
-        // Attach to the list only so the header/title don't stretch.
         listEl.addEventListener("pointerdown", (e) => {
           if (e.button != null && e.button !== 0) return;
           activePointerId = e.pointerId;
@@ -322,7 +617,6 @@
         listEl.addEventListener("pointerup", end);
         listEl.addEventListener("pointercancel", end);
 
-        // Suppress link navigation if the gesture was a drag (so it feels like scrolling).
         listEl.addEventListener(
           "click",
           (e) => {
@@ -338,4 +632,3 @@
     </script>
   </body>
 </html>
-

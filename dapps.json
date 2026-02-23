@@ -3,17 +3,20 @@
     {
       "name": "Usernode Collective Intelligence Service",
       "author": "Usernode Labs",
-      "url": "https://dapps.usernodelabs.org/cis"
+      "url": "https://dapps.usernodelabs.org/cis",
+      "pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms"
     },
     {
       "name": "Falling Sands Game (multiplayer)",
       "author": "Usernode Labs",
-      "url": "https://dapps.usernodelabs.org/falling-sands"
+      "url": "https://dapps.usernodelabs.org/falling-sands",
+      "pubkey": "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu"
     },
     {
       "name": "Last One Wins",
       "author": "Usernode Labs",
-      "url": "https://dapps.usernodelabs.org/last-one-wins"
+      "url": "https://dapps.usernodelabs.org/last-one-wins",
+      "pubkey": "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05"
     },
     {
       "name": "Test Starter Dapp",
@@ -22,4 +25,3 @@
     }
   ]
 }
-
