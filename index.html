@@ -565,14 +565,16 @@
           }, RUBBER_BAND.snapMs + 40);
         }
 
+        let downTarget = null;
+
         listEl.addEventListener("pointerdown", (e) => {
           if (e.button != null && e.button !== 0) return;
           activePointerId = e.pointerId;
           startY = e.clientY;
           dragging = true;
           moved = false;
+          downTarget = e.target;
           listEl.style.transition = "";
-          e.preventDefault();
           try {
             listEl.setPointerCapture(activePointerId);
           } catch (_) {}
@@ -584,7 +586,7 @@
             if (!dragging || e.pointerId !== activePointerId) return;
             const dy = e.clientY - startY;
 
-            if (Math.abs(dy) > RUBBER_BAND.deadzonePx) moved = true;
+            if (!moved && Math.abs(dy) > RUBBER_BAND.deadzonePx) moved = true;
             const effectiveDy =
               Math.abs(dy) <= RUBBER_BAND.deadzonePx
                 ? 0
@@ -602,7 +604,6 @@
             if (offset < -max) offset = -max;
 
             apply(offset);
-            e.preventDefault();
           },
           { passive: false }
         );
@@ -612,6 +613,14 @@
           dragging = false;
           activePointerId = null;
           reset();
+
+          if (!moved && downTarget) {
+            const link = downTarget.closest("a");
+            if (link && link.href) {
+              window.open(link.href, link.target || "_self", "noopener");
+            }
+          }
+          downTarget = null;
         }
 
         listEl.addEventListener("pointerup", end);
@@ -620,10 +629,8 @@
         listEl.addEventListener(
           "click",
           (e) => {
-            if (!moved) return;
             e.preventDefault();
             e.stopPropagation();
-            moved = false;
           },
           true
         );
