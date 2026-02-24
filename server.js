@@ -3,7 +3,8 @@
  * Minimal Node server to host index.html on http://localhost:8000
  *
  * Run:
- *   node server.js
+ *   node server.js              # production dapps.json
+ *   node server.js --local-dev  # uses dapps.local.json (localnet URLs)
  */
 
 const http = require("http");
@@ -11,9 +12,33 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 
+// ── .env loader ──────────────────────────────────────────────────────────────
+(function loadDotEnv() {
+  const envPath = path.join(__dirname, ".env");
+  if (!fs.existsSync(envPath)) return;
+  for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq < 1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+    if (process.env[key] == null) process.env[key] = val;
+  }
+})();
+
+const LOCAL_DEV = process.argv.includes("--local-dev");
 const PORT = Number(process.env.PORT) || 8000;
 const INDEX_PATH = path.join(__dirname, "index.html");
-const DAPPS_PATH = path.join(__dirname, "dapps.json");
+
+const DAPPS_PATH = (() => {
+  if (process.env.DAPPS_JSON_PATH) return path.resolve(process.env.DAPPS_JSON_PATH);
+  if (LOCAL_DEV) {
+    const localPath = path.join(__dirname, "dapps.local.json");
+    if (fs.existsSync(localPath)) return localPath;
+  }
+  return path.join(__dirname, "dapps.json");
+})();
 
 const EXPLORER_UPSTREAM = "alpha2.usernodelabs.org";
 const EXPLORER_UPSTREAM_BASE = "/explorer/api";
@@ -147,5 +172,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Serving ${INDEX_PATH}`);
+  console.log(`Dapps config: ${DAPPS_PATH}${LOCAL_DEV ? " (local-dev)" : ""}`);
   console.log(`Listening on http://localhost:${PORT}`);
 });
