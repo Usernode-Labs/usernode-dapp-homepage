@@ -40,8 +40,13 @@ const DAPPS_PATH = (() => {
   return path.join(__dirname, "dapps.json");
 })();
 
-const EXPLORER_UPSTREAM = "alpha2.usernodelabs.org";
-const EXPLORER_UPSTREAM_BASE = "/explorer/api";
+const EXPLORER_PROD_HOST = "alpha2.usernodelabs.org";
+const EXPLORER_PROD_BASE = "/explorer/api";
+const EXPLORER_LOCAL_HOST = process.env.LOCAL_EXPLORER_UPSTREAM || "localhost:4173";
+const EXPLORER_LOCAL_BASE = process.env.LOCAL_EXPLORER_BASE || "/api";
+
+const EXPLORER_UPSTREAM = LOCAL_DEV ? EXPLORER_LOCAL_HOST : EXPLORER_PROD_HOST;
+const EXPLORER_UPSTREAM_BASE = LOCAL_DEV ? EXPLORER_LOCAL_BASE : EXPLORER_PROD_BASE;
 const EXPLORER_PROXY_PREFIX = "/explorer-api/";
 
 function send(res, statusCode, headers, body) {
@@ -49,16 +54,24 @@ function send(res, statusCode, headers, body) {
   res.end(body);
 }
 
+const EXPLORER_USE_HTTP = (() => {
+  const host = EXPLORER_UPSTREAM.replace(/:\d+$/, "");
+  return host === "localhost" || host === "127.0.0.1" || /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(host);
+})();
+
 function proxyExplorer(req, res, subPath) {
   const upstreamPath = EXPLORER_UPSTREAM_BASE + "/" + subPath;
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
   req.on("end", () => {
     const bodyBuf = chunks.length ? Buffer.concat(chunks) : null;
-    const upReq = https.request(
+    const transport = EXPLORER_USE_HTTP ? http : https;
+    const [hostname, portStr] = EXPLORER_UPSTREAM.split(":");
+    const port = portStr ? Number(portStr) : (EXPLORER_USE_HTTP ? 80 : 443);
+    const upReq = transport.request(
       {
-        hostname: EXPLORER_UPSTREAM,
-        port: 443,
+        hostname,
+        port,
         path: upstreamPath,
         method: req.method,
         headers: {
@@ -173,5 +186,6 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Serving ${INDEX_PATH}`);
   console.log(`Dapps config: ${DAPPS_PATH}${LOCAL_DEV ? " (local-dev)" : ""}`);
+  console.log(`Explorer proxy: ${EXPLORER_USE_HTTP ? "http" : "https"}://${EXPLORER_UPSTREAM}${EXPLORER_UPSTREAM_BASE}`);
   console.log(`Listening on http://localhost:${PORT}`);
 });
