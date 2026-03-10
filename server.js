@@ -41,7 +41,7 @@ const DAPPS_PATH = (() => {
 })();
 
 const EXPLORER_PROD_HOST = "alpha2.usernodelabs.org";
-const EXPLORER_PROD_BASE = "/explorer/api";
+const EXPLORER_PROD_BASE = "/api";
 const EXPLORER_LOCAL_HOST = process.env.LOCAL_EXPLORER_UPSTREAM || "localhost:4173";
 const EXPLORER_LOCAL_BASE = process.env.LOCAL_EXPLORER_BASE || "/api";
 
