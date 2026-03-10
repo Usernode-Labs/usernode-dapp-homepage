@@ -1,9 +1,9 @@
 {
   "apps": [
     {
-      "name": "Usernode Collective Intelligence Service",
+      "name": "Opinion Market",
       "author": "Usernode Labs",
-      "url": "https://dapps.usernodelabs.org/cis",
+      "url": "https://dapps.usernodelabs.org/opinion-market",
       "pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms"
     },
     {
