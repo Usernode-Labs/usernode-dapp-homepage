@@ -253,7 +253,6 @@
       </div>
     </main>
     <script>
-      const EXPLORER_BASE = window.location.origin + "/explorer-api";
       const SORT_KEY = "dapphome:sort";
       const PERSON_WEIGHT = 20;
 
@@ -417,63 +416,18 @@
         return await resp.json();
       }
 
-      async function explorerFetch(path, opts) {
-        const resp = await fetch(`${EXPLORER_BASE}${path}`, opts);
-        if (!resp.ok) throw new Error(`Explorer ${resp.status}`);
-        return resp.json();
-      }
-
-      async function discoverChainId() {
-        const data = await explorerFetch("/active_chain");
-        return data.chain_id;
-      }
-
-      async function fetchStatsForPubkey(chainId, pubkey) {
-        const senders = new Set();
-        let totalTxns = 0;
-        let cursor = null;
-        const MAX_PAGES = 200;
-
-        for (let page = 0; page < MAX_PAGES; page++) {
-          const body = { recipient: pubkey, limit: 50 };
-          if (cursor) body.cursor = cursor;
-          const data = await explorerFetch(`/${chainId}/transactions`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body),
-          });
-          const items = data.items || [];
-          for (const tx of items) {
-            const sender = tx.source || tx.from_pubkey || tx.from;
-            if (sender) senders.add(sender);
-            totalTxns++;
-          }
-          if (!data.has_more || !data.next_cursor) break;
-          cursor = data.next_cursor;
-        }
-        return { users: senders.size, txns: totalTxns };
-      }
-
       async function loadAllStats(apps) {
-        let chainId;
         try {
-          chainId = await discoverChainId();
-        } catch (e) {
-          console.warn("Could not discover chain ID:", e);
-          return;
-        }
-
-        const pubkeys = apps.filter((a) => a.pubkey).map((a) => a.pubkey);
-        const fetches = pubkeys.map(async (pk) => {
-          try {
-            const stats = await fetchStatsForPubkey(chainId, pk);
-            statsMap[pk] = stats;
-            renderDapps(allApps);
-          } catch (e) {
-            console.warn(`Stats fetch failed for ${pk.slice(0, 16)}…:`, e);
+          const resp = await fetch("/api/stats");
+          if (!resp.ok) throw new Error(`Stats API ${resp.status}`);
+          const data = await resp.json();
+          for (const [pk, s] of Object.entries(data)) {
+            statsMap[pk] = s;
           }
-        });
-        await Promise.all(fetches);
+          renderDapps(allApps);
+        } catch (e) {
+          console.warn("Could not load stats:", e);
+        }
       }
 
       // --- Sort menu ---
