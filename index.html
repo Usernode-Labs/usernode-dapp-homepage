@@ -432,7 +432,7 @@
         const senders = new Set();
         let totalTxns = 0;
         let cursor = null;
-        const MAX_PAGES = 20;
+        const MAX_PAGES = 200;
 
         for (let page = 0; page < MAX_PAGES; page++) {
           const body = { recipient: pubkey, limit: 50 };
