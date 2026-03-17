@@ -150,8 +150,16 @@ async function discoverStatsChainId() {
   try {
     const data = await httpJson("GET", `${explorerBaseUrl()}/active_chain`);
     if (data && data.chain_id) {
+      if (statsChainId && statsChainId !== data.chain_id) {
+        console.log(`[stats] chain_id changed: ${statsChainId} -> ${data.chain_id} — clearing all caches`);
+        for (const key of Object.keys(statsCache)) delete statsCache[key];
+        for (const key of Object.keys(txCache)) delete txCache[key];
+        for (const key of Object.keys(seenTxIds)) delete seenTxIds[key];
+        for (const key of Object.keys(lastHeight)) delete lastHeight[key];
+      } else if (!statsChainId) {
+        console.log(`[stats] discovered chain_id: ${data.chain_id}`);
+      }
       statsChainId = data.chain_id;
-      console.log(`[stats] discovered chain_id: ${statsChainId}`);
     }
   } catch (e) {
     console.warn(`[stats] could not discover chain ID: ${e.message}`);
@@ -237,7 +245,7 @@ function loadPubkeys() {
 const STATS_POLL_INTERVAL_MS = 30000;
 
 async function pollAllStats() {
-  if (!statsChainId) await discoverStatsChainId();
+  await discoverStatsChainId();
   if (!statsChainId) return;
 
   const pubkeys = loadPubkeys();
