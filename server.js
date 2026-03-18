@@ -177,12 +177,14 @@ async function pollPubkey(pubkey) {
   const SEEN_CAP = 5000;
   let cursor = null;
   const newTxs = [];
+  const fromHeight = lastHeight[pubkey] || null;
+  let maxHeight = fromHeight;
 
   try {
     for (let page = 0; page < MAX_PAGES; page++) {
       const body = { recipient: pubkey, limit: 50 };
       if (cursor) body.cursor = cursor;
-      if (lastHeight[pubkey]) body.from_height = lastHeight[pubkey];
+      if (fromHeight) body.from_height = fromHeight;
 
       const resp = await httpJson("POST", url, body);
       const items = (resp && Array.isArray(resp.items)) ? resp.items : [];
@@ -197,8 +199,8 @@ async function pollPubkey(pubkey) {
         newTxs.push(tx);
 
         const bh = tx.block_height;
-        if (typeof bh === "number" && (lastHeight[pubkey] == null || bh > lastHeight[pubkey])) {
-          lastHeight[pubkey] = bh;
+        if (typeof bh === "number" && (maxHeight == null || bh > maxHeight)) {
+          maxHeight = bh;
         }
       }
 
@@ -206,6 +208,8 @@ async function pollPubkey(pubkey) {
       if (!resp.has_more || !resp.next_cursor) break;
       cursor = resp.next_cursor;
     }
+
+    if (maxHeight != null) lastHeight[pubkey] = maxHeight;
 
     if (newTxs.length > 0) {
       txCache[pubkey].push(...newTxs);
