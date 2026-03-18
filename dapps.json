@@ -2,18 +2,21 @@
   "apps": [
     {
       "name": "Opinion Market",
+      "description": "A prediction market, but for opinions.",
       "author": "Usernode Labs",
       "url": "https://dapps.usernodelabs.org/opinion-market",
       "pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms"
     },
     {
       "name": "Falling Sands",
+      "description": "A multiplayer 2d physics simulator.",
       "author": "Usernode Labs",
       "url": "https://dapps.usernodelabs.org/falling-sands",
       "pubkey": "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu"
     },
     {
       "name": "Last One Wins",
+      "description": "Game where last one to add to the pot, gets the pot.",
       "author": "Usernode Labs",
       "url": "https://dapps.usernodelabs.org/last-one-wins",
       "pubkey": "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05"
