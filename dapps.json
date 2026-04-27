@@ -20,6 +20,13 @@
       "author": "Usernode Labs",
       "url": "https://dapps.usernodelabs.org/last-one-wins",
       "pubkey": "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05"
+    },
+    {
+      "name": "Echo (test)",
+      "description": "Simple test of sending / receiving transactions",
+      "author": "Usernode Labs",
+      "url": "https://dapps.usernodelabs.org/echo",
+      "pubkey": "ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh"
     }
   ]
 }
