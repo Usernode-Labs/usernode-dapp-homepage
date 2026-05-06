@@ -4,32 +4,25 @@
       "name": "Opinion Market",
       "description": "A prediction market, but for opinions.",
       "author": "Usernode Labs",
-      "url": "https://dapps.usernodelabs.org/opinion-market",
+      "url": "https://opinion-market-eb3f76.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms"
     },
     {
       "name": "Falling Sands",
       "description": "A multiplayer 2d physics simulator.",
       "author": "Usernode Labs",
-      "url": "https://dapps.usernodelabs.org/falling-sands",
+      "url": "https://falling-sands-game-ad186d.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu"
     },
     {
       "name": "Last One Wins",
       "description": "Game where last one to add to the pot, gets the pot.",
       "author": "Usernode Labs",
-      "url": "https://dapps.usernodelabs.org/last-one-wins",
+      "url": "https://last-one-wins-7053f0.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05"
     },
     {
       "name": "Echo Diagnostic",
-      "description": "Simple test of sending / receiving transactions",
-      "author": "Usernode Labs",
-      "url": "https://dapps.usernodelabs.org/echo",
-      "pubkey": "ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh"
-    },
-    {
-      "name": "Echo Diagnostic (SV)",
       "description": "Simple test of sending / receiving transactions",
       "author": "Usernode Labs",
       "url": "https://usernode-echo-diagnostic-6f02bf.social-vibecoding.usernodelabs.org/",
