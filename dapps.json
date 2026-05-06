@@ -27,6 +27,15 @@
       "author": "Usernode Labs",
       "url": "https://dapps.usernodelabs.org/echo",
       "pubkey": "ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh"
+    },
+    {
+      "name": "Echo Diagnostic (SV)",
+      "description": "Simple test of sending / receiving transactions",
+      "author": "Usernode Labs",
+      "url": "https://usernode-echo-diagnostic-6f02bf.social-vibecoding.usernodelabs.org/",
+      "pubkey": "ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh"
     }
+
+
   ]
 }
