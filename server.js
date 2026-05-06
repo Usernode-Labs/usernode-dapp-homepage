@@ -40,7 +40,7 @@ const DAPPS_PATH = (() => {
   return path.join(__dirname, "dapps.json");
 })();
 
-const EXPLORER_PROD_HOST = "alpha1.usernodelabs.org";
+const EXPLORER_PROD_HOST = "testnet-explorer.usernodelabs.org";
 const EXPLORER_PROD_BASE = "/api";
 const EXPLORER_LOCAL_HOST = process.env.LOCAL_EXPLORER_UPSTREAM || "localhost:4173";
 const EXPLORER_LOCAL_BASE = process.env.LOCAL_EXPLORER_BASE || "/api";
