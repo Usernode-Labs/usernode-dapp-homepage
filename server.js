@@ -112,6 +112,12 @@ const seenTxIds = {};     // { [pubkey]: Set }
 const lastHeight = {};    // { [pubkey]: number } — for from_height incremental
 let statsChainId = null;
 
+// Global usernames address — polled the same way as dapp pubkeys so we can
+// derive `username` / `has_set_username` per wallet for /user_activity.
+const USERNAMES_PUBKEY =
+  process.env.USERNAMES_PUBKEY ||
+  "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az";
+
 function httpJson(method, urlStr, body) {
   return new Promise((resolve, reject) => {
     const url = new URL(urlStr);
@@ -234,16 +240,22 @@ async function pollPubkey(pubkey) {
   }
 }
 
-function loadPubkeys() {
+function loadDapps() {
   try {
     const raw = fs.readFileSync(DAPPS_PATH, "utf8");
     const data = JSON.parse(raw);
     const apps = data.apps || data.items || [];
-    return apps.filter((a) => a.pubkey && a.pubkey.trim()).map((a) => a.pubkey.trim());
+    return apps
+      .filter((a) => a.pubkey && a.pubkey.trim())
+      .map((a) => ({ name: a.name || "(unnamed)", pubkey: a.pubkey.trim() }));
   } catch (e) {
     console.warn(`[stats] could not read dapps.json: ${e.message}`);
     return [];
   }
+}
+
+function loadPubkeys() {
+  return loadDapps().map((d) => d.pubkey);
 }
 
 const STATS_POLL_INTERVAL_MS = 30000;
@@ -253,9 +265,88 @@ async function pollAllStats() {
   if (!statsChainId) return;
 
   const pubkeys = loadPubkeys();
-  for (const pk of pubkeys) {
+  const all = Array.from(new Set([...pubkeys, USERNAMES_PUBKEY]));
+  for (const pk of all) {
     await pollPubkey(pk);
   }
+}
+
+// ── /user_activity derivation ────────────────────────────────────────────────
+// Walk the per-dapp txCaches plus the usernames txCache and roll them up
+// into a per-wallet view. Computed on demand so it's always live.
+
+function deriveUsernamesByWallet() {
+  const out = new Map();        // wallet -> latest username
+  const latestKey = new Map();  // wallet -> latest ordering key (ts or block)
+  const txs = txCache[USERNAMES_PUBKEY] || [];
+  for (const tx of txs) {
+    const sender = tx.source || tx.from_pubkey || tx.from;
+    if (!sender) continue;
+    let memo;
+    try { memo = JSON.parse(tx.memo || ""); } catch (_) { continue; }
+    if (!memo || memo.app !== "usernames" || memo.type !== "set_username") continue;
+    if (typeof memo.username !== "string" || !memo.username) continue;
+    const key =
+      (typeof tx.timestamp_ms === "number" ? tx.timestamp_ms : 0) ||
+      (typeof tx.block_height === "number" ? tx.block_height : 0);
+    const prev = latestKey.has(sender) ? latestKey.get(sender) : -Infinity;
+    if (key >= prev) {
+      latestKey.set(sender, key);
+      out.set(sender, memo.username);
+    }
+  }
+  return out;
+}
+
+function buildUserActivity() {
+  const dapps = loadDapps();
+  const dappByPubkey = new Map(dapps.map((d) => [d.pubkey, d]));
+  const usernames = deriveUsernamesByWallet();
+
+  // wallet -> { byDapp: Map<dappPk, count>, total: number }
+  const wallets = new Map();
+  function ensure(wallet) {
+    let w = wallets.get(wallet);
+    if (!w) { w = { byDapp: new Map(), total: 0 }; wallets.set(wallet, w); }
+    return w;
+  }
+
+  for (const dapp of dapps) {
+    const txs = txCache[dapp.pubkey] || [];
+    for (const tx of txs) {
+      const sender = tx.source || tx.from_pubkey || tx.from;
+      if (!sender) continue;
+      if (sender === dapp.pubkey) continue; // skip self-sends (e.g. consolidation)
+      const w = ensure(sender);
+      w.total += 1;
+      w.byDapp.set(dapp.pubkey, (w.byDapp.get(dapp.pubkey) || 0) + 1);
+    }
+  }
+
+  // Include any wallet that set a username, even if it never sent to a dapp.
+  for (const wallet of usernames.keys()) ensure(wallet);
+
+  const out = {};
+  for (const [wallet, w] of wallets) {
+    const byDapp = {};
+    for (const [pk, count] of w.byDapp) {
+      const dapp = dappByPubkey.get(pk);
+      byDapp[pk] = {
+        dapp_name: dapp ? dapp.name : "(unknown)",
+        transactions: count,
+      };
+    }
+    const username = usernames.get(wallet) || null;
+    out[wallet] = {
+      wallet_address: wallet,
+      wallet_public_key: wallet,
+      has_set_username: username != null,
+      username,
+      total_dapp_transactions: w.total,
+      transactions_by_dapp: byDapp,
+    };
+  }
+  return out;
 }
 
 // Start background polling
@@ -283,6 +374,23 @@ const server = http.createServer((req, res) => {
 
   if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
     const body = JSON.stringify(statsCache);
+    if (req.method === "HEAD") {
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+        "cache-control": "no-store",
+      });
+      return res.end();
+    }
+    return send(res, 200, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+    }, body);
+  }
+
+  if (pathname === "/user_activity" && (req.method === "GET" || req.method === "HEAD")) {
+    const body = JSON.stringify(buildUserActivity());
     if (req.method === "HEAD") {
       res.writeHead(200, {
         "content-type": "application/json",
@@ -392,6 +500,6 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`Serving ${INDEX_PATH}`);
   console.log(`Dapps config: ${DAPPS_PATH}${LOCAL_DEV ? " (local-dev)" : ""}`);
   console.log(`Explorer proxy: ${EXPLORER_USE_HTTP ? "http" : "https"}://${EXPLORER_UPSTREAM}${EXPLORER_UPSTREAM_BASE}`);
-  console.log(`Stats poller: every ${STATS_POLL_INTERVAL_MS / 1000}s → GET /api/stats, GET /api/transactions?pubkey=...`);
+  console.log(`Stats poller: every ${STATS_POLL_INTERVAL_MS / 1000}s → GET /api/stats, GET /api/transactions?pubkey=..., GET /user_activity`);
   console.log(`Listening on http://localhost:${PORT}`);
 });

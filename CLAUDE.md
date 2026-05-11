@@ -19,11 +19,12 @@ hosted conventions win.
 ## Architecture
 
 - `server.js` — Zero-dependency Node.js HTTP server. Serves
-  `index.html` and `dapps.json`, proxies `/explorer-api/*` to the
-  upstream block explorer, and runs a background per-pubkey stats
-  poller that exposes `GET /api/stats` and
-  `GET /api/transactions?pubkey=…`. No `package.json`, no auth
-  middleware (the homepage is fully public).
+ `index.html` and `dapps.json`, proxies `/explorer-api/*` to the
+ upstream block explorer, and runs a background per-pubkey stats
+ poller that exposes `GET /api/stats`,
+ `GET /api/transactions?pubkey=…`, and `GET /user_activity` (per-wallet
+ rollup across all tracked dapps + global usernames). No
+ `package.json`, no auth middleware (the homepage is fully public).
 - `index.html` — Single-file UI. CSS variables for light/dark theme,
   rubber-band scroll, sort menu (popular / users / txns / alpha).
   Contains the `// usernode-dev-console@1` forwarder block that
@@ -51,10 +52,10 @@ Then open `http://localhost:8000`. Override the listen port with
 The homepage is **public**. There is no JWT, no platform login
 required, no `req.user` consulted anywhere. SV injects `JWT_SECRET`
 and `DATABASE_URL` into the container; both are ignored. The HTML
-shell, `/dapps.json`, `/api/stats`, `/api/transactions`, and
-`/explorer-api/*` are all reachable without auth — that's intentional.
-The only "user action" the page exposes is clicking out to a hosted
-dapp.
+shell, `/dapps.json`, `/api/stats`, `/api/transactions`,
+`/user_activity`, and `/explorer-api/*` are all reachable without
+auth — that's intentional. The only "user action" the page exposes
+is clicking out to a hosted dapp.
 
 ## Stats poller
 
@@ -76,6 +77,35 @@ dapp.
 sort+display. `GET /api/transactions?pubkey=…` returns the full raw-tx
 cache for that pubkey, in case anything else wants to consume it
 without re-paginating the explorer.
+
+`GET /user_activity` re-rolls the same caches into a per-wallet view:
+
+```json
+{
+  "<wallet ut1...>": {
+    "wallet_address": "ut1...",
+    "wallet_public_key": "ut1...",
+    "has_set_username": true,
+    "username": "alice_abc123",
+    "total_dapp_transactions": 17,
+    "transactions_by_dapp": {
+      "<dapp pubkey>": { "dapp_name": "Opinion Market", "transactions": 9 }
+    }
+  }
+}
+```
+
+`wallet_address` and `wallet_public_key` are intentionally the same
+value — the explorer only surfaces the bech32 address (`ut1...`) per
+tx, and on Usernode the address *is* the bech32 of the public key
+hash. Both fields are kept in the response for forward-compat.
+
+Wallets are included if they've ever sent a tx to a tracked dapp **or**
+ever set a username on the global usernames address. The poller polls
+that address (`USERNAMES_PUBKEY`, overridable via env) the same way it
+polls dapp pubkeys, then `deriveUsernamesByWallet` resolves "latest
+`set_username` per sender wins". Self-sends (sender == dapp pubkey,
+e.g. lastwin's UTXO consolidation) are excluded from the rollup.
 
 ## Explorer API proxy
 
