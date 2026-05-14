@@ -1,14 +1,12 @@
 {
-  "_disabled": [
+  "apps": [
     {
       "name": "Opinion Market",
       "description": "A prediction market, but for opinions.",
       "author": "Usernode Labs",
       "url": "https://opinion-market-eb3f76.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms"
-    }
-  ],
-  "apps": [
+    },
     {
       "name": "Falling Sands",
       "description": "A multiplayer 2d physics simulator.",
@@ -30,7 +28,5 @@
       "url": "https://usernode-echo-diagnostic-6f02bf.social-vibecoding.usernodelabs.org/",
       "pubkey": "ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh"
     }
-
-
   ]
 }
