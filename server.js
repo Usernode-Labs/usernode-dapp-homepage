@@ -390,7 +390,21 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === "/user_activity" && (req.method === "GET" || req.method === "HEAD")) {
-    const body = JSON.stringify(buildUserActivity());
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const minimal = urlObj.searchParams.get("minimal") === "1";
+    let activity = buildUserActivity();
+    if (minimal) {
+      const trimmed = {};
+      for (const [key, val] of Object.entries(activity)) {
+        trimmed[key] = {
+          wallet_address: val.wallet_address,
+          has_set_username: val.has_set_username,
+          total_dapp_transactions: val.total_dapp_transactions,
+        };
+      }
+      activity = trimmed;
+    }
+    const body = JSON.stringify(activity);
     if (req.method === "HEAD") {
       res.writeHead(200, {
         "content-type": "application/json",
