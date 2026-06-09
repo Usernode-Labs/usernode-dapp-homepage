@@ -16,14 +16,14 @@
     },
     {
       "name": "Last One Wins",
-      "description": "Game where last one to add to the pot, gets the pot.",
+      "description": "Game where last one to add to the pot.",
       "author": "Usernode Labs",
       "url": "https://last-one-wins-7053f0.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05"
     },
     {
       "name": "Echo Diagnostic",
-      "description": "Simple test of sending / receiving transactions",
+      "description": "Simple test of sending/receiving",
       "author": "Usernode Labs",
       "url": "https://usernode-echo-diagnostic-6f02bf.social-vibecoding.usernodelabs.org/",
       "pubkey": "ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh"
