@@ -243,6 +243,9 @@
       .name {
         font-weight: 600;
         min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .stats {
         display: flex;
@@ -489,7 +492,7 @@
             openBtn.href = dapp.url;
             openBtn.target = "_blank";
             openBtn.rel = "noopener";
-            openBtn.textContent = "Open App";
+            openBtn.textContent = "Open";
             openBtn.addEventListener("click", (e) => e.stopPropagation());
             cardBottom.appendChild(openBtn);
           }
