@@ -88,6 +88,7 @@
         --border: rgba(15, 23, 42, 0.12);
         --accent: #2563eb;
         --launch-btn: #7c3aed;
+        --launch-btn-offline: #6b7280;
       }
       /* Class strategy (Tailwind-style): a `dark` class on <html> selects the
          dark palette. The default theme is chosen at load time from
@@ -369,6 +370,18 @@
           background: #7c3aed;
         }
       }
+      li.offline {
+        opacity: 0.5;
+      }
+      .dappLink.offline {
+        cursor: default;
+      }
+      .launchBtn.offline {
+        background: var(--launch-btn-offline);
+      }
+      .dappLink.offline:hover .launchBtn {
+        background: var(--launch-btn-offline);
+      }
     </style>
   </head>
   <body>
@@ -589,6 +602,16 @@
           link.appendChild(nameRow);
           link.appendChild(author);
           link.appendChild(descRow);
+
+          const isOffline = dapp.status === "offline" || dapp.status === "maintenance";
+          if (isOffline) {
+            li.classList.add("offline");
+            link.classList.add("offline");
+            link.removeAttribute("href");
+            launchBtn.textContent = "Offline";
+            launchBtn.classList.add("offline");
+          }
+
           li.appendChild(link);
           list.appendChild(li);
         }
