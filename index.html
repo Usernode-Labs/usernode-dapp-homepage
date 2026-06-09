@@ -147,6 +147,54 @@
         justify-content: space-between;
         gap: 12px;
       }
+      /* Brand lockup: Usernode logo mark + wordmark, linking back to the
+         Usernode homepage, sitting left of the "Dapps" section title. Colors
+         come from the shared theme variables so it recolors in light/dark. */
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .brandLink {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: inherit;
+        text-decoration: none;
+        flex: 0 0 auto;
+      }
+      .brandLink:hover .brandName {
+        color: var(--accent);
+      }
+      .brandMark {
+        width: 22px;
+        height: 22px;
+        display: block;
+        color: var(--accent);
+        flex: 0 0 auto;
+      }
+      .brandName {
+        font-weight: 600;
+        font-size: 16px;
+        letter-spacing: 0.2px;
+        color: var(--fg);
+        white-space: nowrap;
+      }
+      .brandSep {
+        width: 1px;
+        height: 18px;
+        background: var(--border);
+        flex: 0 0 auto;
+      }
+      /* On very narrow screens drop the wordmark (keep the icon) so the brand
+         never pushes the theme + sort controls off the header row. */
+      @media (max-width: 420px) {
+        .brandName,
+        .brandSep {
+          display: none;
+        }
+      }
       h1 {
         margin: 0;
         font-size: 22px;
@@ -349,7 +397,17 @@
       <div class="card">
         <div class="header">
           <div class="headerRow">
-            <h1>Dapps</h1>
+            <div class="brand">
+              <a class="brandLink" href="https://usernode.evanshapiro.dev" target="_blank" rel="noopener" aria-label="Usernode home">
+                <svg class="brandMark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <rect x="2" y="2" width="20" height="20" rx="6" fill="currentColor" />
+                  <path d="M8 7v5.2a4 4 0 0 0 8 0V7" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" />
+                </svg>
+                <span class="brandName">Usernode</span>
+              </a>
+              <span class="brandSep" aria-hidden="true"></span>
+              <h1>Dapps</h1>
+            </div>
             <div class="headerActions">
             <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
               <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
