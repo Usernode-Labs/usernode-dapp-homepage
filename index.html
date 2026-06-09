@@ -329,8 +329,9 @@
         overflow: hidden;
       }
       .dappLink {
-        display: grid;
-        gap: 4px;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
         padding: 12px 12px;
         color: inherit;
         text-decoration: none;
@@ -341,6 +342,49 @@
       }
       .dappLink:active {
         filter: brightness(0.98);
+      }
+      /* Per-dapp leading mark. Either a provided logo (image URL or inline
+         SVG from dapps.json) or a generated fallback badge. Sized to span the
+         row's text block; theme-aware via the shared CSS variables. */
+      .dappBody {
+        display: grid;
+        gap: 4px;
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .dappLogo,
+      .dappLogoFallback {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        flex: 0 0 auto;
+        border: 1px solid var(--border);
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+      .dappLogo {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg);
+      }
+      .dappLogo img,
+      .dappLogo svg {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .dappLogoFallback {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 18px;
+        line-height: 1;
+        color: #ffffff;
+        text-transform: uppercase;
+        user-select: none;
       }
       .nameRow {
         display: flex;
@@ -517,6 +561,59 @@
         return svg;
       }
 
+      // Deterministic hue from a dapp name so the same dapp always gets the
+      // same fallback badge color across reloads/sorts.
+      function hashString(str) {
+        let h = 0;
+        for (let i = 0; i < str.length; i++) {
+          h = (h * 31 + str.charCodeAt(i)) | 0;
+        }
+        return Math.abs(h);
+      }
+
+      function fallbackColor(name) {
+        const hue = hashString(name || "") % 360;
+        return `hsl(${hue}, 55%, 45%)`;
+      }
+
+      function fallbackBadge(dapp) {
+        const name = (dapp.name || "").trim();
+        const badge = document.createElement("div");
+        badge.className = "dappLogoFallback";
+        badge.style.background = fallbackColor(name || "?");
+        badge.textContent = (name[0] || "?").toUpperCase();
+        badge.setAttribute("aria-hidden", "true");
+        return badge;
+      }
+
+      // Build the row's leading mark. `dapp.logo` may be an image URL or an
+      // inline-SVG string; anything else (or a broken image) falls back to a
+      // generated initial badge so every row shows something.
+      function makeLogo(dapp) {
+        const raw = typeof dapp.logo === "string" ? dapp.logo.trim() : "";
+        if (raw.startsWith("<svg")) {
+          const wrap = document.createElement("div");
+          wrap.className = "dappLogo";
+          wrap.innerHTML = raw;
+          wrap.setAttribute("aria-hidden", "true");
+          return wrap;
+        }
+        if (raw) {
+          const wrap = document.createElement("div");
+          wrap.className = "dappLogo";
+          const img = document.createElement("img");
+          img.src = raw;
+          img.alt = "";
+          img.loading = "lazy";
+          img.addEventListener("error", () => {
+            wrap.replaceWith(fallbackBadge(dapp));
+          });
+          wrap.appendChild(img);
+          return wrap;
+        }
+        return fallbackBadge(dapp);
+      }
+
       function formatNum(n) {
         if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
         if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
@@ -563,6 +660,11 @@
           link.target = "_blank";
           link.rel = "noopener";
 
+          const logo = makeLogo(dapp);
+
+          const body = document.createElement("div");
+          body.className = "dappBody";
+
           const nameRow = document.createElement("div");
           nameRow.className = "nameRow";
 
@@ -607,9 +709,12 @@
           url.className = "url";
           url.innerHTML = `<span class="urlText">${dapp.url || ""}</span>`;
 
-          link.appendChild(nameRow);
-          link.appendChild(author);
-          link.appendChild(url);
+          body.appendChild(nameRow);
+          body.appendChild(author);
+          body.appendChild(url);
+
+          link.appendChild(logo);
+          link.appendChild(body);
           li.appendChild(link);
           list.appendChild(li);
         }
