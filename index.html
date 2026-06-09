@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
     <title>Usernode dapps</title>
     <script>
+    // Apply the persisted (or system-preferred) theme before first paint to
+    // avoid a flash of the wrong theme. Mirrors Tailwind's class strategy:
+    // a `dark` class on <html> selects the dark CSS-variable set.
+    (function () {
+      try {
+        var stored = localStorage.getItem('dapphome:theme');
+        var dark = stored
+          ? stored === 'dark'
+          : window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (dark) document.documentElement.classList.add('dark');
+      } catch (_) {}
+    })();
+    </script>
+    <script>
     // usernode-dev-console@1
     (function () {
       if (window.__usernodeDevConsole) return;
@@ -65,7 +80,7 @@
     </script>
     <style>
       :root {
-        color-scheme: light dark;
+        color-scheme: light;
         --bg: #f7f8fb;
         --fg: #0b1220;
         --muted: #4b5568;
@@ -73,15 +88,17 @@
         --border: rgba(15, 23, 42, 0.12);
         --accent: #2563eb;
       }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0b0f16;
-          --fg: #e7edf7;
-          --muted: #a8b3c7;
-          --card: #141b26;
-          --border: rgba(255, 255, 255, 0.12);
-          --accent: #6ea8fe;
-        }
+      /* Class strategy (Tailwind-style): a `dark` class on <html> selects the
+         dark palette. The default theme is chosen at load time from
+         localStorage, falling back to the system preference. */
+      html.dark {
+        color-scheme: dark;
+        --bg: #0b0f16;
+        --fg: #e7edf7;
+        --muted: #a8b3c7;
+        --card: #141b26;
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #6ea8fe;
       }
       body {
         margin: 0;
@@ -139,6 +156,45 @@
         margin: 10px 0;
         color: var(--muted);
         line-height: 1.45;
+      }
+      .headerActions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+      .themeBtn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+      }
+      .themeBtn:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .themeBtn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+      /* Show the sun in dark mode (click → go light) and the moon in light
+         mode (click → go dark). */
+      .themeBtn .iconSun {
+        display: none;
+      }
+      html.dark .themeBtn .iconSun {
+        display: block;
+      }
+      html.dark .themeBtn .iconMoon {
+        display: none;
       }
       .sortWrap {
         position: relative;
@@ -294,6 +350,11 @@
         <div class="header">
           <div class="headerRow">
             <h1>Dapps</h1>
+            <div class="headerActions">
+            <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
+              <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+            </button>
             <div class="sortWrap">
               <button class="sortBtn" id="sortBtn">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
@@ -306,6 +367,7 @@
                 <button class="sortOpt" data-sort="alpha">Alphabetical</button>
               </div>
             </div>
+            </div>
           </div>
         </div>
         <ul id="dappList"></ul>
@@ -313,12 +375,40 @@
     </main>
     <script>
       const SORT_KEY = "dapphome:sort";
+      const THEME_KEY = "dapphome:theme";
       const PERSON_WEIGHT = 20;
 
       const list = document.getElementById("dappList");
       const sortBtn = document.getElementById("sortBtn");
       const sortMenu = document.getElementById("sortMenu");
       const sortLabel = document.getElementById("sortLabel");
+      const themeBtn = document.getElementById("themeBtn");
+
+      // Theme toggle. The initial class is applied pre-paint in <head>; here we
+      // just flip it and persist the explicit choice to localStorage.
+      function applyTheme(theme) {
+        document.documentElement.classList.toggle("dark", theme === "dark");
+        if (themeBtn) {
+          const isDark = theme === "dark";
+          themeBtn.setAttribute(
+            "aria-label",
+            isDark ? "Switch to light theme" : "Switch to dark theme"
+          );
+          themeBtn.setAttribute("title", themeBtn.getAttribute("aria-label"));
+        }
+      }
+      applyTheme(
+        document.documentElement.classList.contains("dark") ? "dark" : "light"
+      );
+      if (themeBtn) {
+        themeBtn.addEventListener("click", () => {
+          const next = document.documentElement.classList.contains("dark")
+            ? "light"
+            : "dark";
+          localStorage.setItem(THEME_KEY, next);
+          applyTheme(next);
+        });
+      }
 
       let allApps = [];
       let statsMap = {};
