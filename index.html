@@ -88,6 +88,8 @@
         --border: rgba(15, 23, 42, 0.12);
         --accent: #2563eb;
         --launch-btn: #7c3aed;
+        --card-hover-border: rgba(99, 102, 241, 0.45);
+        --grid-opacity: 0.04;
       }
       /* Class strategy (Tailwind-style): a `dark` class on <html> selects the
          dark palette. The default theme is chosen at load time from
@@ -101,12 +103,18 @@
         --border: rgba(255, 255, 255, 0.12);
         --accent: #6ea8fe;
         --launch-btn: #8b5cf6;
+        --card-hover-border: rgba(139, 92, 246, 0.6);
+        --grid-opacity: 0.06;
       }
       body {
         margin: 0;
         font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
           Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-        background: var(--bg);
+        background-color: var(--bg);
+        background-image:
+          repeating-linear-gradient(rgba(100, 100, 120, var(--grid-opacity)) 1px, transparent 1px),
+          repeating-linear-gradient(90deg, rgba(100, 100, 120, var(--grid-opacity)) 1px, transparent 1px);
+        background-size: 36px 36px;
         color: var(--fg);
         height: 100vh;
         height: 100dvh;
@@ -281,6 +289,19 @@
         border-radius: 12px;
         padding: 0;
         overflow: hidden;
+        transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+        will-change: transform;
+      }
+      li:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.18);
+        border-color: var(--card-hover-border);
+      }
+      li.is-pressed {
+        transform: translateY(0px);
+        box-shadow: none;
+        border-color: var(--card-hover-border);
+        transition-duration: 80ms;
       }
       .dappLink {
         display: grid;
@@ -300,7 +321,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: 0;
       }
       .name {
         font-weight: 600;
@@ -367,6 +388,30 @@
       @media (prefers-color-scheme: dark) {
         .dappLink:hover .launchBtn {
           background: #7c3aed;
+        }
+      }
+      /* Live status dot */
+      .liveDot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #22c55e;
+        flex-shrink: 0;
+        position: relative;
+        margin-right: 6px;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        @keyframes livePing {
+          0% { transform: scale(1); opacity: 0.6; }
+          100% { transform: scale(2); opacity: 0; }
+        }
+        .liveDot::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          background: #22c55e;
+          animation: livePing 2s ease-out infinite;
         }
       }
     </style>
@@ -535,10 +580,20 @@
           const nameRow = document.createElement("div");
           nameRow.className = "nameRow";
 
+          // Wrap dot + name together so space-between only separates them from stats
+          const nameGroup = document.createElement("div");
+          nameGroup.style.cssText = "display:flex;align-items:center;min-width:0;flex:1 1 auto";
+
+          const liveDot = document.createElement("span");
+          liveDot.className = "liveDot";
+          nameGroup.appendChild(liveDot);
+
           const name = document.createElement("div");
           name.className = "name";
           name.textContent = dapp.name || "(unnamed)";
-          nameRow.appendChild(name);
+          nameGroup.appendChild(name);
+
+          nameRow.appendChild(nameGroup);
 
           if (dapp.pubkey) {
             const s = statsMap[dapp.pubkey];
@@ -706,6 +761,7 @@
         }
 
         let downTarget = null;
+        let pressedLi = null;
 
         listEl.addEventListener("pointerdown", (e) => {
           if (e.button != null && e.button !== 0) return;
@@ -718,6 +774,9 @@
           try {
             listEl.setPointerCapture(activePointerId);
           } catch (_) {}
+
+          pressedLi = e.target.closest("li");
+          if (pressedLi) pressedLi.classList.add("is-pressed");
         });
 
         listEl.addEventListener(
@@ -752,6 +811,12 @@
           if (!dragging || e.pointerId !== activePointerId) return;
           dragging = false;
           activePointerId = null;
+
+          if (pressedLi) {
+            pressedLi.classList.remove("is-pressed");
+            pressedLi = null;
+          }
+
           reset();
 
           if (!moved && downTarget) {
