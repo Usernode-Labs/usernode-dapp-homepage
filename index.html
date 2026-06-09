@@ -321,7 +321,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: 0;
       }
       .name {
         font-weight: 600;
@@ -398,6 +398,7 @@
         background: #22c55e;
         flex-shrink: 0;
         position: relative;
+        margin-right: 6px;
       }
       @media (prefers-reduced-motion: no-preference) {
         @keyframes livePing {
@@ -581,7 +582,7 @@
 
           // Wrap dot + name together so space-between only separates them from stats
           const nameGroup = document.createElement("div");
-          nameGroup.style.cssText = "display:flex;align-items:center;gap:4px;min-width:0;flex:1 1 auto";
+          nameGroup.style.cssText = "display:flex;align-items:center;min-width:0;flex:1 1 auto";
 
           const liveDot = document.createElement("span");
           liveDot.className = "liveDot";
