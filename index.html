@@ -278,7 +278,7 @@
       }
       .cardBottom {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
         gap: 8px;
         margin-top: 2px;
@@ -286,9 +286,10 @@
       .desc {
         font-size: 13px;
         color: var(--muted);
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
         overflow: hidden;
-        text-overflow: ellipsis;
         min-width: 0;
         flex: 1;
       }
