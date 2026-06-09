@@ -398,7 +398,6 @@
         background: #22c55e;
         flex-shrink: 0;
         position: relative;
-        margin-right: -6px;
       }
       @media (prefers-reduced-motion: no-preference) {
         @keyframes livePing {
@@ -580,15 +579,20 @@
           const nameRow = document.createElement("div");
           nameRow.className = "nameRow";
 
-          // Live status dot — shown unconditionally for all tracked dapps
+          // Wrap dot + name together so space-between only separates them from stats
+          const nameGroup = document.createElement("div");
+          nameGroup.style.cssText = "display:flex;align-items:center;gap:4px;min-width:0;flex:1 1 auto";
+
           const liveDot = document.createElement("span");
           liveDot.className = "liveDot";
-          nameRow.appendChild(liveDot);
+          nameGroup.appendChild(liveDot);
 
           const name = document.createElement("div");
           name.className = "name";
           name.textContent = dapp.name || "(unnamed)";
-          nameRow.appendChild(name);
+          nameGroup.appendChild(name);
+
+          nameRow.appendChild(nameGroup);
 
           if (dapp.pubkey) {
             const s = statsMap[dapp.pubkey];
