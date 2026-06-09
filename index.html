@@ -72,6 +72,7 @@
         --card: #ffffff;
         --border: rgba(15, 23, 42, 0.12);
         --accent: #2563eb;
+        --btn-accent: #a855f7;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -81,6 +82,7 @@
           --card: #141b26;
           --border: rgba(255, 255, 255, 0.12);
           --accent: #6ea8fe;
+          --btn-accent: #c084fc;
         }
       }
       body {
@@ -224,19 +226,13 @@
         padding: 0;
         overflow: hidden;
       }
-      .dappLink {
+      .dappCard {
         display: grid;
         gap: 4px;
         padding: 12px 12px;
         color: inherit;
-        text-decoration: none;
         touch-action: none;
-      }
-      .dappLink:hover {
-        text-decoration: none;
-      }
-      .dappLink:active {
-        filter: brightness(0.98);
+        cursor: default;
       }
       .nameRow {
         display: flex;
@@ -277,14 +273,39 @@
         color: var(--muted);
         font-size: 13px;
       }
-      .url {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          "Liberation Mono", "Courier New", monospace;
-        font-size: 0.95em;
-        word-break: break-word;
+      .cardBottom {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 2px;
       }
-      .urlText {
-        color: var(--accent);
+      .desc {
+        font-size: 13px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        flex: 1;
+      }
+      .openBtn {
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
+        padding: 5px 11px;
+        border-radius: 7px;
+        background: var(--btn-accent);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+        font-family: inherit;
+      }
+      .openBtn:hover {
+        filter: brightness(1.1);
+        cursor: pointer;
       }
     </style>
   </head>
@@ -409,11 +430,8 @@
         for (const dapp of sorted) {
           const li = document.createElement("li");
 
-          const link = document.createElement("a");
-          link.className = "dappLink";
-          link.href = dapp.url;
-          link.target = "_blank";
-          link.rel = "noopener";
+          const card = document.createElement("div");
+          card.className = "dappCard";
 
           const nameRow = document.createElement("div");
           nameRow.className = "nameRow";
@@ -455,14 +473,31 @@
           author.className = "author";
           author.textContent = `by ${dapp.author || "unknown"}`;
 
-          const url = document.createElement("div");
-          url.className = "url";
-          url.innerHTML = `<span class="urlText">${dapp.url || ""}</span>`;
+          const cardBottom = document.createElement("div");
+          cardBottom.className = "cardBottom";
 
-          link.appendChild(nameRow);
-          link.appendChild(author);
-          link.appendChild(url);
-          li.appendChild(link);
+          if (dapp.description) {
+            const desc = document.createElement("div");
+            desc.className = "desc";
+            desc.textContent = dapp.description;
+            cardBottom.appendChild(desc);
+          }
+
+          if (dapp.url) {
+            const openBtn = document.createElement("a");
+            openBtn.className = "openBtn";
+            openBtn.href = dapp.url;
+            openBtn.target = "_blank";
+            openBtn.rel = "noopener";
+            openBtn.textContent = "Open App";
+            openBtn.addEventListener("click", (e) => e.stopPropagation());
+            cardBottom.appendChild(openBtn);
+          }
+
+          card.appendChild(nameRow);
+          card.appendChild(author);
+          card.appendChild(cardBottom);
+          li.appendChild(card);
           list.appendChild(li);
         }
       }
@@ -626,13 +661,6 @@
           dragging = false;
           activePointerId = null;
           reset();
-
-          if (!moved && downTarget) {
-            const link = downTarget.closest("a");
-            if (link && link.href) {
-              window.open(link.href, link.target || "_self", "noopener");
-            }
-          }
           downTarget = null;
         }
 
