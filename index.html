@@ -189,10 +189,10 @@
         flex: 0 0 auto;
       }
       .brandName {
-        font-weight: 600;
+        font-weight: 700;
         font-size: 18px;
         letter-spacing: 0.2px;
-        color: var(--muted);
+        color: var(--fg);
         white-space: nowrap;
       }
       .brandSep {
@@ -204,8 +204,7 @@
       /* On very narrow screens drop the wordmark (keep the icon) so the brand
          never pushes the theme + sort controls off the header row. */
       @media (max-width: 420px) {
-        .brandName,
-        .brandSep {
+        .brandName {
           display: none;
         }
       }
@@ -545,10 +544,8 @@
                   <rect x="2" y="2" width="20" height="20" rx="6" fill="currentColor" />
                   <path d="M8 7v5.2a4 4 0 0 0 8 0V7" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" />
                 </svg>
-                <span class="brandName">Usernode</span>
+                <span class="brandName">Dapps</span>
               </a>
-              <span class="brandSep" aria-hidden="true"></span>
-              <h1>Dapps</h1>
             </div>
             <div class="headerActions">
             <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
