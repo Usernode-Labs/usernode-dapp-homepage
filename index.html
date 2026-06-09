@@ -379,16 +379,35 @@
         font-family: inherit;
         padding: 4px 10px;
         border-radius: 6px;
-        background: var(--launch-btn);
+        background: linear-gradient(135deg, #6d28d9, #9333ea);
         color: #ffffff;
+        box-shadow: 0 0 8px rgba(124, 58, 237, 0.35);
+        transition: filter 0.2s ease, box-shadow 0.2s ease;
       }
       .dappLink:hover .launchBtn {
-        background: #6d28d9;
+        filter: brightness(1.15);
+        box-shadow: 0 0 14px rgba(124, 58, 237, 0.55);
       }
-      @media (prefers-color-scheme: dark) {
-        .dappLink:hover .launchBtn {
-          background: #7c3aed;
-        }
+      html.dark .launchBtn {
+        background: linear-gradient(135deg, #7c3aed, #c084fc);
+        box-shadow: 0 0 12px rgba(167, 139, 250, 0.55);
+      }
+      html.dark .dappLink:hover .launchBtn {
+        filter: brightness(1.12);
+        box-shadow: 0 0 18px rgba(167, 139, 250, 0.75);
+      }
+      .tagRow {
+        display: flex;
+        align-items: center;
+        margin-top: 4px;
+        gap: 6px;
+      }
+      .categoryTag {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 999px;
+        display: inline-block;
       }
       /* Live status dot */
       .liveDot {
@@ -449,6 +468,12 @@
       const SORT_KEY = "dapphome:sort";
       const THEME_KEY = "dapphome:theme";
       const PERSON_WEIGHT = 20;
+      const CATEGORY_COLORS = {
+        Game:    '#10b981',
+        Market:  '#f59e0b',
+        Utility: '#38bdf8',
+        Social:  '#f43f5e',
+      };
 
       const list = document.getElementById("dappList");
       const sortBtn = document.getElementById("sortBtn");
@@ -627,6 +652,25 @@
           author.className = "author";
           author.textContent = `by ${dapp.author || "unknown"}`;
 
+          let tagRow = null;
+          if (dapp.category) {
+            tagRow = document.createElement("div");
+            tagRow.className = "tagRow";
+            const tag = document.createElement("span");
+            tag.className = "categoryTag";
+            tag.textContent = dapp.category;
+            const color = CATEGORY_COLORS[dapp.category];
+            if (color) {
+              tag.style.color = color;
+              tag.style.background = color + "33";
+              tag.style.border = "1px solid " + color + "66";
+            } else {
+              tag.style.color = "var(--muted)";
+              tag.style.border = "1px solid var(--border)";
+            }
+            tagRow.appendChild(tag);
+          }
+
           const descRow = document.createElement("div");
           descRow.className = "descRow";
 
@@ -643,6 +687,7 @@
 
           link.appendChild(nameRow);
           link.appendChild(author);
+          if (tagRow) link.appendChild(tagRow);
           link.appendChild(descRow);
           li.appendChild(link);
           list.appendChild(li);
