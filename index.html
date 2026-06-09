@@ -72,6 +72,7 @@
         --card: #ffffff;
         --border: rgba(15, 23, 42, 0.12);
         --accent: #2563eb;
+        --launch-btn: #7c3aed;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -81,6 +82,7 @@
           --card: #141b26;
           --border: rgba(255, 255, 255, 0.12);
           --accent: #6ea8fe;
+          --launch-btn: #8b5cf6;
         }
       }
       body {
@@ -277,14 +279,38 @@
         color: var(--muted);
         font-size: 13px;
       }
-      .url {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          "Liberation Mono", "Courier New", monospace;
-        font-size: 0.95em;
-        word-break: break-word;
+      .descRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
       }
-      .urlText {
-        color: var(--accent);
+      .desc {
+        color: var(--muted);
+        font-size: 13px;
+        flex: 1 1 auto;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .launchBtn {
+        flex: 0 0 auto;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: inherit;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: var(--launch-btn);
+        color: #ffffff;
+      }
+      .dappLink:hover .launchBtn {
+        background: #6d28d9;
+      }
+      @media (prefers-color-scheme: dark) {
+        .dappLink:hover .launchBtn {
+          background: #7c3aed;
+        }
       }
     </style>
   </head>
@@ -455,13 +481,23 @@
           author.className = "author";
           author.textContent = `by ${dapp.author || "unknown"}`;
 
-          const url = document.createElement("div");
-          url.className = "url";
-          url.innerHTML = `<span class="urlText">${dapp.url || ""}</span>`;
+          const descRow = document.createElement("div");
+          descRow.className = "descRow";
+
+          const desc = document.createElement("span");
+          desc.className = "desc";
+          desc.textContent = dapp.description || "";
+
+          const launchBtn = document.createElement("span");
+          launchBtn.className = "launchBtn";
+          launchBtn.textContent = "Launch";
+
+          descRow.appendChild(desc);
+          descRow.appendChild(launchBtn);
 
           link.appendChild(nameRow);
           link.appendChild(author);
-          link.appendChild(url);
+          link.appendChild(descRow);
           li.appendChild(link);
           list.appendChild(li);
         }
