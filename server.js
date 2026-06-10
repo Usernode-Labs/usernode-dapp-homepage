@@ -228,13 +228,19 @@ async function pollPubkey(pubkey) {
       seenTxIds[pubkey] = new Set(arr.slice(arr.length - SEEN_CAP));
     }
 
-    // Derive stats
+    // Derive stats. `lastActivityMs` (max tx.timestamp_ms seen) feeds the
+    // client-side activity-status dot; null when no usable timestamp exists.
     const senders = new Set();
+    let lastActivityMs = null;
     for (const tx of txCache[pubkey]) {
       const sender = tx.source || tx.from_pubkey || tx.from;
       if (sender) senders.add(sender);
+      const ts = tx.timestamp_ms;
+      if (typeof ts === "number" && isFinite(ts) && (lastActivityMs == null || ts > lastActivityMs)) {
+        lastActivityMs = ts;
+      }
     }
-    statsCache[pubkey] = { users: senders.size, txns: txCache[pubkey].length };
+    statsCache[pubkey] = { users: senders.size, txns: txCache[pubkey].length, lastActivityMs };
   } catch (e) {
     console.warn(`[stats] poll error for ${pubkey.slice(0, 16)}…: ${e.message}`);
   }
