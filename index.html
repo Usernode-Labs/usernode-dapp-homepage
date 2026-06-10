@@ -356,20 +356,14 @@
         border-color: var(--card-hover-border);
         transition-duration: 80ms;
       }
-      .dappLink {
+      .dappCard {
         display: flex;
         align-items: flex-start;
         gap: 12px;
         padding: 12px 12px;
         color: inherit;
-        text-decoration: none;
         touch-action: none;
-      }
-      .dappLink:hover {
-        text-decoration: none;
-      }
-      .dappLink:active {
-        filter: brightness(0.98);
+        cursor: pointer;
       }
       /* Per-dapp leading mark. Either a provided logo (image URL or inline
          SVG from dapps.json) or a generated fallback badge. Sized to span the
@@ -481,8 +475,10 @@
         color: #ffffff;
         box-shadow: 0 0 8px rgba(124, 58, 237, 0.35);
         transition: filter 0.2s ease, box-shadow 0.2s ease;
+        text-decoration: none;
+        display: inline-block;
       }
-      .dappLink:hover .launchBtn {
+      .dappCard:hover .launchBtn {
         filter: brightness(1.15);
         box-shadow: 0 0 14px rgba(124, 58, 237, 0.55);
       }
@@ -490,7 +486,7 @@
         background: linear-gradient(135deg, #7c3aed, #c084fc);
         box-shadow: 0 0 12px rgba(167, 139, 250, 0.55);
       }
-      html.dark .dappLink:hover .launchBtn {
+      html.dark .dappCard:hover .launchBtn {
         filter: brightness(1.12);
         box-shadow: 0 0 18px rgba(167, 139, 250, 0.75);
       }
@@ -530,6 +526,165 @@
           background: #22c55e;
           animation: livePing 2s ease-out infinite;
         }
+      }
+
+      /* ── Detail Panel ────────────────────────────────────────────────────── */
+      #detailPanel {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+      }
+      #detailPanel.open {
+        display: block;
+      }
+      .panelBackdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transition: opacity 260ms ease-out;
+      }
+      #detailPanel.open .panelBackdrop {
+        opacity: 1;
+      }
+      .panelSheet {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        max-height: 85dvh;
+        background: var(--card);
+        border-radius: 20px 20px 0 0;
+        overflow-y: auto;
+        transform: translateY(100%);
+        transition: transform 260ms ease-out;
+        padding-bottom: 28px;
+      }
+      #detailPanel.open .panelSheet {
+        transform: translateY(0);
+      }
+      .panelHandle {
+        width: 36px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--border);
+        margin: 14px auto 0;
+      }
+      .panelClose {
+        position: absolute;
+        top: 10px;
+        right: 14px;
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1;
+        padding: 0;
+        font-family: inherit;
+      }
+      .panelClose:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .panelHeader {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px 16px 0;
+        margin-top: 6px;
+      }
+      .panelHeaderInfo {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .panelName {
+        font-weight: 700;
+        font-size: 17px;
+        line-height: 1.2;
+      }
+      .panelAuthor {
+        font-size: 12px;
+        color: var(--muted);
+        opacity: 0.8;
+      }
+      .panelLaunchBtn {
+        align-self: center;
+        font-size: 13px;
+      }
+      .panelStats {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 16px 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .panelDivider {
+        margin: 14px 16px 0;
+        border: none;
+        border-top: 1px solid var(--border);
+      }
+      .panelDesc {
+        padding: 14px 16px 0;
+        font-size: 14px;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+      .panelSectionLabel {
+        padding: 16px 16px 0;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: var(--muted);
+        opacity: 0.6;
+      }
+      .panelScreenshots {
+        display: flex;
+        gap: 10px;
+        padding: 8px 16px 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .panelScreenshots::-webkit-scrollbar {
+        display: none;
+      }
+      .panelScreenshots img {
+        height: 140px;
+        width: auto;
+        min-width: 200px;
+        border-radius: 8px;
+        border: 1px solid var(--card-item-border);
+        object-fit: cover;
+        flex: 0 0 auto;
+        display: block;
+      }
+      .panelMeta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 14px 16px 0;
+      }
+      .metaChip {
+        font-size: 11px;
+        font-weight: 500;
+        padding: 3px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--muted);
       }
     </style>
   </head>
@@ -616,6 +771,11 @@
       let allApps = [];
       let statsMap = {};
       let currentSort = localStorage.getItem(SORT_KEY) || "popular";
+
+      // ── Detail panel state ────────────────────────────────────────────────
+      let panelOpen = false;
+      let currentPanelPubkey = null;
+      let escListener = null;
 
       const SORT_LABELS = {
         popular: "Popular",
@@ -755,11 +915,9 @@
         for (const dapp of sorted) {
           const li = document.createElement("li");
 
-          const link = document.createElement("a");
-          link.className = "dappLink";
-          link.href = dapp.url;
-          link.target = "_blank";
-          link.rel = "noopener";
+          const card = document.createElement("div");
+          card.className = "dappCard";
+          if (dapp.pubkey) card.dataset.pubkey = dapp.pubkey;
 
           const logo = makeLogo(dapp);
 
@@ -842,8 +1000,11 @@
           desc.className = "desc";
           desc.textContent = dapp.description || "";
 
-          const launchBtn = document.createElement("span");
+          const launchBtn = document.createElement("a");
           launchBtn.className = "launchBtn";
+          launchBtn.href = dapp.url || "#";
+          launchBtn.target = "_blank";
+          launchBtn.rel = "noopener";
           launchBtn.textContent = "Launch";
 
           descRow.appendChild(desc);
@@ -854,9 +1015,9 @@
           if (tagRow) body.appendChild(tagRow);
           body.appendChild(descRow);
 
-          link.appendChild(logo);
-          link.appendChild(body);
-          li.appendChild(link);
+          card.appendChild(logo);
+          card.appendChild(body);
+          li.appendChild(card);
           list.appendChild(li);
         }
       }
@@ -878,6 +1039,10 @@
             statsMap[pk] = s;
           }
           renderDapps(allApps);
+          // Refresh panel stats if the panel is currently open
+          if (panelOpen && currentPanelPubkey) {
+            populatePanelStats(currentPanelPubkey);
+          }
         } catch (e) {
           console.warn("Could not load stats:", e);
         }
@@ -926,6 +1091,290 @@
           );
         }
       })();
+
+      // ── Detail panel ──────────────────────────────────────────────────────
+
+      function ensurePanel() {
+        let panel = document.getElementById("detailPanel");
+        if (panel) return panel;
+
+        panel = document.createElement("div");
+        panel.id = "detailPanel";
+        panel.setAttribute("role", "dialog");
+        panel.setAttribute("aria-modal", "true");
+        panel.setAttribute("aria-label", "dApp details");
+
+        const backdrop = document.createElement("div");
+        backdrop.className = "panelBackdrop";
+        backdrop.addEventListener("click", closePanel);
+
+        const sheet = document.createElement("div");
+        sheet.className = "panelSheet";
+        sheet.id = "panelSheet";
+
+        const handle = document.createElement("div");
+        handle.className = "panelHandle";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "panelClose";
+        closeBtn.type = "button";
+        closeBtn.setAttribute("aria-label", "Close");
+        closeBtn.textContent = "×";
+        closeBtn.addEventListener("click", closePanel);
+
+        // Header: logo + info column + launch button
+        const header = document.createElement("div");
+        header.className = "panelHeader";
+
+        const logoWrap = document.createElement("div");
+        logoWrap.id = "panelLogo";
+
+        const headerInfo = document.createElement("div");
+        headerInfo.className = "panelHeaderInfo";
+
+        const nameEl = document.createElement("div");
+        nameEl.className = "panelName";
+        nameEl.id = "panelName";
+
+        const authorEl = document.createElement("div");
+        authorEl.className = "panelAuthor";
+        authorEl.id = "panelAuthor";
+
+        const catWrap = document.createElement("div");
+        catWrap.id = "panelCategoryWrap";
+
+        headerInfo.appendChild(nameEl);
+        headerInfo.appendChild(authorEl);
+        headerInfo.appendChild(catWrap);
+
+        const panelLaunchBtn = document.createElement("a");
+        panelLaunchBtn.className = "launchBtn panelLaunchBtn";
+        panelLaunchBtn.id = "panelLaunchBtn";
+        panelLaunchBtn.target = "_blank";
+        panelLaunchBtn.rel = "noopener";
+        panelLaunchBtn.textContent = "Launch";
+
+        header.appendChild(logoWrap);
+        header.appendChild(headerInfo);
+        header.appendChild(panelLaunchBtn);
+
+        // Stats row
+        const statsEl = document.createElement("div");
+        statsEl.className = "panelStats";
+        statsEl.id = "panelStats";
+
+        // Divider
+        const divider = document.createElement("hr");
+        divider.className = "panelDivider";
+
+        // Full description
+        const descEl = document.createElement("div");
+        descEl.className = "panelDesc";
+        descEl.id = "panelDesc";
+
+        // Screenshots section (label + scrollable row)
+        const screenshotsSection = document.createElement("div");
+        screenshotsSection.id = "panelScreenshotsSection";
+
+        const screenshotsLabel = document.createElement("div");
+        screenshotsLabel.className = "panelSectionLabel";
+        screenshotsLabel.textContent = "Screenshots";
+
+        const screenshotsRow = document.createElement("div");
+        screenshotsRow.className = "panelScreenshots";
+        screenshotsRow.id = "panelScreenshots";
+
+        screenshotsSection.appendChild(screenshotsLabel);
+        screenshotsSection.appendChild(screenshotsRow);
+
+        // Metadata chips
+        const metaEl = document.createElement("div");
+        metaEl.className = "panelMeta";
+        metaEl.id = "panelMeta";
+
+        sheet.appendChild(handle);
+        sheet.appendChild(closeBtn);
+        sheet.appendChild(header);
+        sheet.appendChild(statsEl);
+        sheet.appendChild(divider);
+        sheet.appendChild(descEl);
+        sheet.appendChild(screenshotsSection);
+        sheet.appendChild(metaEl);
+
+        panel.appendChild(backdrop);
+        panel.appendChild(sheet);
+        document.body.appendChild(panel);
+
+        return panel;
+      }
+
+      function populatePanelStats(pubkey) {
+        const statsEl = document.getElementById("panelStats");
+        if (!statsEl) return;
+        statsEl.textContent = "";
+        if (!pubkey) return;
+        const s = statsMap[pubkey];
+        if (s) {
+          const userStat = document.createElement("span");
+          userStat.className = "stat";
+          userStat.appendChild(personIcon());
+          userStat.appendChild(document.createTextNode(formatNum(s.users)));
+
+          const txStat = document.createElement("span");
+          txStat.className = "stat";
+          txStat.appendChild(txIcon());
+          txStat.appendChild(document.createTextNode(formatNum(s.txns)));
+
+          statsEl.appendChild(userStat);
+          statsEl.appendChild(txStat);
+        } else {
+          const loading = document.createElement("span");
+          loading.className = "statsLoading";
+          loading.textContent = "loading...";
+          statsEl.appendChild(loading);
+        }
+      }
+
+      function openPanel(dapp) {
+        ensurePanel();
+        currentPanelPubkey = dapp.pubkey || null;
+
+        // Logo — 48px in panel header
+        const logoWrap = document.getElementById("panelLogo");
+        logoWrap.textContent = "";
+        const logoEl = makeLogo(dapp);
+        logoEl.style.width = "48px";
+        logoEl.style.height = "48px";
+        logoEl.style.borderRadius = "12px";
+        logoWrap.appendChild(logoEl);
+
+        // Name + author
+        document.getElementById("panelName").textContent = dapp.name || "(unnamed)";
+        document.getElementById("panelAuthor").textContent =
+          "by " + (dapp.author || "unknown");
+
+        // Category badge
+        const catWrap = document.getElementById("panelCategoryWrap");
+        catWrap.textContent = "";
+        if (dapp.category) {
+          const tag = document.createElement("span");
+          tag.className = "categoryTag";
+          tag.textContent = dapp.category;
+          const color = CATEGORY_COLORS[dapp.category];
+          if (color) {
+            tag.style.color = color;
+            tag.style.background = color + "33";
+            tag.style.border = "1px solid " + color + "66";
+          } else {
+            tag.style.color = "var(--muted)";
+            tag.style.border = "1px solid var(--border)";
+          }
+          catWrap.appendChild(tag);
+        }
+
+        // Launch button
+        const launchBtn = document.getElementById("panelLaunchBtn");
+        launchBtn.href = dapp.url || "#";
+
+        // Stats (shows "loading…" if not yet available)
+        populatePanelStats(dapp.pubkey);
+
+        // Full description — long form if available, else short
+        document.getElementById("panelDesc").textContent =
+          dapp.description_long || dapp.description || "";
+
+        // Screenshots
+        const screenshotsSection = document.getElementById("panelScreenshotsSection");
+        const screenshotsRow = document.getElementById("panelScreenshots");
+        screenshotsRow.textContent = "";
+        const shots = Array.isArray(dapp.screenshots)
+          ? dapp.screenshots.filter(Boolean)
+          : [];
+        if (shots.length > 0) {
+          screenshotsSection.style.display = "";
+          for (const src of shots) {
+            const img = document.createElement("img");
+            img.src = src;
+            img.alt = "";
+            img.loading = "lazy";
+            img.addEventListener("error", function () {
+              img.style.display = "none";
+              const visible = Array.from(
+                screenshotsRow.querySelectorAll("img")
+              ).filter(function (i) { return i.style.display !== "none"; });
+              if (visible.length === 0) screenshotsSection.style.display = "none";
+            });
+            screenshotsRow.appendChild(img);
+          }
+        } else {
+          screenshotsSection.style.display = "none";
+        }
+
+        // Metadata chips (version + last_updated)
+        const metaEl = document.getElementById("panelMeta");
+        metaEl.textContent = "";
+        if (dapp.version) {
+          const chip = document.createElement("span");
+          chip.className = "metaChip";
+          chip.textContent = "v" + dapp.version;
+          metaEl.appendChild(chip);
+        }
+        if (dapp.last_updated) {
+          const chip = document.createElement("span");
+          chip.className = "metaChip";
+          let dateStr = dapp.last_updated;
+          try {
+            const d = new Date(dapp.last_updated);
+            if (!isNaN(d.getTime())) {
+              dateStr = d.toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              });
+            }
+          } catch (_) {}
+          chip.textContent = "Updated " + dateStr;
+          metaEl.appendChild(chip);
+        }
+        metaEl.style.display = metaEl.children.length > 0 ? "" : "none";
+
+        // Animate in: force reflow between display:block and adding .open
+        // so the translateY(100%) starting state is painted before transitioning
+        const panel = document.getElementById("detailPanel");
+        panel.style.display = "block";
+        void panel.getBoundingClientRect();
+        panel.classList.add("open");
+        panelOpen = true;
+
+        // Escape key closes the panel; listener removed on close
+        escListener = function (e) {
+          if (e.key === "Escape") closePanel();
+        };
+        document.addEventListener("keydown", escListener);
+      }
+
+      function closePanel() {
+        const panel = document.getElementById("detailPanel");
+        if (!panel || !panelOpen) return;
+        panel.classList.remove("open");
+        panelOpen = false;
+        currentPanelPubkey = null;
+        if (escListener) {
+          document.removeEventListener("keydown", escListener);
+          escListener = null;
+        }
+        // Hide after the slide-out animation; setTimeout as fallback
+        const sheet = document.getElementById("panelSheet");
+        let done = false;
+        const finish = function () {
+          if (done) return;
+          done = true;
+          panel.style.display = "none";
+          if (sheet) sheet.removeEventListener("transitionend", finish);
+        };
+        if (sheet) sheet.addEventListener("transitionend", finish);
+        setTimeout(finish, 320);
+      }
 
       // --- Rubber-band (overscroll-like) stretch config ---
       const RUBBER_BAND = {
@@ -1032,9 +1481,20 @@
           reset();
 
           if (!moved && downTarget) {
-            const link = downTarget.closest("a");
-            if (link && link.href) {
-              window.open(link.href, link.target || "_self", "noopener");
+            // Tap on the Launch button → open dApp URL directly
+            const launchEl = downTarget.closest(".launchBtn");
+            if (launchEl && launchEl.href) {
+              window.open(launchEl.href, launchEl.target || "_blank", "noopener");
+            } else {
+              // Tap anywhere else on the card → open detail panel
+              const cardEl = downTarget.closest(".dappCard");
+              if (cardEl) {
+                const pk = cardEl.dataset.pubkey;
+                const dapp = pk
+                  ? allApps.find(function (a) { return a.pubkey === pk; })
+                  : null;
+                if (dapp) openPanel(dapp);
+              }
             }
           }
           downTarget = null;

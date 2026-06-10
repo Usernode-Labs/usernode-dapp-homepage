@@ -3,6 +3,9 @@
     {
       "name": "Opinion Market",
       "description": "A prediction market, but for opinions.",
+      "description_long": "Opinion Market lets you stake tokens on the outcome of any question. Questions are proposed by users, prices move in real time as the community weighs in, and correct predictions earn rewards when the question resolves. Trade your convictions on anything — sports, politics, pop culture, or local gossip. All activity settles on-chain so the ledger is always transparent.",
+      "version": "1.0.0",
+      "last_updated": "2026-05-20",
       "author": "Usernode Labs",
       "url": "https://opinion-market-eb3f76.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
@@ -12,6 +15,9 @@
     {
       "name": "Falling Sands",
       "description": "A multiplayer 2d physics simulator.",
+      "description_long": "Falling Sands is a real-time multiplayer sandbox where every grain of sand, drop of water, and ember of fire is simulated on-chain. Draw elements, trigger chain reactions, and watch the world evolve alongside other players. Each action is a transaction — the physics engine is the contract.",
+      "version": "0.9.0",
+      "last_updated": "2026-04-15",
       "author": "Usernode Labs",
       "url": "https://falling-sands-game-ad186d.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu",
@@ -20,6 +26,9 @@
     {
       "name": "Last One Wins",
       "description": "Game where last one to add to the pot, gets the pot.",
+      "description_long": "Last One Wins is a high-stakes on-chain game with a simple rule: whoever sends the final transaction before the timer runs out claims the entire pot. Every new entry resets the clock, so the tension never stops. Coordinate with friends or fly solo — but move fast, because someone else is always watching the countdown.",
+      "version": "1.1.0",
+      "last_updated": "2026-05-01",
       "author": "Usernode Labs",
       "url": "https://last-one-wins-7053f0.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05",
@@ -28,6 +37,9 @@
     {
       "name": "Echo Diagnostic",
       "description": "Simple test of sending / receiving transactions",
+      "description_long": "Echo Diagnostic is a developer utility that bounces any transaction back to the sender. Send a transaction with any memo and amount, and the dApp echoes it straight back. Useful for verifying wallet connectivity, confirming explorer indexing latency, and testing transaction flows end-to-end without needing a counterparty.",
+      "version": "1.0.0",
+      "last_updated": "2026-03-10",
       "author": "Usernode Labs",
       "url": "https://usernode-echo-diagnostic-6f02bf.social-vibecoding.usernodelabs.org/",
       "pubkey": "ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh",
