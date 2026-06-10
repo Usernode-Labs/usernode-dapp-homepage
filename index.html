@@ -86,6 +86,8 @@
         --muted: #4b5568;
         --card: #ffffff;
         --border: rgba(15, 23, 42, 0.12);
+        --card-item-border: rgba(15, 23, 42, 0.07);
+        --card-item-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
         --accent: #2563eb;
         --launch-btn: #7c3aed;
         --card-hover-border: rgba(99, 102, 241, 0.45);
@@ -101,6 +103,8 @@
         --muted: #a8b3c7;
         --card: #141b26;
         --border: rgba(255, 255, 255, 0.12);
+        --card-item-border: rgba(255, 255, 255, 0.07);
+        --card-item-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
         --accent: #6ea8fe;
         --launch-btn: #8b5cf6;
         --card-hover-border: rgba(139, 92, 246, 0.6);
@@ -185,8 +189,8 @@
         flex: 0 0 auto;
       }
       .brandName {
-        font-weight: 600;
-        font-size: 16px;
+        font-weight: 700;
+        font-size: 18px;
         letter-spacing: 0.2px;
         color: var(--fg);
         white-space: nowrap;
@@ -200,14 +204,14 @@
       /* On very narrow screens drop the wordmark (keep the icon) so the brand
          never pushes the theme + sort controls off the header row. */
       @media (max-width: 420px) {
-        .brandName,
-        .brandSep {
+        .brandName {
           display: none;
         }
       }
       h1 {
         margin: 0;
-        font-size: 22px;
+        font-size: 18px;
+        font-weight: 700;
         letter-spacing: 0.2px;
       }
       p {
@@ -333,7 +337,8 @@
         grid-auto-rows: max-content;
       }
       li {
-        border: 1px solid var(--border);
+        border: 1px solid var(--card-item-border);
+        box-shadow: var(--card-item-shadow);
         border-radius: 12px;
         padding: 0;
         overflow: hidden;
@@ -446,7 +451,8 @@
       }
       .author {
         color: var(--muted);
-        font-size: 13px;
+        font-size: 12px;
+        opacity: 0.75;
       }
       .descRow {
         display: flex;
@@ -538,10 +544,8 @@
                   <rect x="2" y="2" width="20" height="20" rx="6" fill="currentColor" />
                   <path d="M8 7v5.2a4 4 0 0 0 8 0V7" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" />
                 </svg>
-                <span class="brandName">Usernode</span>
+                <span class="brandName">DAPPS</span>
               </a>
-              <span class="brandSep" aria-hidden="true"></span>
-              <h1>Dapps</h1>
             </div>
             <div class="headerActions">
             <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
