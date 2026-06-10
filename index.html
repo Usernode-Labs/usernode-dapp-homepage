@@ -203,8 +203,11 @@
       }
       /* On very narrow screens drop the wordmark (keep the icon) so the brand
          never pushes the theme + sort controls off the header row. */
-      @media (max-width: 420px) {
+      @media (max-width: 520px) {
         .brandName {
+          display: none;
+        }
+        .ctrlLabel {
           display: none;
         }
       }
@@ -258,11 +261,9 @@
       html.dark .themeBtn .iconMoon {
         display: none;
       }
-      .sortWrap {
-        position: relative;
-        flex: 0 0 auto;
-      }
-      .sortBtn {
+      /* Generic header control button (layout / folders / sort). Mirrors the
+         original sort button styling so the controls form a cohesive row. */
+      .ctrlBtn {
         appearance: none;
         background: transparent;
         border: 1px solid var(--border);
@@ -276,34 +277,37 @@
         gap: 5px;
         white-space: nowrap;
         font-family: inherit;
+        flex: 0 0 auto;
       }
-      .sortBtn:hover {
+      .ctrlBtn:hover {
         color: var(--fg);
         border-color: var(--accent);
       }
-      .sortBtn svg {
+      .ctrlBtn.active {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .ctrlBtn svg {
         width: 14px;
         height: 14px;
         flex-shrink: 0;
       }
-      .sortMenu {
-        display: none;
+      /* Floating popup menu, shared by header controls, per-row overflow menus,
+         move-to-folder, and the hidden-dapps manager. Appended to <body> so it
+         escapes the list's pointer interception. */
+      .popupMenu {
         position: absolute;
-        top: calc(100% + 4px);
-        right: 0;
         background: var(--card);
         border: 1px solid var(--border);
         border-radius: 10px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-        z-index: 100;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+        z-index: 1000;
         min-width: 180px;
+        max-width: min(280px, 90vw);
         padding: 4px;
         overflow: hidden;
       }
-      .sortMenu.open {
-        display: block;
-      }
-      .sortOpt {
+      .popupItem {
         display: block;
         width: 100%;
         padding: 8px 12px;
@@ -315,19 +319,26 @@
         cursor: pointer;
         border-radius: 6px;
         font-family: inherit;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
-      .sortOpt:hover {
+      .popupItem:hover {
         background: var(--border);
       }
-      .sortOpt.active {
+      .popupItem.active {
         color: var(--accent);
         font-weight: 600;
+      }
+      .popupItem.danger {
+        color: #ef4444;
       }
       ul {
         list-style: none;
         padding: 12px 12px 14px;
         margin: 0;
         display: grid;
+        grid-template-columns: 1fr;
         gap: 10px;
         will-change: transform;
         touch-action: none;
@@ -335,6 +346,26 @@
         min-height: 0;
         align-content: start;
         grid-auto-rows: max-content;
+        overflow-y: auto;
+      }
+      /* Layout modes — driven entirely by the data-layout attribute on the
+         single <ul id="dappList"> so renderDapps() stays layout-agnostic. */
+      ul#dappList[data-layout="grid2"] {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      ul#dappList[data-layout="grid3"] {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      @media (max-width: 620px) {
+        ul#dappList[data-layout="grid3"] {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 440px) {
+        ul#dappList[data-layout="grid2"],
+        ul#dappList[data-layout="grid3"] {
+          grid-template-columns: 1fr;
+        }
       }
       li {
         border: 1px solid var(--card-item-border);
@@ -342,19 +373,26 @@
         border-radius: 12px;
         padding: 0;
         overflow: hidden;
+        position: relative;
         transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
         will-change: transform;
       }
-      li:hover {
+      li.dappRow:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 16px rgba(99, 102, 241, 0.18);
         border-color: var(--card-hover-border);
       }
-      li.is-pressed {
+      li.dappRow.is-pressed {
         transform: translateY(0px);
         box-shadow: none;
         border-color: var(--card-hover-border);
         transition-duration: 80ms;
+      }
+      li.dappRow.isDragging {
+        opacity: 0.55;
+        border-color: var(--card-hover-border);
+        transform: none;
+        box-shadow: 0 6px 20px rgba(99, 102, 241, 0.28);
       }
       .dappLink {
         display: flex;
@@ -420,9 +458,25 @@
         justify-content: space-between;
         gap: 0;
       }
+      .nameGroup {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
       .name {
         font-weight: 600;
         min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .pinBadge {
+        color: var(--accent);
+        font-size: 12px;
+        margin-right: 5px;
+        flex: 0 0 auto;
+        line-height: 1;
       }
       .stats {
         display: flex;
@@ -531,11 +585,249 @@
           animation: livePing 2s ease-out infinite;
         }
       }
+
+      /* ── Per-row controls (drag handle + overflow menu) ──────────────────── */
+      .rowControls {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: flex;
+        gap: 4px;
+        opacity: 0;
+        transition: opacity 0.12s ease;
+        z-index: 5;
+      }
+      li.dappRow:hover .rowControls {
+        opacity: 1;
+      }
+      /* Touch devices have no hover — keep the controls always visible. */
+      @media (hover: none) {
+        .rowControls {
+          opacity: 1;
+        }
+      }
+      .dragHandle,
+      .overflowBtn {
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        font-family: inherit;
+      }
+      .dragHandle {
+        cursor: grab;
+        touch-action: none;
+      }
+      .dragHandle:active {
+        cursor: grabbing;
+      }
+      .dragHandle svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+      }
+      .overflowBtn {
+        cursor: pointer;
+        font-size: 15px;
+        line-height: 1;
+      }
+      .dragHandle:hover,
+      .overflowBtn:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+
+      /* ── Compact layout ─────────────────────────────────────────────────── */
+      ul#dappList[data-layout="compact"] .dappLink {
+        padding: 7px 10px;
+        align-items: center;
+        gap: 10px;
+      }
+      ul#dappList[data-layout="compact"] .dappLogo,
+      ul#dappList[data-layout="compact"] .dappLogoFallback {
+        width: 26px;
+        height: 26px;
+        border-radius: 7px;
+        font-size: 12px;
+      }
+      ul#dappList[data-layout="compact"] .dappBody {
+        gap: 0;
+      }
+      ul#dappList[data-layout="compact"] .author,
+      ul#dappList[data-layout="compact"] .descRow,
+      ul#dappList[data-layout="compact"] .tagRow {
+        display: none;
+      }
+
+      /* ── Grid card layouts ──────────────────────────────────────────────── */
+      ul#dappList[data-layout="grid2"] .dappLink,
+      ul#dappList[data-layout="grid3"] .dappLink {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+      ul#dappList[data-layout="grid3"] .author,
+      ul#dappList[data-layout="grid3"] .descRow {
+        font-size: 12px;
+      }
+
+      /* ── Large card layout ──────────────────────────────────────────────── */
+      ul#dappList[data-layout="large"] .dappLink {
+        padding: 18px;
+        gap: 16px;
+      }
+      ul#dappList[data-layout="large"] .dappLogo,
+      ul#dappList[data-layout="large"] .dappLogoFallback {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        font-size: 24px;
+      }
+      ul#dappList[data-layout="large"] .name {
+        font-size: 16px;
+      }
+      ul#dappList[data-layout="large"] .desc {
+        -webkit-line-clamp: unset;
+        display: block;
+      }
+
+      /* ── Folder grouping ────────────────────────────────────────────────── */
+      li.folderHeader {
+        grid-column: 1 / -1;
+        border: none;
+        box-shadow: none;
+        background: transparent;
+        padding: 12px 4px 2px;
+        overflow: visible;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      li.folderHeader:hover {
+        transform: none;
+        box-shadow: none;
+      }
+      .folderTitle {
+        font-weight: 700;
+        font-size: 12px;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .folderCount {
+        font-size: 11px;
+        color: var(--muted);
+        opacity: 0.6;
+      }
+      .folderBtns {
+        display: flex;
+        gap: 4px;
+        margin-left: auto;
+      }
+      .folderBtns button,
+      .folderCaret {
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        padding: 2px 7px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .folderCaret {
+        padding: 2px 6px;
+        font-size: 12px;
+      }
+      .folderBtns button:hover,
+      .folderCaret:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      li.emptyHint {
+        grid-column: 1 / -1;
+        border: none;
+        box-shadow: none;
+        color: var(--muted);
+        font-size: 12px;
+        opacity: 0.55;
+        padding: 4px 10px;
+      }
+      li.emptyHint:hover {
+        transform: none;
+        box-shadow: none;
+      }
+      li.message {
+        grid-column: 1 / -1;
+        border: none;
+        box-shadow: none;
+        color: var(--muted);
+        padding: 14px 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      li.message:hover {
+        transform: none;
+        box-shadow: none;
+      }
+
+      /* ── Hidden-dapps footer ────────────────────────────────────────────── */
+      .cardFooter {
+        flex: 0 0 auto;
+        border-top: 1px solid var(--border);
+        padding: 9px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 12px;
+        color: var(--muted);
+        background: var(--card);
+      }
+      .hiddenLink {
+        background: transparent;
+        border: none;
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 12px;
+        font-family: inherit;
+        padding: 0;
+        text-decoration: underline;
+      }
+      .miniBtn {
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--fg);
+        font-size: 12px;
+        padding: 4px 10px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .miniBtn:hover {
+        border-color: var(--accent);
+      }
+
+      /* Respect reduced-motion for the new drag/reflow affordances. */
+      @media (prefers-reduced-motion: reduce) {
+        li,
+        .rowControls,
+        .launchBtn {
+          transition: none !important;
+        }
+      }
     </style>
   </head>
   <body>
     <main>
-      <div class="card">
+      <div class="card" id="card">
         <div class="header">
           <div class="headerRow">
             <div class="brand">
@@ -548,32 +840,39 @@
               </a>
             </div>
             <div class="headerActions">
-            <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
-              <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-            </button>
-            <div class="sortWrap">
-              <button class="sortBtn" id="sortBtn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
-                <span id="sortLabel">Popular</span>
+              <button class="ctrlBtn" id="layoutBtn" type="button" aria-label="Choose layout">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <span class="ctrlLabel" id="layoutLabel">List</span>
               </button>
-              <div class="sortMenu" id="sortMenu">
-                <button class="sortOpt" data-sort="popular">Popular</button>
-                <button class="sortOpt" data-sort="users">Most users</button>
-                <button class="sortOpt" data-sort="txns">Most transactions</button>
-                <button class="sortOpt" data-sort="alpha">Alphabetical</button>
-              </div>
-            </div>
+              <button class="ctrlBtn" id="groupBtn" type="button" aria-label="Toggle folders" title="Group by folder">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                <span class="ctrlLabel">Folders</span>
+              </button>
+              <button class="ctrlBtn" id="sortBtn" type="button" aria-label="Choose sort">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
+                <span class="ctrlLabel" id="sortLabel">Popular</span>
+              </button>
+              <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
+                <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+              </button>
             </div>
           </div>
         </div>
-        <ul id="dappList"></ul>
+        <ul id="dappList" data-layout="list"></ul>
       </div>
     </main>
     <script>
-      const SORT_KEY = "dapphome:sort";
+      // ── Preference keys ──────────────────────────────────────────────────
+      const PREFS_KEY = "dapphome:prefs";
+      const LEGACY_SORT_KEY = "dapphome:sort";
       const THEME_KEY = "dapphome:theme";
+      const PREFS_VERSION = 1;
+
       const PERSON_WEIGHT = 20;
+      const TRENDING_WINDOW_DAYS = 30;
+      const DAY_MS = 86400000;
+
       const CATEGORY_COLORS = {
         Game:    '#10b981',
         Market:  '#f59e0b',
@@ -581,14 +880,118 @@
         Social:  '#f43f5e',
       };
 
+      const LAYOUTS = [
+        { id: 'list',    label: 'List' },
+        { id: 'compact', label: 'Compact' },
+        { id: 'grid2',   label: 'Grid · 2 col' },
+        { id: 'grid3',   label: 'Grid · 3 col' },
+        { id: 'large',   label: 'Large card' },
+      ];
+      const LAYOUT_LABELS = Object.fromEntries(LAYOUTS.map((l) => [l.id, l.label]));
+
+      const SORTS = [
+        { id: 'popular',  label: 'Popular' },
+        { id: 'users',    label: 'Most users' },
+        { id: 'txns',     label: 'Most transactions' },
+        { id: 'mostUsed', label: 'Most used' },
+        { id: 'recent',   label: 'Recently used' },
+        { id: 'newest',   label: 'Newest' },
+        { id: 'trending', label: 'Trending (new & active)' },
+        { id: 'alpha',    label: 'Alphabetical' },
+      ];
+      const SORT_LABELS = Object.fromEntries(SORTS.map((s) => [s.id, s.label]));
+      SORT_LABELS.custom = 'Custom order';
+
       const list = document.getElementById("dappList");
+      const cardEl = document.getElementById("card");
+      const layoutBtn = document.getElementById("layoutBtn");
+      const layoutLabel = document.getElementById("layoutLabel");
+      const groupBtn = document.getElementById("groupBtn");
       const sortBtn = document.getElementById("sortBtn");
-      const sortMenu = document.getElementById("sortMenu");
       const sortLabel = document.getElementById("sortLabel");
       const themeBtn = document.getElementById("themeBtn");
 
-      // Theme toggle. The initial class is applied pre-paint in <head>; here we
-      // just flip it and persist the explicit choice to localStorage.
+      // ── Preference store (single versioned object) ───────────────────────
+      function defaultPrefs() {
+        return {
+          version: PREFS_VERSION,
+          layout: 'list',
+          sort: 'popular',
+          grouped: false,
+          foldersSeeded: false,
+          order: [],        // pubkey[] — authoritative only when sort === 'custom'
+          pinned: [],       // pubkey[] — order = pin order
+          hidden: [],       // pubkey[]
+          folders: [],      // { id, name, collapsed }[]
+          assignments: {},  // { [pubkey]: folderId }
+          usage: {},        // { [pubkey]: { count, lastAt } }
+        };
+      }
+
+      // All reads are wrapped — a missing/corrupt blob must never blank the
+      // page. On any failure we fall back to defaults (list + popular), the
+      // same behaviour the app had before customization existed.
+      function loadPrefs() {
+        let p = defaultPrefs();
+        try {
+          const raw = localStorage.getItem(PREFS_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') p = Object.assign(p, parsed);
+          } else {
+            // Migrate the legacy standalone sort key on first run.
+            const legacy = localStorage.getItem(LEGACY_SORT_KEY);
+            if (legacy) p.sort = legacy;
+          }
+        } catch (_) {
+          p = defaultPrefs();
+        }
+        // Coerce every field to a sane type so later code can trust the shape.
+        p.version = PREFS_VERSION;
+        p.order = Array.isArray(p.order) ? p.order : [];
+        p.pinned = Array.isArray(p.pinned) ? p.pinned : [];
+        p.hidden = Array.isArray(p.hidden) ? p.hidden : [];
+        p.folders = Array.isArray(p.folders) ? p.folders.filter((f) => f && f.id) : [];
+        p.assignments = (p.assignments && typeof p.assignments === 'object') ? p.assignments : {};
+        p.usage = (p.usage && typeof p.usage === 'object') ? p.usage : {};
+        p.grouped = !!p.grouped;
+        p.foldersSeeded = !!p.foldersSeeded;
+        if (!LAYOUT_LABELS[p.layout]) p.layout = 'list';
+        if (p.sort !== 'custom' && !SORT_LABELS[p.sort]) p.sort = 'popular';
+        return p;
+      }
+
+      function savePrefs() {
+        try {
+          localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+        } catch (_) {
+          /* storage full / unavailable — preferences just won't persist */
+        }
+      }
+
+      let prefs = loadPrefs();
+      let currentSort = prefs.sort;
+      let allApps = [];
+      let statsMap = {};
+
+      // Stable identity for a dapp. pubkey is present on every current entry;
+      // url is a forward-compat fallback if a future entry omits pubkey.
+      function keyOf(d) { return d.pubkey || d.url || d.name || ''; }
+      function isHidden(k) { return prefs.hidden.indexOf(k) !== -1; }
+      function isPinned(k) { return prefs.pinned.indexOf(k) !== -1; }
+
+      function dateVal(d) {
+        if (!d || !d.addedAt) return null;
+        const t = Date.parse(d.addedAt);
+        return isNaN(t) ? null : t;
+      }
+      function isNewApp(d) {
+        const t = dateVal(d);
+        if (t == null) return false;
+        return (Date.now() - t) <= TRENDING_WINDOW_DAYS * DAY_MS;
+      }
+
+      // ── Theme toggle (unchanged behaviour) ───────────────────────────────
       function applyTheme(theme) {
         document.documentElement.classList.toggle("dark", theme === "dark");
         if (themeBtn) {
@@ -613,28 +1016,18 @@
         });
       }
 
-      let allApps = [];
-      let statsMap = {};
-      let currentSort = localStorage.getItem(SORT_KEY) || "popular";
-
-      const SORT_LABELS = {
-        popular: "Popular",
-        users: "Most users",
-        txns: "Most transactions",
-        alpha: "Alphabetical",
-      };
-
+      // ── List helpers ─────────────────────────────────────────────────────
       function clearList() {
-        if (!list) return;
-        list.textContent = "";
+        if (list) list.textContent = "";
       }
 
-      function addRow(text) {
+      function addMessage(text) {
         if (!list) return;
         const li = document.createElement("li");
-        li.style.padding = "12px 12px";
-        li.style.color = "var(--muted)";
-        li.textContent = text;
+        li.className = "message";
+        const span = document.createElement("span");
+        span.textContent = text;
+        li.appendChild(span);
         list.appendChild(li);
       }
 
@@ -662,21 +1055,23 @@
         return svg;
       }
 
-      // Deterministic hue from a dapp name so the same dapp always gets the
-      // same fallback badge color across reloads/sorts.
-      function hashString(str) {
-        let h = 0;
-        for (let i = 0; i < str.length; i++) {
-          h = (h * 31 + str.charCodeAt(i)) | 0;
-        }
-        return Math.abs(h);
+      function gripIcon() {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", "currentColor");
+        svg.innerHTML = '<circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/>';
+        return svg;
       }
 
+      function hashString(str) {
+        let h = 0;
+        for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+        return Math.abs(h);
+      }
       function fallbackColor(name) {
         const hue = hashString(name || "") % 360;
         return `hsl(${hue}, 55%, 45%)`;
       }
-
       function fallbackBadge(dapp) {
         const name = (dapp.name || "").trim();
         const badge = document.createElement("div");
@@ -686,10 +1081,6 @@
         badge.setAttribute("aria-hidden", "true");
         return badge;
       }
-
-      // Build the row's leading mark. `dapp.logo` may be an image URL or an
-      // inline-SVG string; anything else (or a broken image) falls back to a
-      // generated initial badge so every row shows something.
       function makeLogo(dapp) {
         const raw = typeof dapp.logo === "string" ? dapp.logo.trim() : "";
         if (raw.startsWith("<svg")) {
@@ -721,213 +1112,618 @@
         return String(n);
       }
 
-      function sortApps(apps) {
-        const sorted = apps.slice();
-        sorted.sort((a, b) => {
-          const sa = statsMap[a.pubkey] || { users: 0, txns: 0 };
-          const sb = statsMap[b.pubkey] || { users: 0, txns: 0 };
-          switch (currentSort) {
-            case "alpha":
-              return (a.name || "").localeCompare(b.name || "");
-            case "users":
-              return sb.users - sa.users || sb.txns - sa.txns;
-            case "txns":
-              return sb.txns - sa.txns || sb.users - sa.users;
-            case "popular":
-            default:
-              return (sb.users * PERSON_WEIGHT + sb.txns) - (sa.users * PERSON_WEIGHT + sa.txns);
+      // ── Ordering ─────────────────────────────────────────────────────────
+      function popularScore(s) { return s.users * PERSON_WEIGHT + s.txns; }
+
+      function comparator(a, b) {
+        const sa = statsMap[a.pubkey] || { users: 0, txns: 0 };
+        const sb = statsMap[b.pubkey] || { users: 0, txns: 0 };
+        const ua = prefs.usage[keyOf(a)] || { count: 0, lastAt: 0 };
+        const ub = prefs.usage[keyOf(b)] || { count: 0, lastAt: 0 };
+        switch (currentSort) {
+          case "alpha":
+            return (a.name || "").localeCompare(b.name || "");
+          case "users":
+            return sb.users - sa.users || sb.txns - sa.txns;
+          case "txns":
+            return sb.txns - sa.txns || sb.users - sa.users;
+          case "mostUsed":
+            // Personal usage first; fall back to the global tx count so a
+            // first-time visitor with no history still gets a useful order.
+            return (ub.count - ua.count) || (sb.txns - sa.txns) ||
+              (popularScore(sb) - popularScore(sa));
+          case "recent":
+            return (ub.lastAt - ua.lastAt) || (sb.txns - sa.txns) ||
+              (popularScore(sb) - popularScore(sa));
+          case "newest": {
+            const ta = dateVal(a), tb = dateVal(b);
+            if (ta != null && tb != null) return tb - ta;
+            if (ta != null) return -1;
+            if (tb != null) return 1;
+            // No addedAt anywhere → fall back to file order (later = newer).
+            return (b._idx || 0) - (a._idx || 0);
           }
-        });
-        return sorted;
+          case "trending": {
+            // "New & active" proxy: recently-added dapps first, ranked among
+            // themselves by global tx volume. Not a true time-windowed metric.
+            const na = isNewApp(a), nb = isNewApp(b);
+            if (na !== nb) return na ? -1 : 1;
+            return sb.txns - sa.txns || sb.users - sa.users;
+          }
+          case "popular":
+          default:
+            return popularScore(sb) - popularScore(sa);
+        }
       }
 
-      function renderDapps(dapps) {
-        if (!list) return;
-        clearList();
+      // Order a set of apps for display: apply the active sort (or the manual
+      // custom order), then float pinned apps to the top in pin order.
+      function orderApps(apps) {
+        let arr = apps.slice();
+        if (currentSort === "custom") {
+          const idxOf = (k) => {
+            const i = prefs.order.indexOf(k);
+            return i === -1 ? Infinity : i;
+          };
+          arr.sort((a, b) => {
+            const ia = idxOf(keyOf(a)), ib = idxOf(keyOf(b));
+            if (ia !== ib) return ia - ib;
+            // New dapps absent from the stored order append in file order.
+            return (a._idx || 0) - (b._idx || 0);
+          });
+        } else {
+          arr.sort(comparator);
+        }
+        const pins = arr
+          .filter((a) => isPinned(keyOf(a)))
+          .sort((a, b) => prefs.pinned.indexOf(keyOf(a)) - prefs.pinned.indexOf(keyOf(b)));
+        const rest = arr.filter((a) => !isPinned(keyOf(a)));
+        return pins.concat(rest);
+      }
 
-        if (!Array.isArray(dapps) || dapps.length === 0) {
-          addRow("(no dapps configured)");
+      // ── Folder seeding ───────────────────────────────────────────────────
+      function slugifyCat(c) {
+        return "cat-" + c.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      }
+      function uid() { return "f" + Math.random().toString(36).slice(2, 8); }
+
+      // Seed folders once from the distinct category values so grouping is
+      // useful the first time the user enables it. Guarded by a flag so a user
+      // who later deletes every folder doesn't get them re-created.
+      function maybeSeedFolders() {
+        if (prefs.foldersSeeded) return;
+        const cats = [];
+        for (const d of allApps) {
+          const c = (d.category || "").trim();
+          if (c && cats.indexOf(c) === -1) cats.push(c);
+        }
+        for (const c of cats) {
+          const id = slugifyCat(c);
+          if (!prefs.folders.find((f) => f.id === id)) {
+            prefs.folders.push({ id, name: c, collapsed: false });
+          }
+          for (const d of allApps) {
+            if ((d.category || "").trim() === c) {
+              const k = keyOf(d);
+              if (prefs.assignments[k] == null) prefs.assignments[k] = id;
+            }
+          }
+        }
+        prefs.foldersSeeded = true;
+        savePrefs();
+      }
+
+      // ── Row rendering ────────────────────────────────────────────────────
+      function makeRow(dapp) {
+        const k = keyOf(dapp);
+        const li = document.createElement("li");
+        li.className = "dappRow" + (isPinned(k) ? " pinned" : "");
+        li.dataset.key = k;
+
+        const link = document.createElement("a");
+        link.className = "dappLink";
+        link.href = dapp.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+
+        const logo = makeLogo(dapp);
+
+        const body = document.createElement("div");
+        body.className = "dappBody";
+
+        const nameRow = document.createElement("div");
+        nameRow.className = "nameRow";
+
+        const nameGroup = document.createElement("div");
+        nameGroup.className = "nameGroup";
+
+        if (isPinned(k)) {
+          const pin = document.createElement("span");
+          pin.className = "pinBadge";
+          pin.textContent = "📌";
+          pin.setAttribute("aria-label", "pinned");
+          nameGroup.appendChild(pin);
+        }
+
+        const liveDot = document.createElement("span");
+        liveDot.className = "liveDot";
+        nameGroup.appendChild(liveDot);
+
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = dapp.name || "(unnamed)";
+        nameGroup.appendChild(name);
+
+        nameRow.appendChild(nameGroup);
+
+        if (dapp.pubkey) {
+          const s = statsMap[dapp.pubkey];
+          const statsEl = document.createElement("div");
+          statsEl.className = "stats";
+          if (s) {
+            const userStat = document.createElement("span");
+            userStat.className = "stat";
+            userStat.appendChild(personIcon());
+            userStat.appendChild(document.createTextNode(formatNum(s.users)));
+
+            const txStat = document.createElement("span");
+            txStat.className = "stat";
+            txStat.appendChild(txIcon());
+            txStat.appendChild(document.createTextNode(formatNum(s.txns)));
+
+            statsEl.appendChild(userStat);
+            statsEl.appendChild(txStat);
+          } else {
+            const loading = document.createElement("span");
+            loading.className = "statsLoading";
+            loading.textContent = "loading...";
+            statsEl.appendChild(loading);
+          }
+          nameRow.appendChild(statsEl);
+        }
+
+        const author = document.createElement("div");
+        author.className = "author";
+        author.textContent = `by ${dapp.author || "unknown"}`;
+
+        let tagRow = null;
+        if (dapp.category) {
+          tagRow = document.createElement("div");
+          tagRow.className = "tagRow";
+          const tag = document.createElement("span");
+          tag.className = "categoryTag";
+          tag.textContent = dapp.category;
+          const color = CATEGORY_COLORS[dapp.category];
+          if (color) {
+            tag.style.color = color;
+            tag.style.background = color + "33";
+            tag.style.border = "1px solid " + color + "66";
+          } else {
+            tag.style.color = "var(--muted)";
+            tag.style.border = "1px solid var(--border)";
+          }
+          tagRow.appendChild(tag);
+        }
+
+        const descRow = document.createElement("div");
+        descRow.className = "descRow";
+        const desc = document.createElement("span");
+        desc.className = "desc";
+        desc.textContent = dapp.description || "";
+        const launchBtn = document.createElement("span");
+        launchBtn.className = "launchBtn";
+        launchBtn.textContent = "Launch";
+        descRow.appendChild(desc);
+        descRow.appendChild(launchBtn);
+
+        body.appendChild(nameRow);
+        body.appendChild(author);
+        if (tagRow) body.appendChild(tagRow);
+        body.appendChild(descRow);
+
+        link.appendChild(logo);
+        link.appendChild(body);
+        li.appendChild(link);
+
+        // Per-row controls overlay. The drag handle is only offered in the
+        // flat (non-grouped) view, where a linear reorder is meaningful.
+        const controls = document.createElement("div");
+        controls.className = "rowControls";
+        if (!prefs.grouped) {
+          const handle = document.createElement("span");
+          handle.className = "dragHandle";
+          handle.title = "Drag to reorder";
+          handle.setAttribute("aria-label", "Drag to reorder");
+          handle.appendChild(gripIcon());
+          controls.appendChild(handle);
+        }
+        const overflow = document.createElement("button");
+        overflow.className = "overflowBtn";
+        overflow.type = "button";
+        overflow.title = "Options";
+        overflow.setAttribute("aria-label", "Options for " + (dapp.name || "dapp"));
+        overflow.textContent = "⋯";
+        wireRowButton(overflow, () => openRowMenu(dapp, overflow));
+        controls.appendChild(overflow);
+        li.appendChild(controls);
+
+        return li;
+      }
+
+      function makeFolderHeader(folder, count, implicit) {
+        const li = document.createElement("li");
+        li.className = "folderHeader";
+
+        if (!implicit) {
+          const caret = document.createElement("button");
+          caret.className = "folderCaret";
+          caret.type = "button";
+          caret.textContent = folder.collapsed ? "▸" : "▾";
+          caret.setAttribute("aria-label", folder.collapsed ? "Expand folder" : "Collapse folder");
+          wireRowButton(caret, () => toggleCollapse(folder.id));
+          li.appendChild(caret);
+        }
+
+        const title = document.createElement("span");
+        title.className = "folderTitle";
+        title.textContent = folder.name;
+        li.appendChild(title);
+
+        const cnt = document.createElement("span");
+        cnt.className = "folderCount";
+        cnt.textContent = "(" + count + ")";
+        li.appendChild(cnt);
+
+        if (!implicit) {
+          const btns = document.createElement("div");
+          btns.className = "folderBtns";
+          const ren = document.createElement("button");
+          ren.type = "button";
+          ren.textContent = "Rename";
+          wireRowButton(ren, () => renameFolder(folder.id));
+          const del = document.createElement("button");
+          del.type = "button";
+          del.textContent = "Delete";
+          wireRowButton(del, () => deleteFolder(folder.id));
+          btns.appendChild(ren);
+          btns.appendChild(del);
+          li.appendChild(btns);
+        }
+        return li;
+      }
+
+      function makeEmptyHint() {
+        const li = document.createElement("li");
+        li.className = "emptyHint";
+        li.textContent = "(empty)";
+        return li;
+      }
+
+      // ── Render pipeline ──────────────────────────────────────────────────
+      function renderDapps() {
+        if (!list) return;
+        closePopup();
+        clearList();
+        list.dataset.layout = prefs.layout;
+
+        if (!Array.isArray(allApps) || allApps.length === 0) {
+          addMessage("(no dapps configured)");
+          renderHiddenBar();
           return;
         }
 
-        const sorted = sortApps(dapps);
+        const visible = allApps.filter((a) => !isHidden(keyOf(a)));
 
-        for (const dapp of sorted) {
-          const li = document.createElement("li");
+        if (visible.length === 0) {
+          renderAllHiddenState();
+          renderHiddenBar();
+          return;
+        }
 
-          const link = document.createElement("a");
-          link.className = "dappLink";
-          link.href = dapp.url;
-          link.target = "_blank";
-          link.rel = "noopener";
+        if (prefs.grouped) {
+          maybeSeedFolders();
+          renderGrouped(visible);
+        } else {
+          const ordered = orderApps(visible);
+          for (const d of ordered) list.appendChild(makeRow(d));
+        }
+        renderHiddenBar();
+      }
 
-          const logo = makeLogo(dapp);
-
-          const body = document.createElement("div");
-          body.className = "dappBody";
-
-          const nameRow = document.createElement("div");
-          nameRow.className = "nameRow";
-
-          // Wrap dot + name together so space-between only separates them from stats
-          const nameGroup = document.createElement("div");
-          nameGroup.style.cssText = "display:flex;align-items:center;min-width:0;flex:1 1 auto";
-
-          const liveDot = document.createElement("span");
-          liveDot.className = "liveDot";
-          nameGroup.appendChild(liveDot);
-
-          const name = document.createElement("div");
-          name.className = "name";
-          name.textContent = dapp.name || "(unnamed)";
-          nameGroup.appendChild(name);
-
-          nameRow.appendChild(nameGroup);
-
-          if (dapp.pubkey) {
-            const s = statsMap[dapp.pubkey];
-            const statsEl = document.createElement("div");
-            statsEl.className = "stats";
-
-            if (s) {
-              const userStat = document.createElement("span");
-              userStat.className = "stat";
-              userStat.appendChild(personIcon());
-              userStat.appendChild(document.createTextNode(formatNum(s.users)));
-
-              const txStat = document.createElement("span");
-              txStat.className = "stat";
-              txStat.appendChild(txIcon());
-              txStat.appendChild(document.createTextNode(formatNum(s.txns)));
-
-              statsEl.appendChild(userStat);
-              statsEl.appendChild(txStat);
-            } else {
-              const loading = document.createElement("span");
-              loading.className = "statsLoading";
-              loading.textContent = "loading...";
-              statsEl.appendChild(loading);
-            }
-
-            nameRow.appendChild(statsEl);
+      function renderGrouped(visible) {
+        const byFolder = new Map();
+        for (const f of prefs.folders) byFolder.set(f.id, []);
+        const ungrouped = [];
+        for (const d of visible) {
+          const fid = prefs.assignments[keyOf(d)];
+          if (fid && byFolder.has(fid)) byFolder.get(fid).push(d);
+          else ungrouped.push(d);
+        }
+        for (const f of prefs.folders) {
+          const apps = orderApps(byFolder.get(f.id) || []);
+          list.appendChild(makeFolderHeader(f, apps.length, false));
+          if (!f.collapsed) {
+            if (apps.length === 0) list.appendChild(makeEmptyHint());
+            else for (const d of apps) list.appendChild(makeRow(d));
           }
-
-          const author = document.createElement("div");
-          author.className = "author";
-          author.textContent = `by ${dapp.author || "unknown"}`;
-
-          let tagRow = null;
-          if (dapp.category) {
-            tagRow = document.createElement("div");
-            tagRow.className = "tagRow";
-            const tag = document.createElement("span");
-            tag.className = "categoryTag";
-            tag.textContent = dapp.category;
-            const color = CATEGORY_COLORS[dapp.category];
-            if (color) {
-              tag.style.color = color;
-              tag.style.background = color + "33";
-              tag.style.border = "1px solid " + color + "66";
-            } else {
-              tag.style.color = "var(--muted)";
-              tag.style.border = "1px solid var(--border)";
-            }
-            tagRow.appendChild(tag);
-          }
-
-          const descRow = document.createElement("div");
-          descRow.className = "descRow";
-
-          const desc = document.createElement("span");
-          desc.className = "desc";
-          desc.textContent = dapp.description || "";
-
-          const launchBtn = document.createElement("span");
-          launchBtn.className = "launchBtn";
-          launchBtn.textContent = "Launch";
-
-          descRow.appendChild(desc);
-          descRow.appendChild(launchBtn);
-
-          body.appendChild(nameRow);
-          body.appendChild(author);
-          if (tagRow) body.appendChild(tagRow);
-          body.appendChild(descRow);
-
-          link.appendChild(logo);
-          link.appendChild(body);
-          li.appendChild(link);
-          list.appendChild(li);
+        }
+        if (ungrouped.length) {
+          list.appendChild(
+            makeFolderHeader({ id: "__ungrouped", name: "Ungrouped" }, ungrouped.length, true)
+          );
+          for (const d of orderApps(ungrouped)) list.appendChild(makeRow(d));
         }
       }
 
+      function renderAllHiddenState() {
+        const li = document.createElement("li");
+        li.className = "message";
+        const span = document.createElement("span");
+        span.textContent = "All dApps are hidden.";
+        const btn = document.createElement("button");
+        btn.className = "miniBtn";
+        btn.type = "button";
+        btn.textContent = "Unhide all";
+        wireRowButton(btn, () => unhideAll());
+        li.appendChild(span);
+        li.appendChild(btn);
+        list.appendChild(li);
+      }
+
+      // ── Hidden-dapps footer ──────────────────────────────────────────────
+      let hiddenBar = null;
+      function renderHiddenBar() {
+        if (hiddenBar) { hiddenBar.remove(); hiddenBar = null; }
+        const hiddenApps = allApps.filter((a) => isHidden(keyOf(a)));
+        if (!hiddenApps.length) return;
+
+        hiddenBar = document.createElement("div");
+        hiddenBar.className = "cardFooter";
+
+        const link = document.createElement("button");
+        link.className = "hiddenLink";
+        link.type = "button";
+        link.textContent = hiddenApps.length + (hiddenApps.length === 1 ? " hidden dApp" : " hidden dApps");
+        link.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const items = hiddenApps.map((a) => ({
+            label: "Unhide " + (a.name || "(unnamed)"),
+            onClick: () => unhide(keyOf(a)),
+          }));
+          items.push({ label: "Unhide all", onClick: () => unhideAll() });
+          showPopup(link, items);
+        });
+
+        const allBtn = document.createElement("button");
+        allBtn.className = "miniBtn";
+        allBtn.type = "button";
+        allBtn.textContent = "Unhide all";
+        allBtn.addEventListener("click", (e) => { e.stopPropagation(); unhideAll(); });
+
+        hiddenBar.appendChild(link);
+        hiddenBar.appendChild(allBtn);
+        cardEl.appendChild(hiddenBar);
+      }
+
+      // ── Preference mutations ─────────────────────────────────────────────
+      function recordLaunch(k) {
+        if (!k) return;
+        const u = prefs.usage[k] || { count: 0, lastAt: 0 };
+        u.count = (u.count || 0) + 1;
+        u.lastAt = Date.now();
+        prefs.usage[k] = u;
+        savePrefs();
+      }
+      function togglePin(k) {
+        const i = prefs.pinned.indexOf(k);
+        if (i === -1) prefs.pinned.push(k);
+        else prefs.pinned.splice(i, 1);
+        savePrefs();
+        renderDapps();
+      }
+      function hideApp(k) {
+        if (prefs.hidden.indexOf(k) === -1) prefs.hidden.push(k);
+        savePrefs();
+        renderDapps();
+      }
+      function unhide(k) {
+        const i = prefs.hidden.indexOf(k);
+        if (i !== -1) prefs.hidden.splice(i, 1);
+        savePrefs();
+        renderDapps();
+      }
+      function unhideAll() {
+        prefs.hidden = [];
+        savePrefs();
+        renderDapps();
+      }
+      function moveToFolder(k, fid) {
+        if (fid) prefs.assignments[k] = fid;
+        else delete prefs.assignments[k];
+        savePrefs();
+        renderDapps();
+      }
+      function toggleCollapse(id) {
+        const f = prefs.folders.find((x) => x.id === id);
+        if (f) { f.collapsed = !f.collapsed; savePrefs(); renderDapps(); }
+      }
+      function renameFolder(id) {
+        const f = prefs.folders.find((x) => x.id === id);
+        if (!f) return;
+        const n = (window.prompt("Rename folder", f.name) || "").trim();
+        if (n) { f.name = n; savePrefs(); renderDapps(); }
+      }
+      function deleteFolder(id) {
+        prefs.folders = prefs.folders.filter((f) => f.id !== id);
+        for (const k of Object.keys(prefs.assignments)) {
+          if (prefs.assignments[k] === id) delete prefs.assignments[k];
+        }
+        savePrefs();
+        renderDapps();
+      }
+
+      // ── Row + move-to-folder menus ───────────────────────────────────────
+      function openRowMenu(dapp, anchor) {
+        const k = keyOf(dapp);
+        showPopup(anchor, [
+          { label: isPinned(k) ? "Unpin" : "Pin to top", onClick: () => togglePin(k) },
+          { label: "Hide", onClick: () => hideApp(k) },
+          { label: "Move to folder…", onClick: () => openMoveMenu(dapp, anchor) },
+        ]);
+      }
+
+      function openMoveMenu(dapp, anchor) {
+        const k = keyOf(dapp);
+        const current = prefs.assignments[k] || null;
+        const items = prefs.folders.map((f) => ({
+          label: f.name,
+          active: current === f.id,
+          onClick: () => moveToFolder(k, f.id),
+        }));
+        items.push({ label: "Ungrouped", active: !current, onClick: () => moveToFolder(k, null) });
+        items.push({
+          label: "➕ New folder…",
+          onClick: () => {
+            const name = (window.prompt("New folder name") || "").trim();
+            if (!name) return;
+            const id = uid();
+            prefs.folders.push({ id, name, collapsed: false });
+            moveToFolder(k, id);
+          },
+        });
+        showPopup(anchor, items);
+      }
+
+      // ── Popup menu utility (shared) ──────────────────────────────────────
+      let openPopupEl = null;
+      function closePopup() {
+        if (openPopupEl) { openPopupEl.remove(); openPopupEl = null; }
+      }
+      function showPopup(anchor, items) {
+        closePopup();
+        const menu = document.createElement("div");
+        menu.className = "popupMenu";
+        for (const it of items) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "popupItem" + (it.active ? " active" : "") + (it.danger ? " danger" : "");
+          b.textContent = (it.active ? "✓ " : "") + it.label;
+          b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closePopup();
+            if (it.onClick) it.onClick();
+          });
+          menu.appendChild(b);
+        }
+        document.body.appendChild(menu);
+        const r = anchor.getBoundingClientRect();
+        const mw = menu.offsetWidth;
+        let left = r.right - mw + window.scrollX;
+        left = Math.min(left, window.scrollX + window.innerWidth - mw - 8);
+        left = Math.max(window.scrollX + 8, left);
+        menu.style.top = (r.bottom + 4 + window.scrollY) + "px";
+        menu.style.left = left + "px";
+        openPopupEl = menu;
+      }
+      // Close popups on any outside interaction.
+      document.addEventListener("pointerdown", (e) => {
+        if (openPopupEl && !openPopupEl.contains(e.target)) closePopup();
+      }, true);
+      window.addEventListener("resize", closePopup);
+
+      // ── Header controls ──────────────────────────────────────────────────
+      function setLayout(id) {
+        prefs.layout = id;
+        savePrefs();
+        updateHeaderUI();
+        renderDapps();
+      }
+      function setSort(id) {
+        currentSort = id;
+        prefs.sort = id;
+        savePrefs();
+        updateHeaderUI();
+        renderDapps();
+      }
+      function updateHeaderUI() {
+        if (layoutLabel) layoutLabel.textContent = LAYOUT_LABELS[prefs.layout] || "List";
+        if (sortLabel) sortLabel.textContent = SORT_LABELS[currentSort] || "Popular";
+        if (groupBtn) groupBtn.classList.toggle("active", prefs.grouped);
+      }
+
+      layoutBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showPopup(layoutBtn, LAYOUTS.map((l) => ({
+          label: l.label,
+          active: prefs.layout === l.id,
+          onClick: () => setLayout(l.id),
+        })));
+      });
+
+      sortBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const items = SORTS.map((s) => ({
+          label: s.label,
+          active: currentSort === s.id,
+          onClick: () => setSort(s.id),
+        }));
+        // Custom only appears once the user has a manual arrangement to return to.
+        if (prefs.order.length || currentSort === "custom") {
+          items.push({ label: "Custom order", active: currentSort === "custom", onClick: () => setSort("custom") });
+        }
+        showPopup(sortBtn, items);
+      });
+
+      groupBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        prefs.grouped = !prefs.grouped;
+        if (prefs.grouped) maybeSeedFolders();
+        savePrefs();
+        updateHeaderUI();
+        renderDapps();
+      });
+
+      updateHeaderUI();
+
+      // ── Data loading ─────────────────────────────────────────────────────
       async function loadDappsJson() {
         const resp = await fetch("./dapps.json", { cache: "no-store" });
-        if (!resp.ok) {
-          throw new Error(`Failed to load dapps.json: HTTP ${resp.status}`);
-        }
+        if (!resp.ok) throw new Error(`Failed to load dapps.json: HTTP ${resp.status}`);
         return await resp.json();
       }
 
-      async function loadAllStats(apps) {
+      async function loadAllStats() {
         try {
           const resp = await fetch("/api/stats");
           if (!resp.ok) throw new Error(`Stats API ${resp.status}`);
           const data = await resp.json();
-          for (const [pk, s] of Object.entries(data)) {
-            statsMap[pk] = s;
-          }
-          renderDapps(allApps);
+          for (const [pk, s] of Object.entries(data)) statsMap[pk] = s;
+          renderDapps();
         } catch (e) {
           console.warn("Could not load stats:", e);
         }
       }
 
-      // --- Sort menu ---
-      function updateSortUI() {
-        sortLabel.textContent = SORT_LABELS[currentSort] || "Popular";
-        sortMenu.querySelectorAll(".sortOpt").forEach((btn) => {
-          btn.classList.toggle("active", btn.dataset.sort === currentSort);
-        });
-      }
-
-      sortBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        sortMenu.classList.toggle("open");
-      });
-
-      sortMenu.addEventListener("click", (e) => {
-        const opt = e.target.closest(".sortOpt");
-        if (!opt) return;
-        currentSort = opt.dataset.sort;
-        localStorage.setItem(SORT_KEY, currentSort);
-        updateSortUI();
-        renderDapps(allApps);
-        sortMenu.classList.remove("open");
-      });
-
-      document.addEventListener("click", () => {
-        sortMenu.classList.remove("open");
-      });
-
-      updateSortUI();
-
       (async function main() {
-        addRow("(loading dapps...)");
+        addMessage("(loading dapps...)");
         try {
           const json = await loadDappsJson();
-          allApps = Array.isArray(json) ? json : json.apps || json.items || [];
-          renderDapps(allApps);
-          loadAllStats(allApps);
+          const arr = Array.isArray(json) ? json : json.apps || json.items || [];
+          // Record file order so Newest / custom-order fallbacks are stable.
+          arr.forEach((d, i) => { d._idx = i; });
+          allApps = arr;
+          renderDapps();
+          loadAllStats();
         } catch (e) {
           clearList();
-          addRow(
-            `(error loading dapps.json: ${e && e.message ? e.message : String(e)})`
-          );
+          addMessage(`(error loading dapps.json: ${e && e.message ? e.message : String(e)})`);
         }
       })();
 
-      // --- Rubber-band (overscroll-like) stretch config ---
+      // ── Rubber-band scroll + drag-handle reorder (unified handler) ────────
+      // The list owns its pointer interaction. A gesture that starts on a drag
+      // handle enters reorder mode; anything else keeps the original rubber-band
+      // overscroll + tap-to-launch behaviour. The two never run simultaneously.
       const RUBBER_BAND = {
         deadzonePx: 6,
         maxPullPx: 92,
@@ -945,96 +1741,165 @@
         return Math.sign(d) * result;
       }
 
-      (function attachRubberBand() {
-        const listEl = document.getElementById("dappList");
+      // Wire a control inside the list. Because the list blocks `click` in the
+      // capture phase (to stop stray navigation), in-list buttons act on
+      // pointerup and stopPropagation on pointerdown so they never start a
+      // rubber-band gesture, a launch, or a reorder.
+      function wireRowButton(el, fn) {
+        el.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
+        el.addEventListener("pointerup", (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          fn(e);
+        });
+      }
+
+      (function attachListInteractions() {
+        const listEl = list;
         if (!listEl) return;
 
         let startY = 0;
         let activePointerId = null;
-        let dragging = false;
+        let dragging = false;       // rubber-band gesture in progress
         let moved = false;
+        let downTarget = null;
+        let pressedLi = null;
+
+        let reordering = false;     // drag-handle reorder in progress
+        let reorderMoved = false;
+        let dragLi = null;
 
         function apply(offset) {
-          const t = offset;
           if (RUBBER_BAND.enableScaleY) {
             const s = 1 + Math.abs(offset) / RUBBER_BAND.scaleDivisor;
-            listEl.style.transform = `translateY(${t}px) scaleY(${s})`;
+            listEl.style.transform = `translateY(${offset}px) scaleY(${s})`;
           } else {
-            listEl.style.transform = `translateY(${t}px)`;
+            listEl.style.transform = `translateY(${offset}px)`;
           }
         }
 
         function reset() {
           listEl.style.transition = `transform ${RUBBER_BAND.snapMs}ms ${RUBBER_BAND.snapEasing}`;
           listEl.style.transform = "";
-          window.setTimeout(() => {
-            listEl.style.transition = "";
-          }, RUBBER_BAND.snapMs + 40);
+          window.setTimeout(() => { listEl.style.transition = ""; }, RUBBER_BAND.snapMs + 40);
         }
 
-        let downTarget = null;
-        let pressedLi = null;
+        // Pick the insertion target nearest the pointer (works for both single
+        // and multi-column layouts via center distance).
+        function dropTarget(x, y) {
+          const els = Array.prototype.slice.call(
+            listEl.querySelectorAll("li.dappRow:not(.isDragging)")
+          );
+          let best = null, bestD = Infinity, before = true;
+          for (const el of els) {
+            const r = el.getBoundingClientRect();
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            const d = Math.hypot(x - cx, y - cy);
+            if (d < bestD) { bestD = d; best = el; before = y < cy; }
+          }
+          return { best, before };
+        }
+
+        function commitReorder() {
+          const keys = Array.prototype.slice
+            .call(listEl.querySelectorAll("li.dappRow"))
+            .map((li) => li.dataset.key)
+            .filter(Boolean);
+          prefs.order = keys;
+          currentSort = "custom";
+          prefs.sort = "custom";
+          savePrefs();
+          updateHeaderUI();
+          renderDapps();
+        }
 
         listEl.addEventListener("pointerdown", (e) => {
           if (e.button != null && e.button !== 0) return;
+
+          const handle = e.target.closest(".dragHandle");
+          if (handle && !prefs.grouped) {
+            reordering = true;
+            reorderMoved = false;
+            activePointerId = e.pointerId;
+            dragLi = e.target.closest("li.dappRow");
+            if (dragLi) dragLi.classList.add("isDragging");
+            try { listEl.setPointerCapture(e.pointerId); } catch (_) {}
+            e.preventDefault();
+            return;
+          }
+
           activePointerId = e.pointerId;
           startY = e.clientY;
           dragging = true;
           moved = false;
           downTarget = e.target;
           listEl.style.transition = "";
-          try {
-            listEl.setPointerCapture(activePointerId);
-          } catch (_) {}
+          try { listEl.setPointerCapture(activePointerId); } catch (_) {}
 
-          pressedLi = e.target.closest("li");
+          pressedLi = e.target.closest("li.dappRow");
           if (pressedLi) pressedLi.classList.add("is-pressed");
         });
 
         listEl.addEventListener(
           "pointermove",
           (e) => {
+            if (reordering && e.pointerId === activePointerId) {
+              if (!dragLi) return;
+              reorderMoved = true;
+              const { best, before } = dropTarget(e.clientX, e.clientY);
+              if (best) {
+                if (before) listEl.insertBefore(dragLi, best);
+                else listEl.insertBefore(dragLi, best.nextSibling);
+              }
+              e.preventDefault();
+              return;
+            }
+
             if (!dragging || e.pointerId !== activePointerId) return;
             const dy = e.clientY - startY;
-
             if (!moved && Math.abs(dy) > RUBBER_BAND.deadzonePx) moved = true;
             const effectiveDy =
               Math.abs(dy) <= RUBBER_BAND.deadzonePx
                 ? 0
                 : dy - Math.sign(dy) * RUBBER_BAND.deadzonePx;
-
             const dim = window.innerHeight || 800;
-            let offset = rubberBandDistance(
-              effectiveDy,
-              dim,
-              RUBBER_BAND.constant
-            );
-
+            let offset = rubberBandDistance(effectiveDy, dim, RUBBER_BAND.constant);
             const max = RUBBER_BAND.maxPullPx;
             if (offset > max) offset = max;
             if (offset < -max) offset = -max;
-
             apply(offset);
           },
           { passive: false }
         );
 
         function end(e) {
+          if (reordering && e.pointerId === activePointerId) {
+            if (dragLi) dragLi.classList.remove("isDragging");
+            const didMove = reorderMoved;
+            reordering = false;
+            reorderMoved = false;
+            dragLi = null;
+            activePointerId = null;
+            // A bare tap on the handle (no movement) must not silently switch
+            // the sort to custom — only commit when the order actually changed.
+            if (didMove) commitReorder();
+            return;
+          }
+
           if (!dragging || e.pointerId !== activePointerId) return;
           dragging = false;
           activePointerId = null;
 
-          if (pressedLi) {
-            pressedLi.classList.remove("is-pressed");
-            pressedLi = null;
-          }
-
+          if (pressedLi) { pressedLi.classList.remove("is-pressed"); pressedLi = null; }
           reset();
 
           if (!moved && downTarget) {
-            const link = downTarget.closest("a");
+            const link = downTarget.closest("a.dappLink");
             if (link && link.href) {
-              window.open(link.href, link.target || "_self", "noopener");
+              const li = downTarget.closest("li.dappRow");
+              if (li && li.dataset.key) recordLaunch(li.dataset.key);
+              window.open(link.href, link.target || "_blank", "noopener");
             }
           }
           downTarget = null;
@@ -1043,16 +1908,13 @@
         listEl.addEventListener("pointerup", end);
         listEl.addEventListener("pointercancel", end);
 
+        // Swallow real click navigation — launches go through pointerup above.
         listEl.addEventListener(
           "click",
-          (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          },
+          (e) => { e.preventDefault(); e.stopPropagation(); },
           true
         );
       })();
-
     </script>
   </body>
 </html>

@@ -26,13 +26,19 @@ hosted conventions win.
  rollup across all tracked dapps + global usernames). No
  `package.json`, no auth middleware (the homepage is fully public).
 - `index.html` — Single-file UI. CSS variables for light/dark theme,
-  rubber-band scroll, sort menu (popular / users / txns / alpha).
-  Contains the `// usernode-dev-console@1` forwarder block that
-  surfaces client logs to the Usernode platform's dev console panel —
-  do not remove it.
+  rubber-band scroll, and the customizable-layout system (layout
+  modes, expanded sort menu, drag-to-reorder, pin/hide/folders). All
+  per-visitor preferences live client-side in `localStorage` — see
+  "Customizable layout" below. Contains the `// usernode-dev-console@1`
+  forwarder block that surfaces client logs to the Usernode platform's
+  dev console panel — do not remove it.
 - `dapps.json` — Source of truth for the list. Each entry has
-  `name`, `description`, `author`, `url`, `pubkey`. The poller reads
-  this file every 30s to discover which addresses to track.
+  `name`, `description`, `author`, `url`, `pubkey`, plus optional
+  `logo`, `category`, and `addedAt`. `addedAt` is an ISO-8601 date
+  (e.g. `"2026-05-20"`) used by the UI's Newest / Trending sorts;
+  entries without it fall back to file order, so it is non-breaking
+  and optional. The poller reads this file every 30s to discover
+  which addresses to track (it only consumes `name` + `pubkey`).
 - `dapps.local.json` — Localnet variant, used when `--local-dev`.
 - `Dockerfile` — `node:20-alpine`, copies the three files, runs
   `node server.js`. No build step.
@@ -133,3 +139,54 @@ like a private IP. Same convention as every other dapp in the fleet.
   part of why this app is robust.
 - **`/api/stats` and `/api/transactions` are intentionally public**.
   They expose a global summary identical for every viewer.
+
+## Customizable layout
+
+The homepage lets each visitor tailor how the dapp list renders. All
+of this is **client-side only** — there is no server-side per-user
+storage, no auth, and no new dependency. The app stays public exactly
+as described in "Auth model" above. Everything persists in
+`localStorage` under a single versioned blob.
+
+`localStorage` keys (all read inside `try/catch` so a corrupt/missing
+value just falls back to defaults — list layout, popular sort):
+
+- `dapphome:prefs` — JSON, the one source of truth for layout
+  customization. Shape: `{ version, layout, sort, grouped,
+  foldersSeeded, order[], pinned[], hidden[], folders[{id,name,
+  collapsed}], assignments{pubkey→folderId}, usage{pubkey→{count,
+  lastAt}} }`. Items are keyed by **pubkey** (url fallback). Stale
+  pubkeys (dapps removed from `dapps.json`) are ignored at render time
+  but kept in storage so a temporarily-removed dapp doesn't lose its
+  pin/order.
+- `dapphome:sort` — **legacy** standalone sort key. Still read once on
+  first load and migrated into `dapphome:prefs.sort`; no longer
+  written.
+- `dapphome:theme` — unchanged (light/dark), read pre-paint in
+  `<head>`.
+
+Behavior notes for anyone editing the UI:
+
+- **Layouts** are driven entirely by the `data-layout` attribute on
+  `<ul id="dappList">` (`list` / `compact` / `grid2` / `grid3` /
+  `large`). Prefer adding CSS keyed off that attribute over branching
+  in `renderDapps()`.
+- **Sorts**: the original `popular / users / txns / alpha` plus
+  `mostUsed` (personal usage, falling back to global txns), `recent`
+  (local launch recency), `newest` (`addedAt`, file-order fallback),
+  `trending` (a labeled **"new & active" approximation** — recently
+  added dapps ranked by global txns; it is *not* a true time-windowed
+  metric, since `/api/stats` only exposes cumulative totals), and
+  `custom` (manual drag order).
+- **Drag-to-reorder is gated to an explicit drag handle** so it
+  coexists with the rubber-band pointer handler on the list — a tap or
+  pull anywhere else behaves exactly as before. Reordering only runs
+  in the flat (non-grouped) view and switches `sort` to `custom`.
+- **Launch tracking**: every launch bumps `prefs.usage[pubkey]`
+  (`count` + `lastAt`). This is the only signal feeding `recent` /
+  `mostUsed`; the homepage cannot observe launches server-side because
+  links open out to external dapps.
+- A true server-side Trending rollup and cross-device (server-backed)
+  preference sync are deliberately **out of scope** — they would
+  require turning on JWT auth + Postgres and changing this app's
+  public, zero-dependency model.
