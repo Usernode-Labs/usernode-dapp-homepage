@@ -507,44 +507,6 @@
         border-radius: 999px;
         display: inline-block;
       }
-      /* Activity status dot. Color encodes recency of on-chain activity:
-         green = active (<60m), yellow = moderate (<24h), gray = idle/unknown.
-         Only active (and moderate) pulse; idle/unknown stay static. */
-      .liveDot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: #9ca3af;
-        flex-shrink: 0;
-        position: relative;
-        margin-right: 6px;
-      }
-      .liveDot.is-active {
-        background: #22c55e;
-      }
-      .liveDot.is-moderate {
-        background: #eab308;
-      }
-      .liveDot.is-idle,
-      .liveDot.is-unknown {
-        background: #9ca3af;
-      }
-      @media (prefers-reduced-motion: no-preference) {
-        @keyframes livePing {
-          0% { transform: scale(1); opacity: 0.6; }
-          100% { transform: scale(2); opacity: 0; }
-        }
-        /* Ping ring only for active/moderate; idle/unknown render static. */
-        .liveDot.is-active::after,
-        .liveDot.is-moderate::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          border-radius: 50%;
-          background: inherit;
-          animation: livePing 2s ease-out infinite;
-        }
-      }
       /* --- dApp preview panel --- */
       .previewOverlay {
         position: fixed;
@@ -802,33 +764,6 @@
         Social:  '#f43f5e',
       };
 
-      // Activity-status thresholds (tunable). A dapp is "active" if it saw
-      // on-chain activity within the last hour, "moderate" within the last
-      // day, else "idle". "unknown" = no stats yet or no usable timestamp.
-      const ACTIVITY_ACTIVE_MS = 60 * 60 * 1000;
-      const ACTIVITY_MODERATE_MS = 24 * 60 * 60 * 1000;
-      const ACTIVITY_META = {
-        active:   { level: "active",   cls: "is-active",   label: "Active" },
-        moderate: { level: "moderate", cls: "is-moderate", label: "Moderate" },
-        idle:     { level: "idle",     cls: "is-idle",     label: "Idle" },
-        unknown:  { level: "unknown",  cls: "is-unknown",  label: "Unknown" },
-      };
-
-      // Classify a dapp's activity from its stats entry. Recency-based; clamps
-      // future-stamped activity (clock skew) to "active". No timestamp but
-      // some txns → "unknown" (we know it's used, not when). No stats → unknown.
-      function classifyActivity(stats) {
-        if (!stats) return ACTIVITY_META.unknown;
-        const last = stats.lastActivityMs;
-        if (typeof last !== "number" || !isFinite(last)) {
-          return ACTIVITY_META.unknown;
-        }
-        const age = Math.max(0, Date.now() - last);
-        if (age < ACTIVITY_ACTIVE_MS) return ACTIVITY_META.active;
-        if (age < ACTIVITY_MODERATE_MS) return ACTIVITY_META.moderate;
-        return ACTIVITY_META.idle;
-      }
-
       const list = document.getElementById("dappList");
       const sortBtn = document.getElementById("sortBtn");
       const sortMenu = document.getElementById("sortMenu");
@@ -1021,20 +956,9 @@
           const nameRow = document.createElement("div");
           nameRow.className = "nameRow";
 
-          // Wrap dot + name together so space-between only separates them from stats
+          // Wrap the name so space-between only separates it from the stats.
           const nameGroup = document.createElement("div");
           nameGroup.style.cssText = "display:flex;align-items:center;min-width:0;flex:1 1 auto";
-
-          // Activity-status dot, recomputed each render from the latest stats.
-          const activity = classifyActivity(
-            dapp.pubkey ? statsMap[dapp.pubkey] : null
-          );
-          const liveDot = document.createElement("span");
-          liveDot.className = "liveDot " + activity.cls;
-          liveDot.setAttribute("role", "img");
-          liveDot.setAttribute("aria-label", "Activity: " + activity.level);
-          liveDot.setAttribute("title", "Activity: " + activity.label);
-          nameGroup.appendChild(liveDot);
 
           const name = document.createElement("div");
           name.className = "name";
@@ -1042,6 +966,34 @@
           nameGroup.appendChild(name);
 
           nameRow.appendChild(nameGroup);
+
+          if (dapp.pubkey) {
+            const s = statsMap[dapp.pubkey];
+            const statsEl = document.createElement("div");
+            statsEl.className = "stats";
+
+            if (s) {
+              const userStat = document.createElement("span");
+              userStat.className = "stat";
+              userStat.appendChild(personIcon());
+              userStat.appendChild(document.createTextNode(formatNum(s.users)));
+
+              const txStat = document.createElement("span");
+              txStat.className = "stat";
+              txStat.appendChild(txIcon());
+              txStat.appendChild(document.createTextNode(formatNum(s.txns)));
+
+              statsEl.appendChild(userStat);
+              statsEl.appendChild(txStat);
+            } else {
+              const loading = document.createElement("span");
+              loading.className = "statsLoading";
+              loading.textContent = "loading...";
+              statsEl.appendChild(loading);
+            }
+
+            nameRow.appendChild(statsEl);
+          }
 
           const author = document.createElement("div");
           author.className = "author";
@@ -1214,7 +1166,6 @@
         const updated = formatDate(dapp.lastUpdated);
         if (updated) previewMeta.appendChild(metaItem("Updated " + updated));
         const s = dapp.pubkey ? statsMap[dapp.pubkey] : null;
-        previewMeta.appendChild(metaItem(classifyActivity(s).label));
         if (s) {
           previewMeta.appendChild(metaItem(formatNum(s.users) + " users"));
           previewMeta.appendChild(metaItem(formatNum(s.txns) + " txns"));
