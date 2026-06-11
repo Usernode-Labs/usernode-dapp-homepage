@@ -16,6 +16,28 @@
         "screenshots/opinion-market/1.png",
         "screenshots/opinion-market/2.png",
         "screenshots/opinion-market/3.png"
+      ],
+      "highlights": [
+        {
+          "icon": "💬",
+          "title": "Open a market on anything",
+          "body": "Pose any subjective question and let the crowd put a price on it."
+        },
+        {
+          "icon": "📈",
+          "title": "Trade the odds",
+          "body": "Buy and sell shares in outcomes as sentiment shifts in real time."
+        },
+        {
+          "icon": "🤝",
+          "title": "Community resolution",
+          "body": "Markets settle through community consensus — no central referee."
+        },
+        {
+          "icon": "🔗",
+          "title": "Verifiable on-chain",
+          "body": "Every trade and position is a transparent transaction on the Usernode chain."
+        }
       ]
     },
     {
@@ -33,6 +55,28 @@
         "screenshots/falling-sands/1.png",
         "screenshots/falling-sands/2.png",
         "screenshots/falling-sands/3.png"
+      ],
+      "highlights": [
+        {
+          "icon": "🏖️",
+          "title": "Pour the elements",
+          "body": "Drop sand, water, and fire and watch real-time physics take over."
+        },
+        {
+          "icon": "🌐",
+          "title": "Play together",
+          "body": "The canvas is shared — everyone's particles collide in one live world."
+        },
+        {
+          "icon": "🔥",
+          "title": "Emergent reactions",
+          "body": "Elements interact, spread, and combust into surprising chain reactions."
+        },
+        {
+          "icon": "🎨",
+          "title": "A living sandbox",
+          "body": "No goals, no limits — just a collaborative mess of emergent chemistry."
+        }
       ]
     },
     {
@@ -50,6 +94,28 @@
         "screenshots/last-one-wins/1.png",
         "screenshots/last-one-wins/2.png",
         "screenshots/last-one-wins/3.png"
+      ],
+      "highlights": [
+        {
+          "icon": "💰",
+          "title": "Add to the pot",
+          "body": "Every contribution grows a shared jackpot anyone can win."
+        },
+        {
+          "icon": "⏳",
+          "title": "Reset the clock",
+          "body": "Each new entry restarts the countdown — timing is everything."
+        },
+        {
+          "icon": "🏆",
+          "title": "Last one wins",
+          "body": "When the timer hits zero, whoever went last takes the whole pot."
+        },
+        {
+          "icon": "🔗",
+          "title": "Provably fair",
+          "body": "The pot and the leaderboard are auditable on the Usernode chain."
+        }
       ]
     },
     {
@@ -67,6 +133,28 @@
         "screenshots/echo-diagnostic/1.png",
         "screenshots/echo-diagnostic/2.png",
         "screenshots/echo-diagnostic/3.png"
+      ],
+      "highlights": [
+        {
+          "icon": "📤",
+          "title": "Send a transaction",
+          "body": "Fire off a test transaction straight from your linked wallet."
+        },
+        {
+          "icon": "📥",
+          "title": "Watch it echo back",
+          "body": "See the round-trip confirm signing, broadcast, and inclusion."
+        },
+        {
+          "icon": "🔍",
+          "title": "Confirm indexing",
+          "body": "Verify the explorer picked up your transaction end to end."
+        },
+        {
+          "icon": "🧰",
+          "title": "A reference dapp",
+          "body": "The simplest possible build — handy for debugging wallet connectivity."
+        }
       ]
     }
   ]

@@ -621,6 +621,132 @@
         display: grid;
         gap: 14px;
       }
+      /* ── Feature showcase ─────────────────────────────────────────
+         A small looping highlight reel near the top of the modal body.
+         Steps cross-fade/slide within a fixed-height viewport. */
+      .showcase {
+        position: relative;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg);
+        padding: 14px 16px;
+        display: grid;
+        gap: 10px;
+      }
+      .showcaseViewport {
+        position: relative;
+        min-height: 70px;
+      }
+      .showcaseStep {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        opacity: 0;
+        transform: translateX(14px);
+        transition: opacity 360ms ease, transform 360ms ease;
+        pointer-events: none;
+      }
+      .showcaseStep.active {
+        opacity: 1;
+        transform: translateX(0);
+        pointer-events: auto;
+      }
+      .showcaseIcon {
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        line-height: 1;
+        background: var(--card);
+        border: 1px solid var(--border);
+        overflow: hidden;
+      }
+      .showcaseIcon img,
+      .showcaseIcon svg {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .showcaseText {
+        min-width: 0;
+        display: grid;
+        gap: 3px;
+        align-content: start;
+      }
+      .showcaseTitle {
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--fg);
+        line-height: 1.25;
+      }
+      .showcaseBody {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .showcaseDots {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+      }
+      .showcaseDot {
+        width: 8px;
+        height: 8px;
+        padding: 0;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        background: transparent;
+        cursor: pointer;
+        transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+      }
+      .showcaseDot.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        transform: scale(1.2);
+      }
+      .showcaseDot:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--accent);
+      }
+      /* Reduced-motion / static: stack the steps as a list, no transitions. */
+      .showcase.static .showcaseViewport {
+        position: static;
+        min-height: 0;
+        display: grid;
+        gap: 12px;
+      }
+      .showcase.static .showcaseStep {
+        position: static;
+        inset: auto;
+        opacity: 1;
+        transform: none;
+        transition: none;
+        pointer-events: auto;
+      }
+      .showcase.static .showcaseDots {
+        display: none;
+      }
+      /* Staggered entrance reveal (fallback when a dapp has no highlights).
+         Defined only under no-preference so reduced-motion keeps elements
+         visible with no animation. */
+      @media (prefers-reduced-motion: no-preference) {
+        @keyframes revealUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .revealItem {
+          opacity: 0;
+          animation: revealUp 420ms ease-out forwards;
+        }
+      }
       .previewMeta {
         display: grid;
         gap: 6px;
@@ -761,6 +887,15 @@
           >&times;</button>
         </div>
         <div class="previewBody">
+          <div class="showcase" id="previewShowcase" aria-label="Feature highlights" hidden>
+            <div class="showcaseViewport" id="showcaseViewport" aria-live="off"></div>
+            <div
+              class="showcaseDots"
+              id="showcaseDots"
+              role="tablist"
+              aria-label="Choose feature highlight"
+            ></div>
+          </div>
           <div class="previewMeta" id="previewMeta"></div>
           <div class="previewDesc" id="previewDesc"></div>
         </div>
@@ -1154,11 +1289,196 @@
       const previewTagRow = document.getElementById("previewTagRow");
       const previewMeta = document.getElementById("previewMeta");
       const previewDesc = document.getElementById("previewDesc");
+      const previewHeadText = document.querySelector(".previewHeadText");
+      const previewShowcase = document.getElementById("previewShowcase");
+      const showcaseViewport = document.getElementById("showcaseViewport");
+      const showcaseDots = document.getElementById("showcaseDots");
       const previewLaunchBtn = document.getElementById("previewLaunch");
       const previewCloseBtn = document.getElementById("previewClose");
 
       let previewCurrentDapp = null;
       let previewReturnFocus = null;
+
+      // ── Feature showcase state ────────────────────────────────────
+      const SHOWCASE_INTERVAL_MS = 2500;
+      let showcaseSteps = [];
+      let showcaseIndex = 0;
+      let showcaseTimer = null;
+      let showcasePaused = false;
+
+      function prefersReducedMotion() {
+        return !!(
+          window.matchMedia &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        );
+      }
+
+      // Build an icon node from an optional inline-<svg> string, image URL, or
+      // emoji/short text (makeLogo-style handling). Returns null when absent.
+      function makeShowcaseIcon(icon) {
+        const raw = typeof icon === "string" ? icon.trim() : "";
+        if (!raw) return null;
+        const wrap = document.createElement("div");
+        wrap.className = "showcaseIcon";
+        wrap.setAttribute("aria-hidden", "true");
+        if (raw.startsWith("<svg")) {
+          wrap.innerHTML = raw;
+        } else if (
+          /^https?:\/\//.test(raw) ||
+          raw.startsWith("/") ||
+          /\.(png|jpe?g|gif|webp|svg)$/i.test(raw)
+        ) {
+          const img = document.createElement("img");
+          img.src = raw;
+          img.alt = "";
+          img.loading = "lazy";
+          wrap.appendChild(img);
+        } else {
+          wrap.textContent = raw; // emoji / short text
+        }
+        return wrap;
+      }
+
+      function stopShowcaseTimer() {
+        if (showcaseTimer != null) {
+          clearInterval(showcaseTimer);
+          showcaseTimer = null;
+        }
+      }
+
+      function startShowcaseTimer() {
+        stopShowcaseTimer();
+        if (prefersReducedMotion()) return;
+        if (showcaseSteps.length <= 1) return;
+        showcaseTimer = setInterval(() => {
+          if (showcasePaused) return;
+          showcaseGoTo(showcaseIndex + 1, false);
+        }, SHOWCASE_INTERVAL_MS);
+      }
+
+      function restartShowcaseTimer() {
+        if (showcaseTimer != null) startShowcaseTimer();
+      }
+
+      // Move to step `i` (wraps). userInitiated restarts the auto-advance clock.
+      function showcaseGoTo(i, userInitiated) {
+        const n = showcaseSteps.length;
+        if (n === 0) return;
+        showcaseIndex = ((i % n) + n) % n;
+        const steps = showcaseViewport.children;
+        for (let k = 0; k < steps.length; k++) {
+          steps[k].classList.toggle("active", k === showcaseIndex);
+        }
+        const dots = showcaseDots.children;
+        for (let k = 0; k < dots.length; k++) {
+          const active = k === showcaseIndex;
+          dots[k].classList.toggle("active", active);
+          dots[k].setAttribute("aria-selected", active ? "true" : "false");
+          dots[k].tabIndex = active ? 0 : -1;
+        }
+        if (userInitiated) restartShowcaseTimer();
+      }
+
+      function buildShowcase(dapp) {
+        stopShowcaseTimer();
+        showcaseViewport.textContent = "";
+        showcaseDots.textContent = "";
+        showcaseIndex = 0;
+        showcasePaused = false;
+
+        const steps = Array.isArray(dapp.highlights)
+          ? dapp.highlights.filter((s) => s && (s.title || s.body))
+          : [];
+        showcaseSteps = steps;
+
+        if (steps.length === 0) {
+          // No highlights → hide showcase; caller runs the entrance reveal.
+          previewShowcase.hidden = true;
+          return;
+        }
+        previewShowcase.hidden = false;
+        previewShowcase.setAttribute(
+          "aria-label",
+          `${dapp.name || "dapp"} feature highlights`
+        );
+
+        const reduced = prefersReducedMotion();
+        previewShowcase.classList.toggle("static", reduced);
+
+        steps.forEach((step, i) => {
+          const el = document.createElement("div");
+          el.className = "showcaseStep" + (i === 0 ? " active" : "");
+          el.setAttribute("role", "group");
+          el.setAttribute("aria-roledescription", "slide");
+          el.setAttribute("aria-label", `${i + 1} of ${steps.length}`);
+          const icon = makeShowcaseIcon(step.icon);
+          if (icon) el.appendChild(icon);
+          const text = document.createElement("div");
+          text.className = "showcaseText";
+          const title = document.createElement("div");
+          title.className = "showcaseTitle";
+          title.textContent = step.title || ""; // plain text only
+          const body = document.createElement("div");
+          body.className = "showcaseBody";
+          body.textContent = step.body || ""; // plain text only
+          text.appendChild(title);
+          text.appendChild(body);
+          el.appendChild(text);
+          showcaseViewport.appendChild(el);
+        });
+
+        steps.forEach((step, i) => {
+          const dot = document.createElement("button");
+          dot.type = "button";
+          dot.className = "showcaseDot" + (i === 0 ? " active" : "");
+          dot.setAttribute("role", "tab");
+          dot.setAttribute(
+            "aria-label",
+            `Show highlight ${i + 1}${step.title ? ": " + step.title : ""}`
+          );
+          dot.setAttribute("aria-selected", i === 0 ? "true" : "false");
+          dot.tabIndex = i === 0 ? 0 : -1;
+          dot.addEventListener("click", (e) => {
+            e.stopPropagation();
+            showcaseGoTo(i, true);
+          });
+          showcaseDots.appendChild(dot);
+        });
+
+        if (!reduced && steps.length > 1) startShowcaseTimer();
+      }
+
+      // Staggered entrance reveal of the standard preview elements, used as the
+      // fallback animation when a dapp has no authored highlights.
+      function applyStaggerReveal(els) {
+        if (prefersReducedMotion()) {
+          els.forEach((el) => {
+            if (el) {
+              el.classList.remove("revealItem");
+              el.style.animationDelay = "";
+            }
+          });
+          return;
+        }
+        els.forEach((el, i) => {
+          if (!el) return;
+          el.classList.remove("revealItem");
+          el.style.animationDelay = i * 80 + "ms";
+        });
+        void previewPanel.offsetWidth; // force reflow so the animation re-runs
+        els.forEach((el) => {
+          if (el) el.classList.add("revealItem");
+        });
+      }
+
+      function clearStaggerReveal(els) {
+        els.forEach((el) => {
+          if (el) {
+            el.classList.remove("revealItem");
+            el.style.animationDelay = "";
+          }
+        });
+      }
 
       function launchDapp(dapp) {
         if (dapp && dapp.url) window.open(dapp.url, "_blank", "noopener");
@@ -1282,6 +1602,17 @@
         // Plain text only — never inject untrusted strings as HTML.
         previewDesc.textContent = dapp.longDescription || dapp.description || "";
 
+        // Feature showcase (resets to step 0). When the dapp has no authored
+        // highlights, fall back to a staggered entrance reveal of the standard
+        // preview elements so the panel always animates gracefully.
+        buildShowcase(dapp);
+        const revealEls = [previewLogo, previewHeadText, previewMeta, previewDesc];
+        if (previewShowcase.hidden) {
+          applyStaggerReveal(revealEls);
+        } else {
+          clearStaggerReveal(revealEls);
+        }
+
         previewOverlay.classList.add("open");
         previewOverlay.setAttribute("aria-hidden", "false");
         document.body.style.overflow = "hidden";
@@ -1291,6 +1622,7 @@
 
       function closePreview() {
         if (!previewOverlay.classList.contains("open")) return;
+        stopShowcaseTimer(); // stop the auto-advance loop so it doesn't leak
         previewOverlay.classList.remove("open");
         previewOverlay.setAttribute("aria-hidden", "true");
         document.body.style.overflow = "";
@@ -1336,6 +1668,29 @@
             e.preventDefault();
             first.focus();
           }
+        }
+      });
+
+      // ── Feature showcase controls: pause on hover/focus, arrow keys ──
+      previewShowcase.addEventListener("mouseenter", () => {
+        showcasePaused = true;
+      });
+      previewShowcase.addEventListener("mouseleave", () => {
+        showcasePaused = false;
+      });
+      previewShowcase.addEventListener("focusin", () => {
+        showcasePaused = true;
+      });
+      previewShowcase.addEventListener("focusout", () => {
+        showcasePaused = false;
+      });
+      previewShowcase.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          showcaseGoTo(showcaseIndex - 1, true);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          showcaseGoTo(showcaseIndex + 1, true);
         }
       });
 
