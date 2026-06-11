@@ -82,6 +82,7 @@
       :root {
         color-scheme: light;
         --bg: #f7f8fb;
+        --bg-rgb: 247 248 251;
         --fg: #0b1220;
         --muted: #4b5568;
         --card: #ffffff;
@@ -99,6 +100,7 @@
       html.dark {
         color-scheme: dark;
         --bg: #0b0f16;
+        --bg-rgb: 11 15 22;
         --fg: #e7edf7;
         --muted: #a8b3c7;
         --card: #141b26;
@@ -531,6 +533,89 @@
           animation: livePing 2s ease-out infinite;
         }
       }
+      /* ── Launch overlay ─────────────────────────────────────────────────── */
+      #launchOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(var(--bg-rgb) / 0.82);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        opacity: 1;
+      }
+      #launchOverlay[hidden] {
+        display: none;
+      }
+      #launchOverlay.is-visible {
+        opacity: 1;
+      }
+      #launchOverlay.is-hiding {
+        pointer-events: none;
+      }
+      .launchCard {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px 32px;
+        max-width: 320px;
+        width: calc(100% - 48px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+        text-align: center;
+      }
+      .launchSpinner {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        flex: 0 0 auto;
+      }
+      #launchDappName {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--fg);
+        min-height: 1.2em;
+      }
+      #launchMsg {
+        font-size: 14px;
+        color: var(--muted);
+        min-height: 1.3em;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        @keyframes overlayFadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes overlayFadeOut {
+          from { opacity: 1; }
+          to   { opacity: 0; }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        #launchOverlay.is-visible {
+          animation: overlayFadeIn 180ms ease-out both;
+        }
+        #launchOverlay.is-hiding {
+          animation: overlayFadeOut 280ms ease-in both;
+        }
+        .launchSpinner {
+          animation: spin 900ms linear infinite;
+        }
+        #launchMsg {
+          transition: opacity 150ms ease;
+        }
+        #launchMsg.msg-fade {
+          opacity: 0;
+        }
+      }
     </style>
   </head>
   <body>
@@ -568,6 +653,13 @@
           </div>
         </div>
         <ul id="dappList"></ul>
+      </div>
+      <div id="launchOverlay" role="status" aria-live="polite" aria-label="Launching dapp" hidden>
+        <div class="launchCard">
+          <div class="launchSpinner"></div>
+          <div id="launchDappName"></div>
+          <div id="launchMsg"></div>
+        </div>
       </div>
     </main>
     <script>
@@ -912,6 +1004,56 @@
 
       updateSortUI();
 
+      // ── Launch overlay ──────────────────────────────────────────────────────
+      const _launchOverlay = document.getElementById("launchOverlay");
+      const _launchDappName = document.getElementById("launchDappName");
+      const _launchMsg = document.getElementById("launchMsg");
+      let _overlayTimers = [];
+
+      function _hideOverlay() {
+        _overlayTimers.forEach(clearTimeout);
+        _overlayTimers = [];
+        if (!_launchOverlay || _launchOverlay.hidden) return;
+        _launchOverlay.classList.add("is-hiding");
+        _launchOverlay.classList.remove("is-visible");
+        _overlayTimers.push(setTimeout(() => {
+          _launchOverlay.hidden = true;
+          _launchOverlay.classList.remove("is-hiding");
+        }, 320));
+      }
+
+      function showLaunchOverlay(dappName) {
+        if (!_launchOverlay) return;
+        _overlayTimers.forEach(clearTimeout);
+        _overlayTimers = [];
+
+        if (_launchDappName) _launchDappName.textContent = dappName || "";
+        if (_launchMsg) _launchMsg.textContent = "Launching...";
+
+        _launchOverlay.classList.remove("is-hiding");
+        _launchOverlay.hidden = false;
+        // Force a reflow so the fade-in animation fires even on re-show
+        void _launchOverlay.offsetWidth;
+        _launchOverlay.classList.add("is-visible");
+
+        function setMsg(text) {
+          if (!_launchMsg) return;
+          _launchMsg.classList.add("msg-fade");
+          _overlayTimers.push(setTimeout(() => {
+            _launchMsg.textContent = text;
+            _launchMsg.classList.remove("msg-fade");
+          }, 160));
+        }
+
+        _overlayTimers.push(setTimeout(() => setMsg("Connecting to network..."), 1100));
+        _overlayTimers.push(setTimeout(() => setMsg("Loading assets..."), 2400));
+        _overlayTimers.push(setTimeout(() => _hideOverlay(), 3400));
+      }
+
+      if (_launchOverlay) {
+        _launchOverlay.addEventListener("pointerup", () => _hideOverlay());
+      }
+
       (async function main() {
         addRow("(loading dapps...)");
         try {
@@ -1035,6 +1177,8 @@
             const link = downTarget.closest("a");
             if (link && link.href) {
               window.open(link.href, link.target || "_self", "noopener");
+              const nameEl = link.querySelector(".name");
+              showLaunchOverlay(nameEl ? nameEl.textContent : "");
             }
           }
           downTarget = null;
