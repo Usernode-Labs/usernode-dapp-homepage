@@ -3,35 +3,59 @@
     {
       "name": "Opinion Market",
       "description": "A prediction market, but for opinions.",
+      "longDescription": "Opinion Market lets anyone open a market on a subjective question and trade shares on the outcomes they believe in. Stake on opinions, watch prices move as the crowd weighs in, and settle markets through community resolution. Every trade is an on-chain transaction on the Usernode chain, so the order book and your positions are fully transparent and verifiable.",
       "author": "Usernode Labs",
+      "developerUrl": "https://usernodelabs.org",
       "url": "https://opinion-market-eb3f76.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
       "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#2563eb'/><rect x='10' y='20' width='5' height='10' rx='1.5' fill='#fff'/><rect x='17.5' y='14' width='5' height='16' rx='1.5' fill='#fff'/><rect x='25' y='9' width='5' height='21' rx='1.5' fill='#fff'/></svg>",
-      "category": "Market"
+      "category": "Market",
+      "version": "1.3.0",
+      "updated": "2026-05-28",
+      "screenshots": [
+        "https://opinion-market-eb3f76.social-vibecoding.usernodelabs.org/screenshots/1.png",
+        "https://opinion-market-eb3f76.social-vibecoding.usernodelabs.org/screenshots/2.png"
+      ]
     },
     {
       "name": "Falling Sands",
       "description": "A multiplayer 2d physics simulator.",
+      "longDescription": "Falling Sands is a real-time multiplayer falling-sand physics playground. Drop sand, water, fire, and other elements into a shared 2D world and watch them interact, spread, and collide with what everyone else is doing. State is synchronized across players so the canvas is always a collaborative mess of emergent chemistry.",
       "author": "Usernode Labs",
+      "developerUrl": "https://usernodelabs.org",
       "url": "https://falling-sands-game-ad186d.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu",
-      "category": "Game"
+      "category": "Game",
+      "version": "0.9.2",
+      "updated": "2026-06-02",
+      "screenshots": [
+        "https://falling-sands-game-ad186d.social-vibecoding.usernodelabs.org/screenshots/1.png",
+        "https://falling-sands-game-ad186d.social-vibecoding.usernodelabs.org/screenshots/2.png"
+      ]
     },
     {
       "name": "Last One Wins",
       "description": "Game where last one to add to the pot, gets the pot.",
+      "longDescription": "Last One Wins is a high-stakes game of nerve. Players add to a shared pot, and each contribution resets a countdown. When the timer finally runs out, whoever added last takes the entire pot. Every contribution is an on-chain transaction, so the pot and the leaderboard are provably fair and auditable on the Usernode chain.",
       "author": "Usernode Labs",
+      "developerUrl": "https://usernodelabs.org",
       "url": "https://last-one-wins-7053f0.social-vibecoding.usernodelabs.org",
       "pubkey": "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05",
-      "category": "Game"
+      "category": "Game",
+      "version": "1.1.0",
+      "updated": "2026-05-19"
     },
     {
       "name": "Echo Diagnostic",
       "description": "Simple test of sending / receiving transactions",
+      "longDescription": "Echo Diagnostic is a minimal utility for verifying end-to-end transaction flow on the Usernode chain. Send a transaction and watch it echo back, confirming that signing, broadcast, inclusion, and explorer indexing are all working. Handy for debugging wallet connectivity and as a reference implementation for the simplest possible dapp.",
       "author": "Usernode Labs",
+      "developerUrl": "https://usernodelabs.org",
       "url": "https://usernode-echo-diagnostic-6f02bf.social-vibecoding.usernodelabs.org/",
       "pubkey": "ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh",
-      "category": "Utility"
+      "category": "Utility",
+      "version": "1.0.1",
+      "updated": "2026-04-30"
     }
   ]
 }

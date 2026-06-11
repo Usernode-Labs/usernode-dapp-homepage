@@ -531,6 +531,200 @@
           animation: livePing 2s ease-out infinite;
         }
       }
+
+      /* ── Preview modal ──────────────────────────────────────────────
+         A single reusable overlay populated on open. Uses the shared
+         theme variables so it recolors in light/dark for free. */
+      .previewOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        box-sizing: border-box;
+        background: rgba(8, 12, 20, 0.55);
+        backdrop-filter: blur(2px);
+      }
+      .previewOverlay.open {
+        display: flex;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        @keyframes previewIn {
+          from { opacity: 0; transform: translateY(8px) scale(0.985); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .previewOverlay.open .previewPanel {
+          animation: previewIn 160ms ease-out;
+        }
+      }
+      .previewPanel {
+        background: var(--card);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+        width: 100%;
+        max-width: 560px;
+        max-height: calc(100dvh - 40px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .previewHeader {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px 16px 12px;
+        border-bottom: 1px solid var(--border);
+        flex: 0 0 auto;
+      }
+      .previewHeadText {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: grid;
+        gap: 6px;
+      }
+      .previewName {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        line-height: 1.2;
+        word-break: break-word;
+      }
+      .previewClose {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        width: 30px;
+        height: 30px;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .previewClose:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .previewBody {
+        padding: 14px 16px 16px;
+        overflow-y: auto;
+        flex: 1 1 auto;
+        min-height: 0;
+        display: grid;
+        gap: 14px;
+      }
+      .previewMeta {
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+      }
+      .previewMetaRow {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+      .previewMetaLabel {
+        color: var(--muted);
+        flex: 0 0 auto;
+        min-width: 92px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      .previewMetaVal {
+        color: var(--fg);
+        min-width: 0;
+        word-break: break-word;
+      }
+      .previewMetaVal a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .previewMetaVal a:hover {
+        text-decoration: underline;
+      }
+      .previewDesc {
+        color: var(--fg);
+        font-size: 14px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+      .previewSection {
+        display: grid;
+        gap: 8px;
+      }
+      .previewSectionTitle {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--muted);
+      }
+      .previewShots {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scroll-snap-type: x mandatory;
+      }
+      .previewShots img {
+        height: 160px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        flex: 0 0 auto;
+        object-fit: cover;
+        scroll-snap-align: start;
+        background: var(--bg);
+      }
+      .previewStats {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .previewStats .stat svg {
+        width: 14px;
+        height: 14px;
+        opacity: 0.7;
+      }
+      .previewFooter {
+        padding: 12px 16px 16px;
+        border-top: 1px solid var(--border);
+        flex: 0 0 auto;
+        display: flex;
+        justify-content: flex-end;
+      }
+      .previewLaunch {
+        appearance: none;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        font-family: inherit;
+        padding: 9px 18px;
+        border-radius: 8px;
+        cursor: pointer;
+        color: #ffffff;
+        background: linear-gradient(135deg, #6d28d9, #9333ea);
+        box-shadow: 0 0 10px rgba(124, 58, 237, 0.35);
+        transition: filter 0.2s ease, box-shadow 0.2s ease;
+      }
+      .previewLaunch:hover {
+        filter: brightness(1.12);
+        box-shadow: 0 0 16px rgba(124, 58, 237, 0.55);
+      }
+      html.dark .previewLaunch {
+        background: linear-gradient(135deg, #7c3aed, #c084fc);
+        box-shadow: 0 0 12px rgba(167, 139, 250, 0.55);
+      }
     </style>
   </head>
   <body>
@@ -570,6 +764,42 @@
         <ul id="dappList"></ul>
       </div>
     </main>
+    <div
+      class="previewOverlay"
+      id="previewOverlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="previewName"
+      aria-hidden="true"
+    >
+      <div class="previewPanel" id="previewPanel">
+        <div class="previewHeader">
+          <div class="previewLogo" id="previewLogo"></div>
+          <div class="previewHeadText">
+            <div class="previewName" id="previewName"></div>
+            <div class="tagRow" id="previewTagRow" style="margin-top:0"></div>
+          </div>
+          <button
+            class="previewClose"
+            id="previewClose"
+            type="button"
+            aria-label="Close preview"
+            title="Close"
+          >&times;</button>
+        </div>
+        <div class="previewBody">
+          <div class="previewMeta" id="previewMeta"></div>
+          <div class="previewSection" id="previewShotsSection" hidden>
+            <div class="previewSectionTitle">Screenshots</div>
+            <div class="previewShots" id="previewShots"></div>
+          </div>
+          <div class="previewDesc" id="previewDesc"></div>
+        </div>
+        <div class="previewFooter">
+          <button class="previewLaunch" id="previewLaunch" type="button">Launch</button>
+        </div>
+      </div>
+    </div>
     <script>
       const SORT_KEY = "dapphome:sort";
       const THEME_KEY = "dapphome:theme";
@@ -760,6 +990,15 @@
           link.href = dapp.url;
           link.target = "_blank";
           link.rel = "noopener";
+          // Left-tap / Enter on the card body opens the preview panel; the
+          // Launch button (below) is the only part that launches the dapp.
+          link.setAttribute("aria-label", `Preview ${dapp.name || "dapp"}`);
+          link.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+              e.preventDefault();
+              openPreview(dapp, li);
+            }
+          });
 
           const logo = makeLogo(dapp);
 
@@ -845,6 +1084,16 @@
           const launchBtn = document.createElement("span");
           launchBtn.className = "launchBtn";
           launchBtn.textContent = "Launch";
+          launchBtn.setAttribute("role", "button");
+          launchBtn.setAttribute("tabindex", "0");
+          launchBtn.setAttribute("aria-label", `Launch ${dapp.name || "dapp"}`);
+          launchBtn.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+              e.preventDefault();
+              e.stopPropagation();
+              launchDapp(dapp);
+            }
+          });
 
           descRow.appendChild(desc);
           descRow.appendChild(launchBtn);
@@ -857,6 +1106,7 @@
           link.appendChild(logo);
           link.appendChild(body);
           li.appendChild(link);
+          li.__dapp = dapp;
           list.appendChild(li);
         }
       }
@@ -926,6 +1176,226 @@
           );
         }
       })();
+
+      // ── Preview modal ─────────────────────────────────────────────
+      const previewOverlay = document.getElementById("previewOverlay");
+      const previewPanel = document.getElementById("previewPanel");
+      const previewLogo = document.getElementById("previewLogo");
+      const previewNameEl = document.getElementById("previewName");
+      const previewTagRow = document.getElementById("previewTagRow");
+      const previewMeta = document.getElementById("previewMeta");
+      const previewDesc = document.getElementById("previewDesc");
+      const previewShotsSection = document.getElementById("previewShotsSection");
+      const previewShots = document.getElementById("previewShots");
+      const previewLaunchBtn = document.getElementById("previewLaunch");
+      const previewCloseBtn = document.getElementById("previewClose");
+
+      let previewCurrentDapp = null;
+      let previewReturnFocus = null;
+
+      function launchDapp(dapp) {
+        if (dapp && dapp.url) window.open(dapp.url, "_blank", "noopener");
+      }
+
+      // Format an ISO-ish date string into a friendly "Last updated" value.
+      // Falls back to the raw string when it can't be parsed; null when empty.
+      function formatUpdated(raw) {
+        if (typeof raw !== "string" || !raw.trim()) return null;
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return raw;
+        try {
+          return d.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+        } catch (_) {
+          return raw;
+        }
+      }
+
+      function metaRow(label, value) {
+        const row = document.createElement("div");
+        row.className = "previewMetaRow";
+        const l = document.createElement("div");
+        l.className = "previewMetaLabel";
+        l.textContent = label;
+        const v = document.createElement("div");
+        v.className = "previewMetaVal";
+        if (typeof value === "string") v.textContent = value;
+        else v.appendChild(value);
+        row.appendChild(l);
+        row.appendChild(v);
+        return row;
+      }
+
+      function buildPreviewMeta(dapp) {
+        previewMeta.textContent = "";
+
+        const author = dapp.author || "unknown";
+        let devNode;
+        if (dapp.developerUrl) {
+          const a = document.createElement("a");
+          a.href = dapp.developerUrl;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.textContent = author;
+          devNode = a;
+        } else {
+          devNode = author;
+        }
+        previewMeta.appendChild(metaRow("Developer", devNode));
+
+        if (dapp.version)
+          previewMeta.appendChild(metaRow("Version", String(dapp.version)));
+
+        const updated = formatUpdated(dapp.updated);
+        if (updated) previewMeta.appendChild(metaRow("Last updated", updated));
+
+        const s = dapp.pubkey ? statsMap[dapp.pubkey] : null;
+        if (s) {
+          const wrap = document.createElement("div");
+          wrap.className = "previewStats";
+          const u = document.createElement("span");
+          u.className = "stat";
+          u.appendChild(personIcon());
+          u.appendChild(document.createTextNode(formatNum(s.users)));
+          const t = document.createElement("span");
+          t.className = "stat";
+          t.appendChild(txIcon());
+          t.appendChild(document.createTextNode(formatNum(s.txns)));
+          wrap.appendChild(u);
+          wrap.appendChild(t);
+          previewMeta.appendChild(metaRow("Activity", wrap));
+        }
+      }
+
+      function buildPreviewShots(dapp) {
+        previewShots.textContent = "";
+        const shots = Array.isArray(dapp.screenshots)
+          ? dapp.screenshots.filter((s) => typeof s === "string" && s.trim())
+          : [];
+        if (shots.length === 0) {
+          previewShotsSection.hidden = true;
+          return;
+        }
+        previewShotsSection.hidden = false;
+        for (const src of shots) {
+          const img = document.createElement("img");
+          img.src = src;
+          img.alt = `${dapp.name || "dapp"} screenshot`;
+          img.loading = "lazy";
+          img.addEventListener("error", () => {
+            img.remove();
+            if (!previewShots.querySelector("img"))
+              previewShotsSection.hidden = true;
+          });
+          previewShots.appendChild(img);
+        }
+      }
+
+      function buildPreviewTag(dapp) {
+        previewTagRow.textContent = "";
+        if (!dapp.category) {
+          previewTagRow.hidden = true;
+          return;
+        }
+        previewTagRow.hidden = false;
+        const tag = document.createElement("span");
+        tag.className = "categoryTag";
+        tag.textContent = dapp.category;
+        const color = CATEGORY_COLORS[dapp.category];
+        if (color) {
+          tag.style.color = color;
+          tag.style.background = color + "33";
+          tag.style.border = "1px solid " + color + "66";
+        } else {
+          tag.style.color = "var(--muted)";
+          tag.style.border = "1px solid var(--border)";
+        }
+        previewTagRow.appendChild(tag);
+      }
+
+      function openPreview(dapp, originEl) {
+        if (!dapp) return;
+        previewCurrentDapp = dapp;
+        // Return focus to the card's link on close (the <li> itself isn't
+        // focusable; the inner .dappLink anchor is).
+        previewReturnFocus =
+          (originEl &&
+            originEl.querySelector &&
+            originEl.querySelector(".dappLink")) ||
+          originEl ||
+          document.activeElement;
+
+        previewNameEl.textContent = dapp.name || "(unnamed)";
+
+        previewLogo.textContent = "";
+        previewLogo.appendChild(makeLogo(dapp));
+
+        buildPreviewTag(dapp);
+        buildPreviewMeta(dapp);
+        buildPreviewShots(dapp);
+
+        // Plain text only — never inject untrusted strings as HTML.
+        previewDesc.textContent = dapp.longDescription || dapp.description || "";
+
+        previewOverlay.classList.add("open");
+        previewOverlay.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+
+        previewCloseBtn.focus();
+      }
+
+      function closePreview() {
+        if (!previewOverlay.classList.contains("open")) return;
+        previewOverlay.classList.remove("open");
+        previewOverlay.setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
+        previewCurrentDapp = null;
+        const ret = previewReturnFocus;
+        previewReturnFocus = null;
+        if (ret && typeof ret.focus === "function") {
+          try {
+            ret.focus();
+          } catch (_) {}
+        }
+      }
+
+      previewCloseBtn.addEventListener("click", closePreview);
+      previewLaunchBtn.addEventListener("click", () => {
+        launchDapp(previewCurrentDapp);
+      });
+      previewOverlay.addEventListener("click", (e) => {
+        if (e.target === previewOverlay) closePreview();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (!previewOverlay.classList.contains("open")) return;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closePreview();
+          return;
+        }
+        if (e.key === "Tab") {
+          const focusables = previewPanel.querySelectorAll(
+            'a[href], button, [tabindex]:not([tabindex="-1"])'
+          );
+          const visible = Array.prototype.filter.call(
+            focusables,
+            (el) => !el.disabled && el.offsetParent !== null
+          );
+          if (visible.length === 0) return;
+          const first = visible[0];
+          const last = visible[visible.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      });
 
       // --- Rubber-band (overscroll-like) stretch config ---
       const RUBBER_BAND = {
@@ -1032,9 +1502,22 @@
           reset();
 
           if (!moved && downTarget) {
-            const link = downTarget.closest("a");
-            if (link && link.href) {
-              window.open(link.href, link.target || "_self", "noopener");
+            const li = downTarget.closest("li");
+            const dapp = li && li.__dapp;
+            if (dapp) {
+              if (downTarget.closest(".launchBtn")) {
+                // Tapped the Launch button → open the hosted dapp.
+                launchDapp(dapp);
+              } else {
+                // Tapped anywhere else on the card → open the preview.
+                openPreview(dapp, li);
+              }
+            } else {
+              // Fallback for non-dapp rows (e.g. status messages with a link).
+              const link = downTarget.closest("a");
+              if (link && link.href) {
+                window.open(link.href, link.target || "_self", "noopener");
+              }
             }
           }
           downTarget = null;
