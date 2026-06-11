@@ -30,6 +30,19 @@ const path = require("path");
 const LOCAL_DEV = process.argv.includes("--local-dev");
 const PORT = Number(process.env.PORT) || 8000;
 const INDEX_PATH = path.join(__dirname, "index.html");
+const PUBLIC_DIR = path.join(__dirname, "public");
+const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
+
+// Static content-type lookup for screenshot assets served from public/.
+const STATIC_CONTENT_TYPES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".avif": "image/avif",
+};
 
 const DAPPS_PATH = (() => {
   if (process.env.DAPPS_JSON_PATH) return path.resolve(process.env.DAPPS_JSON_PATH);
@@ -445,6 +458,55 @@ const server = http.createServer((req, res) => {
 
   if (req.method !== "GET" && req.method !== "HEAD") {
     return send(res, 405, { "content-type": "text/plain" }, "Method Not Allowed");
+  }
+
+  // Static screenshot assets committed under public/screenshots/. Served here
+  // (before the index.html catch-all) so image requests resolve to real files
+  // instead of falling through to the SPA shell. A 404 lets the preview
+  // modal's per-image onerror handler hide thumbnails whose file isn't present.
+  if (pathname.startsWith("/screenshots/")) {
+    let rel;
+    try {
+      rel = decodeURIComponent(pathname.slice("/screenshots/".length));
+    } catch (_) {
+      return send(res, 400, { "content-type": "text/plain" }, "Bad Request");
+    }
+    // Resolve and confirm the target stays within SCREENSHOTS_DIR (no traversal).
+    const filePath = path.resolve(SCREENSHOTS_DIR, rel);
+    const rootWithSep = SCREENSHOTS_DIR + path.sep;
+    if (filePath !== SCREENSHOTS_DIR && !filePath.startsWith(rootWithSep)) {
+      return send(res, 403, { "content-type": "text/plain" }, "Forbidden");
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    const ctype = STATIC_CONTENT_TYPES[ext];
+    if (!ctype) {
+      return send(res, 404, { "content-type": "text/plain" }, "Not Found");
+    }
+    return fs.stat(filePath, (err, stat) => {
+      if (err || !stat.isFile()) {
+        return send(res, 404, { "content-type": "text/plain" }, "Not Found");
+      }
+      const headers = {
+        "content-type": ctype,
+        "content-length": stat.size,
+        "cache-control": "public, max-age=300",
+        "access-control-allow-origin": "*",
+      };
+      if (req.method === "HEAD") {
+        res.writeHead(200, headers);
+        return res.end();
+      }
+      res.writeHead(200, headers);
+      fs.createReadStream(filePath)
+        .on("error", () => {
+          if (!res.headersSent) {
+            send(res, 500, { "content-type": "text/plain" }, "Read error");
+          } else {
+            res.destroy();
+          }
+        })
+        .pipe(res);
+    });
   }
 
   if (pathname === "/dapps.json") {
