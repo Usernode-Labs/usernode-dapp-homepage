@@ -657,136 +657,6 @@
         line-height: 1.55;
         white-space: pre-wrap;
       }
-      .previewSection {
-        display: grid;
-        gap: 8px;
-      }
-      .previewSectionTitle {
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        color: var(--muted);
-      }
-      /* ── Screenshot carousel ─────────────────────────────────────── */
-      .carousel {
-        position: relative;
-        border-radius: 12px;
-        overflow: hidden;
-        border: 1px solid var(--border);
-        background: var(--bg);
-        outline: none;
-        touch-action: pan-y;
-      }
-      .carousel:focus-visible {
-        box-shadow: 0 0 0 2px var(--accent);
-      }
-      /* Sliding track: one viewport-wide slide per screenshot. */
-      .carouselTrack {
-        display: flex;
-        width: 100%;
-        height: 200px;
-        transform: translateX(0);
-        transition: transform 320ms cubic-bezier(0.2, 0.9, 0.2, 1);
-        will-change: transform;
-      }
-      .carouselSlide {
-        flex: 0 0 100%;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .carouselSlide img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-        user-select: none;
-        -webkit-user-drag: none;
-      }
-      /* Prev / next arrows. */
-      .carouselArrow {
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 34px;
-        height: 34px;
-        border-radius: 50%;
-        border: 1px solid var(--border);
-        background: var(--card);
-        color: var(--fg);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        opacity: 0.9;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-        transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-      }
-      .carouselArrow:hover {
-        opacity: 1;
-        border-color: var(--accent);
-      }
-      .carouselArrow:focus-visible {
-        opacity: 1;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 2px var(--accent);
-      }
-      .carouselArrow svg {
-        width: 18px;
-        height: 18px;
-      }
-      .carouselArrow.prev {
-        left: 8px;
-      }
-      .carouselArrow.next {
-        right: 8px;
-      }
-      /* Single-slide carousels hide the arrows + dots. */
-      .carousel.single .carouselArrow,
-      .carousel.single .carouselDots {
-        display: none;
-      }
-      /* Dot indicators. */
-      .carouselDots {
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 7px;
-        z-index: 2;
-      }
-      .carouselDot {
-        width: 8px;
-        height: 8px;
-        padding: 0;
-        border-radius: 50%;
-        border: none;
-        cursor: pointer;
-        background: rgba(255, 255, 255, 0.55);
-        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
-        transition: transform 0.15s ease, background 0.15s ease;
-      }
-      .carouselDot.active {
-        background: var(--accent);
-        transform: scale(1.25);
-      }
-      .carouselDot:focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px var(--card);
-      }
-      /* Honor reduced-motion: cut the slide animation. */
-      @media (prefers-reduced-motion: reduce) {
-        .carouselTrack {
-          transition: none;
-        }
-      }
       .previewStats {
         display: flex;
         align-items: center;
@@ -892,36 +762,6 @@
         </div>
         <div class="previewBody">
           <div class="previewMeta" id="previewMeta"></div>
-          <div class="previewSection" id="previewShotsSection" hidden>
-            <div class="previewSectionTitle">Screenshots</div>
-            <div
-              class="carousel"
-              id="previewCarousel"
-              tabindex="0"
-              role="group"
-              aria-roledescription="carousel"
-              aria-label="Screenshots"
-            >
-              <div class="carouselTrack" id="carouselTrack"></div>
-              <button
-                class="carouselArrow prev"
-                id="carouselPrev"
-                type="button"
-                aria-label="Previous screenshot"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-              </button>
-              <button
-                class="carouselArrow next"
-                id="carouselNext"
-                type="button"
-                aria-label="Next screenshot"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-              </button>
-              <div class="carouselDots" id="carouselDots" role="tablist" aria-label="Choose screenshot"></div>
-            </div>
-          </div>
           <div class="previewDesc" id="previewDesc"></div>
         </div>
         <div class="previewFooter">
@@ -1314,12 +1154,6 @@
       const previewTagRow = document.getElementById("previewTagRow");
       const previewMeta = document.getElementById("previewMeta");
       const previewDesc = document.getElementById("previewDesc");
-      const previewShotsSection = document.getElementById("previewShotsSection");
-      const previewCarousel = document.getElementById("previewCarousel");
-      const carouselTrack = document.getElementById("carouselTrack");
-      const carouselPrev = document.getElementById("carouselPrev");
-      const carouselNext = document.getElementById("carouselNext");
-      const carouselDots = document.getElementById("carouselDots");
       const previewLaunchBtn = document.getElementById("previewLaunch");
       const previewCloseBtn = document.getElementById("previewClose");
 
@@ -1403,106 +1237,6 @@
         }
       }
 
-      // ── Screenshot carousel state + controller ───────────────────
-      const carouselState = { index: 0 };
-
-      // Apply the current slide position and sync dot/aria state. Used for
-      // both user navigation (animated) and post-rebuild repositioning.
-      function applyCarouselTransform() {
-        const slides = carouselTrack.children;
-        carouselTrack.style.transform = `translateX(-${carouselState.index * 100}%)`;
-        const dots = carouselDots.children;
-        for (let i = 0; i < dots.length; i++) {
-          const active = i === carouselState.index;
-          dots[i].classList.toggle("active", active);
-          dots[i].setAttribute("aria-selected", active ? "true" : "false");
-          dots[i].tabIndex = active ? 0 : -1;
-        }
-        for (let i = 0; i < slides.length; i++) {
-          slides[i].setAttribute(
-            "aria-hidden",
-            i === carouselState.index ? "false" : "true"
-          );
-        }
-      }
-
-      // Navigate to slide `i` (wraps around), animating via the CSS transition.
-      function carouselGoTo(i) {
-        const n = carouselTrack.children.length;
-        if (n === 0) return;
-        carouselState.index = ((i % n) + n) % n;
-        applyCarouselTransform();
-      }
-
-      // Recompute dots + bounds after the slide set changes (initial build or
-      // an image erroring out). Repositions without animating.
-      function refreshCarousel() {
-        const slides = Array.from(carouselTrack.children);
-        if (slides.length === 0) {
-          // Every screenshot failed to load → collapse the section.
-          previewShotsSection.hidden = true;
-          return;
-        }
-        if (carouselState.index >= slides.length)
-          carouselState.index = slides.length - 1;
-        if (carouselState.index < 0) carouselState.index = 0;
-
-        previewCarousel.classList.toggle("single", slides.length <= 1);
-
-        carouselDots.textContent = "";
-        slides.forEach((slide, i) => {
-          const dot = document.createElement("button");
-          dot.type = "button";
-          dot.className = "carouselDot" + (i === carouselState.index ? " active" : "");
-          dot.setAttribute("role", "tab");
-          dot.setAttribute("aria-label", `Go to screenshot ${i + 1}`);
-          dot.setAttribute("aria-selected", i === carouselState.index ? "true" : "false");
-          dot.addEventListener("click", (e) => {
-            e.stopPropagation();
-            carouselGoTo(i);
-          });
-          carouselDots.appendChild(dot);
-        });
-
-        // Reposition without an animation (avoids a slide-in on open or a
-        // jump when a broken slide is removed mid-view).
-        carouselTrack.style.transition = "none";
-        applyCarouselTransform();
-        void carouselTrack.offsetWidth; // force reflow
-        carouselTrack.style.transition = "";
-      }
-
-      function buildPreviewShots(dapp) {
-        carouselTrack.textContent = "";
-        carouselDots.textContent = "";
-        carouselState.index = 0;
-        const shots = Array.isArray(dapp.screenshots)
-          ? dapp.screenshots.filter((s) => typeof s === "string" && s.trim())
-          : [];
-        if (shots.length === 0) {
-          previewShotsSection.hidden = true;
-          return;
-        }
-        previewShotsSection.hidden = false;
-        shots.forEach((src, i) => {
-          const slide = document.createElement("div");
-          slide.className = "carouselSlide";
-          const img = document.createElement("img");
-          img.src = src;
-          img.alt = `${dapp.name || "dapp"} screenshot ${i + 1}`;
-          img.loading = "lazy";
-          img.draggable = false;
-          img.addEventListener("error", () => {
-            // Drop just this slide; collapse the whole section if none remain.
-            slide.remove();
-            refreshCarousel();
-          });
-          slide.appendChild(img);
-          carouselTrack.appendChild(slide);
-        });
-        refreshCarousel();
-      }
-
       function buildPreviewTag(dapp) {
         previewTagRow.textContent = "";
         if (!dapp.category) {
@@ -1544,7 +1278,6 @@
 
         buildPreviewTag(dapp);
         buildPreviewMeta(dapp);
-        buildPreviewShots(dapp);
 
         // Plain text only — never inject untrusted strings as HTML.
         previewDesc.textContent = dapp.longDescription || dapp.description || "";
@@ -1604,52 +1337,6 @@
             first.focus();
           }
         }
-      });
-
-      // ── Carousel controls: arrows, keyboard, touch swipe ──────────
-      carouselPrev.addEventListener("click", (e) => {
-        e.stopPropagation();
-        carouselGoTo(carouselState.index - 1);
-      });
-      carouselNext.addEventListener("click", (e) => {
-        e.stopPropagation();
-        carouselGoTo(carouselState.index + 1);
-      });
-
-      // Arrow keys navigate while the carousel (or a control within it) holds
-      // focus. Escape/Tab still bubble to the modal-level handler.
-      previewCarousel.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowLeft") {
-          e.preventDefault();
-          carouselGoTo(carouselState.index - 1);
-        } else if (e.key === "ArrowRight") {
-          e.preventDefault();
-          carouselGoTo(carouselState.index + 1);
-        }
-      });
-
-      // Touch / pointer swipe. `touch-action: pan-y` on .carousel lets the
-      // browser keep vertical scrolling while we own horizontal gestures.
-      let swipeStartX = null;
-      let swipeStartY = null;
-      let swiping = false;
-      previewCarousel.addEventListener("pointerdown", (e) => {
-        swipeStartX = e.clientX;
-        swipeStartY = e.clientY;
-        swiping = true;
-      });
-      previewCarousel.addEventListener("pointerup", (e) => {
-        if (!swiping) return;
-        swiping = false;
-        const dx = e.clientX - swipeStartX;
-        const dy = e.clientY - swipeStartY;
-        // Only treat as a swipe when the gesture is mostly horizontal.
-        if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
-          carouselGoTo(carouselState.index + (dx < 0 ? 1 : -1));
-        }
-      });
-      previewCarousel.addEventListener("pointercancel", () => {
-        swiping = false;
       });
 
       // --- Rubber-band (overscroll-like) stretch config ---
