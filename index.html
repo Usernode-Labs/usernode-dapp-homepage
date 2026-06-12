@@ -533,6 +533,299 @@
           animation: livePing 2s ease-out infinite;
         }
       }
+
+      /* ── Preview modal ──────────────────────────────────────────────
+         A single reusable overlay populated on open. Uses the shared
+         theme variables so it recolors in light/dark for free. */
+      .previewOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        box-sizing: border-box;
+        background: rgba(8, 12, 20, 0.55);
+        backdrop-filter: blur(2px);
+      }
+      .previewOverlay.open {
+        display: flex;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        @keyframes previewIn {
+          from { opacity: 0; transform: translateY(8px) scale(0.985); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .previewOverlay.open .previewPanel {
+          animation: previewIn 160ms ease-out;
+        }
+      }
+      .previewPanel {
+        background: var(--card);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+        width: 100%;
+        max-width: 560px;
+        max-height: calc(100dvh - 40px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .previewHeader {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px 16px 12px;
+        border-bottom: 1px solid var(--border);
+        flex: 0 0 auto;
+      }
+      .previewHeadText {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: grid;
+        gap: 6px;
+      }
+      .previewName {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        line-height: 1.2;
+        word-break: break-word;
+      }
+      .previewClose {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        width: 30px;
+        height: 30px;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .previewClose:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .previewBody {
+        padding: 14px 16px 16px;
+        overflow-y: auto;
+        flex: 1 1 auto;
+        min-height: 0;
+        display: grid;
+        gap: 14px;
+      }
+      /* ── Feature showcase ─────────────────────────────────────────
+         A small looping highlight reel near the top of the modal body.
+         Steps cross-fade/slide within a fixed-height viewport. */
+      .showcase {
+        position: relative;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg);
+        padding: 14px 16px;
+        display: grid;
+        gap: 10px;
+      }
+      .showcaseViewport {
+        position: relative;
+        min-height: 70px;
+      }
+      .showcaseStep {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        opacity: 0;
+        transform: translateX(14px);
+        transition: opacity 360ms ease, transform 360ms ease;
+        pointer-events: none;
+      }
+      .showcaseStep.active {
+        opacity: 1;
+        transform: translateX(0);
+        pointer-events: auto;
+      }
+      .showcaseIcon {
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        line-height: 1;
+        background: var(--card);
+        border: 1px solid var(--border);
+        overflow: hidden;
+      }
+      .showcaseIcon img,
+      .showcaseIcon svg {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .showcaseText {
+        min-width: 0;
+        display: grid;
+        gap: 3px;
+        align-content: start;
+      }
+      .showcaseTitle {
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--fg);
+        line-height: 1.25;
+      }
+      .showcaseBody {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .showcaseDots {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+      }
+      .showcaseDot {
+        width: 8px;
+        height: 8px;
+        padding: 0;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        background: transparent;
+        cursor: pointer;
+        transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+      }
+      .showcaseDot.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        transform: scale(1.2);
+      }
+      .showcaseDot:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--accent);
+      }
+      /* Reduced-motion / static: stack the steps as a list, no transitions. */
+      .showcase.static .showcaseViewport {
+        position: static;
+        min-height: 0;
+        display: grid;
+        gap: 12px;
+      }
+      .showcase.static .showcaseStep {
+        position: static;
+        inset: auto;
+        opacity: 1;
+        transform: none;
+        transition: none;
+        pointer-events: auto;
+      }
+      .showcase.static .showcaseDots {
+        display: none;
+      }
+      /* Staggered entrance reveal (fallback when a dapp has no highlights).
+         Defined only under no-preference so reduced-motion keeps elements
+         visible with no animation. */
+      @media (prefers-reduced-motion: no-preference) {
+        @keyframes revealUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .revealItem {
+          opacity: 0;
+          animation: revealUp 420ms ease-out forwards;
+        }
+      }
+      .previewMeta {
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+      }
+      .previewMetaRow {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+      .previewMetaLabel {
+        color: var(--muted);
+        flex: 0 0 auto;
+        min-width: 92px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      .previewMetaVal {
+        color: var(--fg);
+        min-width: 0;
+        word-break: break-word;
+      }
+      .previewMetaVal a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .previewMetaVal a:hover {
+        text-decoration: underline;
+      }
+      .previewDesc {
+        color: var(--fg);
+        font-size: 14px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+      .previewStats {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .previewStats .stat svg {
+        width: 14px;
+        height: 14px;
+        opacity: 0.7;
+      }
+      .previewFooter {
+        padding: 12px 16px 16px;
+        border-top: 1px solid var(--border);
+        flex: 0 0 auto;
+        display: flex;
+        justify-content: flex-end;
+      }
+      .previewLaunch {
+        appearance: none;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        font-family: inherit;
+        padding: 9px 18px;
+        border-radius: 8px;
+        cursor: pointer;
+        color: #ffffff;
+        background: linear-gradient(135deg, #6d28d9, #9333ea);
+        box-shadow: 0 0 10px rgba(124, 58, 237, 0.35);
+        transition: filter 0.2s ease, box-shadow 0.2s ease;
+      }
+      .previewLaunch:hover {
+        filter: brightness(1.12);
+        box-shadow: 0 0 16px rgba(124, 58, 237, 0.55);
+      }
+      html.dark .previewLaunch {
+        background: linear-gradient(135deg, #7c3aed, #c084fc);
+        box-shadow: 0 0 12px rgba(167, 139, 250, 0.55);
+      }
       /* ── Launch overlay ─────────────────────────────────────────────────── */
       #launchOverlay {
         position: fixed;
@@ -616,6 +909,162 @@
           opacity: 0;
         }
       }
+
+      /* ── Submit-a-dapp button + modal ─────────────────────────────────────── */
+      .submitBtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 9px;
+        border: 1px solid var(--border);
+        background: var(--accent);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .submitBtn svg { width: 15px; height: 15px; }
+      .submitBtn:hover { filter: brightness(1.06); }
+      @media (max-width: 420px) {
+        .submitBtnLabel { display: none; }
+        .submitBtn { padding: 0 9px; }
+      }
+
+      .modalOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 16, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        z-index: 50;
+      }
+      .modalOverlay[hidden] { display: none; }
+      .modalCard {
+        width: 100%;
+        max-width: 460px;
+        max-height: calc(100dvh - 32px);
+        overflow-y: auto;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px;
+        box-sizing: border-box;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      }
+      .modalHead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+      .modalTitle { font-size: 17px; font-weight: 700; }
+      .modalClose {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 22px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 2px 6px;
+      }
+      .modalClose:hover { color: var(--fg); }
+      .fieldLabel {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin: 12px 0 5px;
+        font-weight: 600;
+      }
+      .fieldInput, .fieldTextarea {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 9px 11px;
+      }
+      .fieldTextarea { resize: vertical; min-height: 60px; }
+      .fieldInput:focus, .fieldTextarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+      .modalActions { display: flex; gap: 10px; margin-top: 18px; }
+      .btnPrimary {
+        flex: 1 1 auto;
+        height: 40px;
+        border: none;
+        border-radius: 10px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .btnPrimary:disabled { opacity: 0.55; cursor: default; }
+      .btnGhost {
+        height: 40px;
+        padding: 0 16px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: transparent;
+        color: var(--fg);
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .modalNote { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
+      .modalError {
+        font-size: 13px;
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: 9px;
+        padding: 9px 11px;
+        margin-top: 12px;
+      }
+      .modalError[hidden] { display: none; }
+      .payBox {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        margin-top: 12px;
+      }
+      .payRow { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin: 6px 0; }
+      .payRow .k { font-size: 12px; color: var(--muted); flex: 0 0 auto; }
+      .payRow .v { font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; text-align: right; }
+      .copyBtn {
+        font-size: 11px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--accent);
+        border-radius: 6px;
+        padding: 2px 7px;
+        cursor: pointer;
+        margin-left: 6px;
+      }
+      .statusPill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 999px;
+        margin-top: 14px;
+      }
+      .statusPill .dot { width: 8px; height: 8px; border-radius: 50%; }
+      .statusAwaiting { background: rgba(245, 158, 11, 0.14); color: #f59e0b; }
+      .statusAwaiting .dot { background: #f59e0b; animation: spin 1s linear infinite; box-shadow: 0 0 0 2px rgba(245,158,11,.25); }
+      .statusPublished { background: rgba(16, 185, 129, 0.14); color: #10b981; }
+      .statusPublished .dot { background: #10b981; }
+      .statusExpired { background: rgba(148, 163, 184, 0.14); color: var(--muted); }
+      .statusExpired .dot { background: var(--muted); }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
@@ -633,6 +1082,10 @@
               </a>
             </div>
             <div class="headerActions">
+            <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span class="submitBtnLabel">Submit</span>
+            </button>
             <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
               <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -662,6 +1115,106 @@
         </div>
       </div>
     </main>
+    <div
+      class="previewOverlay"
+      id="previewOverlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="previewName"
+      aria-hidden="true"
+    >
+      <div class="previewPanel" id="previewPanel">
+        <div class="previewHeader">
+          <div class="previewLogo" id="previewLogo"></div>
+          <div class="previewHeadText">
+            <div class="previewName" id="previewName"></div>
+            <div class="tagRow" id="previewTagRow" style="margin-top:0"></div>
+          </div>
+          <button
+            class="previewClose"
+            id="previewClose"
+            type="button"
+            aria-label="Close preview"
+            title="Close"
+          >&times;</button>
+        </div>
+        <div class="previewBody">
+          <div class="showcase" id="previewShowcase" aria-label="Feature highlights" hidden>
+            <div class="showcaseViewport" id="showcaseViewport" aria-live="off"></div>
+            <div
+              class="showcaseDots"
+              id="showcaseDots"
+              role="tablist"
+              aria-label="Choose feature highlight"
+            ></div>
+          </div>
+          <div class="previewMeta" id="previewMeta"></div>
+          <div class="previewDesc" id="previewDesc"></div>
+        </div>
+        <div class="previewFooter">
+          <button class="previewLaunch" id="previewLaunch" type="button">Launch</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit-a-dapp modal -->
+    <div class="modalOverlay" id="submitModal" hidden role="dialog" aria-modal="true" aria-label="Submit a dapp">
+      <div class="modalCard">
+        <div class="modalHead">
+          <div class="modalTitle" id="submitModalTitle">Submit your dapp</div>
+          <button class="modalClose" id="submitClose" type="button" aria-label="Close">&times;</button>
+        </div>
+
+        <!-- Step 1: form -->
+        <div id="submitStepForm">
+          <p class="modalNote">List your dapp on the Usernode homepage. Submitting burns a one-time on-chain fee to the Community Fund Reserve. The fee is non-refundable. Once the payment is confirmed on-chain, your dapp is published to the homepage automatically — no review step.</p>
+          <label class="fieldLabel" for="f_name">Name *</label>
+          <input class="fieldInput" id="f_name" maxlength="80" placeholder="My Cool Dapp" />
+          <label class="fieldLabel" for="f_desc">Description</label>
+          <textarea class="fieldTextarea" id="f_desc" maxlength="280" placeholder="One line about what it does."></textarea>
+          <label class="fieldLabel" for="f_author">Author</label>
+          <input class="fieldInput" id="f_author" maxlength="80" placeholder="Your name or team" />
+          <label class="fieldLabel" for="f_url">URL * (https)</label>
+          <input class="fieldInput" id="f_url" placeholder="https://my-dapp.example.org" />
+          <label class="fieldLabel" for="f_pubkey">Dapp pubkey * (ut1…)</label>
+          <input class="fieldInput" id="f_pubkey" placeholder="ut1…" />
+          <label class="fieldLabel" for="f_category">Category</label>
+          <input class="fieldInput" id="f_category" maxlength="40" placeholder="Game, Market, Utility, Social…" />
+          <div class="modalError" id="submitError" hidden></div>
+          <div class="modalActions">
+            <button class="btnGhost" id="submitCancel" type="button">Cancel</button>
+            <button class="btnPrimary" id="submitContinue" type="button">Continue to payment</button>
+          </div>
+        </div>
+
+        <!-- Step 2: pay + status -->
+        <div id="submitStepPay" hidden>
+          <p class="modalNote">Send the exact fee below to the Community Fund Reserve, including the memo (it ties the payment to your submission). When the network confirms it, this page advances automatically.</p>
+          <div class="payBox">
+            <div class="payRow"><span class="k">Amount</span><span class="v" id="payAmount"></span></div>
+            <div class="payRow"><span class="k">Pay to</span><span class="v" id="payTo"></span><button class="copyBtn" data-copy="payTo" type="button">Copy</button></div>
+            <div class="payRow"><span class="k">Memo</span><span class="v" id="payMemo"></span><button class="copyBtn" data-copy="payMemo" type="button">Copy</button></div>
+          </div>
+          <div class="modalActions">
+            <button class="btnPrimary" id="payWithWallet" type="button">Pay with wallet</button>
+          </div>
+          <div id="payStatusWrap"></div>
+          <div class="modalError" id="payError" hidden></div>
+          <p class="modalNote" id="paidHint" hidden>Paid from your own wallet instead? No problem — as long as the amount and memo match, this will detect it within ~30 seconds.</p>
+        </div>
+
+        <!-- Step 3: terminal status -->
+        <div id="submitStepDone" hidden>
+          <div id="doneBody"></div>
+          <div class="modalActions"><button class="btnPrimary" id="doneClose" type="button">Done</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Centrally-hosted Usernode bridge (used to request the fee transfer).
+         The server verifies payment from chain state, so a manual transfer
+         works too if the bridge is unavailable. -->
+    <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
     <script>
       const SORT_KEY = "dapphome:sort";
       const THEME_KEY = "dapphome:theme";
@@ -852,6 +1405,15 @@
           link.href = dapp.url;
           link.target = "_blank";
           link.rel = "noopener";
+          // Left-tap / Enter on the card body opens the preview panel; the
+          // Launch button (below) is the only part that launches the dapp.
+          link.setAttribute("aria-label", `Preview ${dapp.name || "dapp"}`);
+          link.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+              e.preventDefault();
+              openPreview(dapp, li);
+            }
+          });
 
           const logo = makeLogo(dapp);
 
@@ -937,6 +1499,16 @@
           const launchBtn = document.createElement("span");
           launchBtn.className = "launchBtn";
           launchBtn.textContent = "Launch";
+          launchBtn.setAttribute("role", "button");
+          launchBtn.setAttribute("tabindex", "0");
+          launchBtn.setAttribute("aria-label", `Launch ${dapp.name || "dapp"}`);
+          launchBtn.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+              e.preventDefault();
+              e.stopPropagation();
+              launchDapp(dapp);
+            }
+          });
 
           descRow.appendChild(desc);
           descRow.appendChild(launchBtn);
@@ -949,6 +1521,7 @@
           link.appendChild(logo);
           link.appendChild(body);
           li.appendChild(link);
+          li.__dapp = dapp;
           list.appendChild(li);
         }
       }
@@ -1069,6 +1642,422 @@
         }
       })();
 
+      // ── Preview modal ─────────────────────────────────────────────
+      const previewOverlay = document.getElementById("previewOverlay");
+      const previewPanel = document.getElementById("previewPanel");
+      const previewLogo = document.getElementById("previewLogo");
+      const previewNameEl = document.getElementById("previewName");
+      const previewTagRow = document.getElementById("previewTagRow");
+      const previewMeta = document.getElementById("previewMeta");
+      const previewDesc = document.getElementById("previewDesc");
+      const previewHeadText = document.querySelector(".previewHeadText");
+      const previewShowcase = document.getElementById("previewShowcase");
+      const showcaseViewport = document.getElementById("showcaseViewport");
+      const showcaseDots = document.getElementById("showcaseDots");
+      const previewLaunchBtn = document.getElementById("previewLaunch");
+      const previewCloseBtn = document.getElementById("previewClose");
+
+      let previewCurrentDapp = null;
+      let previewReturnFocus = null;
+
+      // ── Feature showcase state ────────────────────────────────────
+      const SHOWCASE_INTERVAL_MS = 2500;
+      let showcaseSteps = [];
+      let showcaseIndex = 0;
+      let showcaseTimer = null;
+      let showcasePaused = false;
+
+      function prefersReducedMotion() {
+        return !!(
+          window.matchMedia &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        );
+      }
+
+      // Build an icon node from an optional inline-<svg> string, image URL, or
+      // emoji/short text (makeLogo-style handling). Returns null when absent.
+      function makeShowcaseIcon(icon) {
+        const raw = typeof icon === "string" ? icon.trim() : "";
+        if (!raw) return null;
+        const wrap = document.createElement("div");
+        wrap.className = "showcaseIcon";
+        wrap.setAttribute("aria-hidden", "true");
+        if (raw.startsWith("<svg")) {
+          wrap.innerHTML = raw;
+        } else if (
+          /^https?:\/\//.test(raw) ||
+          raw.startsWith("/") ||
+          /\.(png|jpe?g|gif|webp|svg)$/i.test(raw)
+        ) {
+          const img = document.createElement("img");
+          img.src = raw;
+          img.alt = "";
+          img.loading = "lazy";
+          wrap.appendChild(img);
+        } else {
+          wrap.textContent = raw; // emoji / short text
+        }
+        return wrap;
+      }
+
+      function stopShowcaseTimer() {
+        if (showcaseTimer != null) {
+          clearInterval(showcaseTimer);
+          showcaseTimer = null;
+        }
+      }
+
+      function startShowcaseTimer() {
+        stopShowcaseTimer();
+        if (prefersReducedMotion()) return;
+        if (showcaseSteps.length <= 1) return;
+        showcaseTimer = setInterval(() => {
+          if (showcasePaused) return;
+          showcaseGoTo(showcaseIndex + 1, false);
+        }, SHOWCASE_INTERVAL_MS);
+      }
+
+      function restartShowcaseTimer() {
+        if (showcaseTimer != null) startShowcaseTimer();
+      }
+
+      // Move to step `i` (wraps). userInitiated restarts the auto-advance clock.
+      function showcaseGoTo(i, userInitiated) {
+        const n = showcaseSteps.length;
+        if (n === 0) return;
+        showcaseIndex = ((i % n) + n) % n;
+        const steps = showcaseViewport.children;
+        for (let k = 0; k < steps.length; k++) {
+          steps[k].classList.toggle("active", k === showcaseIndex);
+        }
+        const dots = showcaseDots.children;
+        for (let k = 0; k < dots.length; k++) {
+          const active = k === showcaseIndex;
+          dots[k].classList.toggle("active", active);
+          dots[k].setAttribute("aria-selected", active ? "true" : "false");
+          dots[k].tabIndex = active ? 0 : -1;
+        }
+        if (userInitiated) restartShowcaseTimer();
+      }
+
+      function buildShowcase(dapp) {
+        stopShowcaseTimer();
+        showcaseViewport.textContent = "";
+        showcaseDots.textContent = "";
+        showcaseIndex = 0;
+        showcasePaused = false;
+
+        const steps = Array.isArray(dapp.highlights)
+          ? dapp.highlights.filter((s) => s && (s.title || s.body))
+          : [];
+        showcaseSteps = steps;
+
+        if (steps.length === 0) {
+          // No highlights → hide showcase; caller runs the entrance reveal.
+          previewShowcase.hidden = true;
+          return;
+        }
+        previewShowcase.hidden = false;
+        previewShowcase.setAttribute(
+          "aria-label",
+          `${dapp.name || "dapp"} feature highlights`
+        );
+
+        const reduced = prefersReducedMotion();
+        previewShowcase.classList.toggle("static", reduced);
+
+        steps.forEach((step, i) => {
+          const el = document.createElement("div");
+          el.className = "showcaseStep" + (i === 0 ? " active" : "");
+          el.setAttribute("role", "group");
+          el.setAttribute("aria-roledescription", "slide");
+          el.setAttribute("aria-label", `${i + 1} of ${steps.length}`);
+          const icon = makeShowcaseIcon(step.icon);
+          if (icon) el.appendChild(icon);
+          const text = document.createElement("div");
+          text.className = "showcaseText";
+          const title = document.createElement("div");
+          title.className = "showcaseTitle";
+          title.textContent = step.title || ""; // plain text only
+          const body = document.createElement("div");
+          body.className = "showcaseBody";
+          body.textContent = step.body || ""; // plain text only
+          text.appendChild(title);
+          text.appendChild(body);
+          el.appendChild(text);
+          showcaseViewport.appendChild(el);
+        });
+
+        steps.forEach((step, i) => {
+          const dot = document.createElement("button");
+          dot.type = "button";
+          dot.className = "showcaseDot" + (i === 0 ? " active" : "");
+          dot.setAttribute("role", "tab");
+          dot.setAttribute(
+            "aria-label",
+            `Show highlight ${i + 1}${step.title ? ": " + step.title : ""}`
+          );
+          dot.setAttribute("aria-selected", i === 0 ? "true" : "false");
+          dot.tabIndex = i === 0 ? 0 : -1;
+          dot.addEventListener("click", (e) => {
+            e.stopPropagation();
+            showcaseGoTo(i, true);
+          });
+          showcaseDots.appendChild(dot);
+        });
+
+        if (!reduced && steps.length > 1) startShowcaseTimer();
+      }
+
+      // Staggered entrance reveal of the standard preview elements, used as the
+      // fallback animation when a dapp has no authored highlights.
+      function applyStaggerReveal(els) {
+        if (prefersReducedMotion()) {
+          els.forEach((el) => {
+            if (el) {
+              el.classList.remove("revealItem");
+              el.style.animationDelay = "";
+            }
+          });
+          return;
+        }
+        els.forEach((el, i) => {
+          if (!el) return;
+          el.classList.remove("revealItem");
+          el.style.animationDelay = i * 80 + "ms";
+        });
+        void previewPanel.offsetWidth; // force reflow so the animation re-runs
+        els.forEach((el) => {
+          if (el) el.classList.add("revealItem");
+        });
+      }
+
+      function clearStaggerReveal(els) {
+        els.forEach((el) => {
+          if (el) {
+            el.classList.remove("revealItem");
+            el.style.animationDelay = "";
+          }
+        });
+      }
+
+      function launchDapp(dapp) {
+        if (dapp && dapp.url) window.open(dapp.url, "_blank", "noopener");
+      }
+
+      // Format an ISO-ish date string into a friendly "Last updated" value.
+      // Falls back to the raw string when it can't be parsed; null when empty.
+      function formatUpdated(raw) {
+        if (typeof raw !== "string" || !raw.trim()) return null;
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return raw;
+        try {
+          return d.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+        } catch (_) {
+          return raw;
+        }
+      }
+
+      function metaRow(label, value) {
+        const row = document.createElement("div");
+        row.className = "previewMetaRow";
+        const l = document.createElement("div");
+        l.className = "previewMetaLabel";
+        l.textContent = label;
+        const v = document.createElement("div");
+        v.className = "previewMetaVal";
+        if (typeof value === "string") v.textContent = value;
+        else v.appendChild(value);
+        row.appendChild(l);
+        row.appendChild(v);
+        return row;
+      }
+
+      function buildPreviewMeta(dapp) {
+        previewMeta.textContent = "";
+
+        const author = dapp.author || "unknown";
+        let devNode;
+        if (dapp.developerUrl) {
+          const a = document.createElement("a");
+          a.href = dapp.developerUrl;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.textContent = author;
+          devNode = a;
+        } else {
+          devNode = author;
+        }
+        previewMeta.appendChild(metaRow("Developer", devNode));
+
+        if (dapp.version)
+          previewMeta.appendChild(metaRow("Version", String(dapp.version)));
+
+        const updated = formatUpdated(dapp.updated);
+        if (updated) previewMeta.appendChild(metaRow("Last updated", updated));
+
+        const s = dapp.pubkey ? statsMap[dapp.pubkey] : null;
+        if (s) {
+          const wrap = document.createElement("div");
+          wrap.className = "previewStats";
+          const u = document.createElement("span");
+          u.className = "stat";
+          u.appendChild(personIcon());
+          u.appendChild(document.createTextNode(formatNum(s.users)));
+          const t = document.createElement("span");
+          t.className = "stat";
+          t.appendChild(txIcon());
+          t.appendChild(document.createTextNode(formatNum(s.txns)));
+          wrap.appendChild(u);
+          wrap.appendChild(t);
+          previewMeta.appendChild(metaRow("Activity", wrap));
+        }
+      }
+
+      function buildPreviewTag(dapp) {
+        previewTagRow.textContent = "";
+        if (!dapp.category) {
+          previewTagRow.hidden = true;
+          return;
+        }
+        previewTagRow.hidden = false;
+        const tag = document.createElement("span");
+        tag.className = "categoryTag";
+        tag.textContent = dapp.category;
+        const color = CATEGORY_COLORS[dapp.category];
+        if (color) {
+          tag.style.color = color;
+          tag.style.background = color + "33";
+          tag.style.border = "1px solid " + color + "66";
+        } else {
+          tag.style.color = "var(--muted)";
+          tag.style.border = "1px solid var(--border)";
+        }
+        previewTagRow.appendChild(tag);
+      }
+
+      function openPreview(dapp, originEl) {
+        if (!dapp) return;
+        previewCurrentDapp = dapp;
+        // Return focus to the card's link on close (the <li> itself isn't
+        // focusable; the inner .dappLink anchor is).
+        previewReturnFocus =
+          (originEl &&
+            originEl.querySelector &&
+            originEl.querySelector(".dappLink")) ||
+          originEl ||
+          document.activeElement;
+
+        previewNameEl.textContent = dapp.name || "(unnamed)";
+
+        previewLogo.textContent = "";
+        previewLogo.appendChild(makeLogo(dapp));
+
+        buildPreviewTag(dapp);
+        buildPreviewMeta(dapp);
+
+        // Plain text only — never inject untrusted strings as HTML.
+        previewDesc.textContent = dapp.longDescription || dapp.description || "";
+
+        // Feature showcase (resets to step 0). When the dapp has no authored
+        // highlights, fall back to a staggered entrance reveal of the standard
+        // preview elements so the panel always animates gracefully.
+        buildShowcase(dapp);
+        const revealEls = [previewLogo, previewHeadText, previewMeta, previewDesc];
+        if (previewShowcase.hidden) {
+          applyStaggerReveal(revealEls);
+        } else {
+          clearStaggerReveal(revealEls);
+        }
+
+        previewOverlay.classList.add("open");
+        previewOverlay.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+
+        previewCloseBtn.focus();
+      }
+
+      function closePreview() {
+        if (!previewOverlay.classList.contains("open")) return;
+        stopShowcaseTimer(); // stop the auto-advance loop so it doesn't leak
+        previewOverlay.classList.remove("open");
+        previewOverlay.setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
+        previewCurrentDapp = null;
+        const ret = previewReturnFocus;
+        previewReturnFocus = null;
+        if (ret && typeof ret.focus === "function") {
+          try {
+            ret.focus();
+          } catch (_) {}
+        }
+      }
+
+      previewCloseBtn.addEventListener("click", closePreview);
+      previewLaunchBtn.addEventListener("click", () => {
+        const dapp = previewCurrentDapp;
+        closePreview();
+        launchDapp(dapp);
+        showLaunchOverlay(dapp ? dapp.name || "" : "");
+      });
+      previewOverlay.addEventListener("click", (e) => {
+        if (e.target === previewOverlay) closePreview();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (!previewOverlay.classList.contains("open")) return;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closePreview();
+          return;
+        }
+        if (e.key === "Tab") {
+          const focusables = previewPanel.querySelectorAll(
+            'a[href], button, [tabindex]:not([tabindex="-1"])'
+          );
+          const visible = Array.prototype.filter.call(
+            focusables,
+            (el) => !el.disabled && el.tabIndex !== -1 && el.offsetParent !== null
+          );
+          if (visible.length === 0) return;
+          const first = visible[0];
+          const last = visible[visible.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      });
+
+      // ── Feature showcase controls: pause on hover/focus, arrow keys ──
+      previewShowcase.addEventListener("mouseenter", () => {
+        showcasePaused = true;
+      });
+      previewShowcase.addEventListener("mouseleave", () => {
+        showcasePaused = false;
+      });
+      previewShowcase.addEventListener("focusin", () => {
+        showcasePaused = true;
+      });
+      previewShowcase.addEventListener("focusout", () => {
+        showcasePaused = false;
+      });
+      previewShowcase.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          showcaseGoTo(showcaseIndex - 1, true);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          showcaseGoTo(showcaseIndex + 1, true);
+        }
+      });
+
       // --- Rubber-band (overscroll-like) stretch config ---
       const RUBBER_BAND = {
         deadzonePx: 6,
@@ -1174,11 +2163,25 @@
           reset();
 
           if (!moved && downTarget) {
-            const link = downTarget.closest("a");
-            if (link && link.href) {
-              window.open(link.href, link.target || "_self", "noopener");
-              const nameEl = link.querySelector(".name");
-              showLaunchOverlay(nameEl ? nameEl.textContent : "");
+            const li = downTarget.closest("li");
+            const dapp = li && li.__dapp;
+            if (dapp) {
+              if (downTarget.closest(".launchBtn")) {
+                // Tapped the Launch button → open the hosted dapp.
+                launchDapp(dapp);
+                showLaunchOverlay(dapp.name || "");
+              } else {
+                // Tapped anywhere else on the card → open the preview.
+                openPreview(dapp, li);
+              }
+            } else {
+              // Fallback for non-dapp rows (e.g. status messages with a link).
+              const link = downTarget.closest("a");
+              if (link && link.href) {
+                window.open(link.href, link.target || "_self", "noopener");
+                const nameEl = link.querySelector(".name");
+                showLaunchOverlay(nameEl ? nameEl.textContent : "");
+              }
             }
           }
           downTarget = null;
@@ -1195,6 +2198,189 @@
           },
           true
         );
+      })();
+
+      // ── Submit-a-dapp flow ──────────────────────────────────────────────────
+      (function submitFlow() {
+        const modal = document.getElementById("submitModal");
+        const openBtn = document.getElementById("openSubmitBtn");
+        if (!modal || !openBtn) return;
+
+        const stepForm = document.getElementById("submitStepForm");
+        const stepPay = document.getElementById("submitStepPay");
+        const stepDone = document.getElementById("submitStepDone");
+        const errForm = document.getElementById("submitError");
+        const errPay = document.getElementById("payError");
+        const continueBtn = document.getElementById("submitContinue");
+        const payWalletBtn = document.getElementById("payWithWallet");
+        const paidHint = document.getElementById("paidHint");
+        const payStatusWrap = document.getElementById("payStatusWrap");
+        const doneBody = document.getElementById("doneBody");
+
+        const F = (id) => document.getElementById(id);
+        let pollTimer = null;
+        let current = null; // { id, pay_to, amount, memo }
+
+        function showError(el, msg) { el.textContent = msg; el.hidden = !msg; }
+        function setStep(which) {
+          stepForm.hidden = which !== "form";
+          stepPay.hidden = which !== "pay";
+          stepDone.hidden = which !== "done";
+        }
+
+        function openModal() {
+          showError(errForm, "");
+          showError(errPay, "");
+          setStep("form");
+          modal.hidden = false;
+        }
+        function closeModal() {
+          modal.hidden = true;
+          if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        }
+
+        openBtn.addEventListener("click", openModal);
+        document.getElementById("submitClose").addEventListener("click", closeModal);
+        document.getElementById("submitCancel").addEventListener("click", closeModal);
+        document.getElementById("doneClose").addEventListener("click", () => {
+          closeModal();
+          // A freshly published dapp just went live — reload to reflect it.
+          if (current && current._published) location.reload();
+        });
+        modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+
+        // Copy buttons in the pay box.
+        stepPay.addEventListener("click", (e) => {
+          const btn = e.target.closest(".copyBtn");
+          if (!btn) return;
+          const src = F(btn.dataset.copy);
+          if (src && navigator.clipboard) {
+            navigator.clipboard.writeText(src.textContent).then(() => {
+              const old = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = old), 1200);
+            }).catch(() => {});
+          }
+        });
+
+        continueBtn.addEventListener("click", async () => {
+          showError(errForm, "");
+          const body = {
+            name: F("f_name").value.trim(),
+            description: F("f_desc").value.trim(),
+            author: F("f_author").value.trim(),
+            url: F("f_url").value.trim(),
+            pubkey: F("f_pubkey").value.trim(),
+            category: F("f_category").value.trim(),
+          };
+          if (!body.name) return showError(errForm, "Name is required.");
+          if (!/^https:\/\//i.test(body.url)) return showError(errForm, "URL must start with https://");
+          if (!body.pubkey.startsWith("ut1")) return showError(errForm, "Pubkey must start with ut1.");
+
+          continueBtn.disabled = true;
+          continueBtn.textContent = "Submitting…";
+          try {
+            const resp = await fetch("/api/submissions", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+            current = data;
+            F("payAmount").textContent = `${data.amount} tokens`;
+            F("payTo").textContent = data.pay_to;
+            F("payMemo").textContent = data.memo;
+            paidHint.hidden = false;
+            setStep("pay");
+            renderStatus("awaiting_payment");
+            startPolling(data.id);
+          } catch (e) {
+            showError(errForm, e.message || String(e));
+          } finally {
+            continueBtn.disabled = false;
+            continueBtn.textContent = "Continue to payment";
+          }
+        });
+
+        // Try the centrally-hosted Usernode bridge to request the transfer.
+        // Falls back to manual instructions (already on screen) if unavailable.
+        async function requestPaymentViaBridge(to, amount, memo) {
+          const candidates = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge];
+          const b = candidates.find((x) => x && typeof x.sendTransaction === "function");
+          if (!b) throw new Error("Wallet bridge unavailable — pay manually using the details above.");
+          // Bridge signature varies; pass a superset of common field names.
+          return b.sendTransaction({
+            to, recipient: to, destination: to,
+            amount, value: amount,
+            memo,
+          });
+        }
+
+        payWalletBtn.addEventListener("click", async () => {
+          if (!current) return;
+          showError(errPay, "");
+          payWalletBtn.disabled = true;
+          payWalletBtn.textContent = "Requesting…";
+          try {
+            await requestPaymentViaBridge(current.pay_to, current.amount, current.memo);
+            payWalletBtn.textContent = "Payment requested — waiting…";
+          } catch (e) {
+            showError(errPay, e.message || String(e));
+            payWalletBtn.disabled = false;
+            payWalletBtn.textContent = "Pay with wallet";
+          }
+        });
+
+        function renderStatus(status) {
+          const map = {
+            awaiting_payment: ["statusAwaiting", "Awaiting payment…"],
+            published: ["statusPublished", "Published — your dapp is now live!"],
+            expired: ["statusExpired", "Expired — no payment was detected in time."],
+          };
+          const [cls, label] = map[status] || ["statusAwaiting", status];
+          payStatusWrap.innerHTML = `<div class="statusPill ${cls}"><span class="dot"></span>${label}</div>`;
+        }
+
+        function startPolling(id) {
+          if (pollTimer) clearTimeout(pollTimer);
+          let delay = 4000;
+          async function tick() {
+            try {
+              const resp = await fetch(`/api/submissions/${encodeURIComponent(id)}`, { cache: "no-store" });
+              const s = await resp.json();
+              if (resp.ok) handleStatus(s);
+              else throw new Error(s.error || `HTTP ${resp.status}`);
+            } catch (_) { /* transient — keep polling */ }
+            // Back off slightly, capped, so a never-confirming payment is gentle.
+            delay = Math.min(delay + 1000, 15000);
+            pollTimer = setTimeout(tick, delay);
+          }
+          pollTimer = setTimeout(tick, delay);
+        }
+
+        function handleStatus(s) {
+          if (s.status === "awaiting_payment") {
+            renderStatus("awaiting_payment");
+            return;
+          }
+          // Terminal: stop polling and show the outcome.
+          if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+          if (s.status === "published") {
+            current._published = true;
+            const tx = s.payment_tx_hash
+              ? `<p class="modalNote">Payment tx: <span style="font-family:ui-monospace,monospace;word-break:break-all">${s.payment_tx_hash}</span></p>`
+              : "";
+            doneBody.innerHTML =
+              `<div class="statusPill statusPublished"><span class="dot"></span>Published</div>` +
+              `<p class="modalNote">Payment confirmed — your dapp is now live on the homepage. 🎉</p>` + tx;
+            setStep("done");
+          } else if (s.status === "expired") {
+            renderStatus("expired");
+            doneBody.innerHTML =
+              `<div class="statusPill statusExpired"><span class="dot"></span>Expired</div>` +
+              `<p class="modalNote">No payment was detected before this submission expired. If you did pay, it may still be detected and published shortly.</p>`;
+            setStep("done");
+          }
+        }
       })();
 
     </script>
