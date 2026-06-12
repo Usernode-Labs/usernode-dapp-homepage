@@ -750,24 +750,27 @@
         }
       }
       .previewMeta {
+        /* Single two-column grid so every label shares one column edge and
+           all values align to a common left edge. Rows use display:contents
+           (below) so their label/value become direct grid items. The label
+           column auto-sizes to the widest label via max-content. */
         display: grid;
-        gap: 6px;
+        grid-template-columns: max-content 1fr;
+        align-items: baseline;
+        gap: 10px 14px;
         font-size: 13px;
         padding-top: 14px;
         border-top: 1px solid var(--border);
       }
       .previewMetaRow {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
+        display: contents;
       }
       .previewMetaLabel {
         color: var(--muted);
-        flex: 0 0 auto;
-        min-width: 92px;
         font-size: 12px;
         text-transform: uppercase;
         letter-spacing: 0.4px;
+        white-space: nowrap;
       }
       .previewMetaVal {
         color: var(--fg);
