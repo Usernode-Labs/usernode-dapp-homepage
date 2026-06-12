@@ -1260,7 +1260,7 @@
 
       let allApps = [];
       let statsMap = {};
-      let currentSort = localStorage.getItem(SORT_KEY) || "popular";
+      let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
 
       const SORT_LABELS = {
         popular: "Popular",
@@ -1373,7 +1373,9 @@
           const sb = statsMap[b.pubkey] || { users: 0, txns: 0 };
           switch (currentSort) {
             case "alpha":
-              return (a.name || "").localeCompare(b.name || "");
+              return (a.name || "").localeCompare(b.name || "", undefined, {
+                sensitivity: "base",
+              });
             case "users":
               return sb.users - sa.users || sb.txns - sa.txns;
             case "txns":
