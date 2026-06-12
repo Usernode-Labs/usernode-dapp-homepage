@@ -93,6 +93,8 @@
         --launch-btn: #7c3aed;
         --card-hover-border: rgba(99, 102, 241, 0.45);
         --grid-opacity: 0.04;
+        --tx-ok: #16a34a;
+        --tx-err: #dc2626;
       }
       /* Class strategy (Tailwind-style): a `dark` class on <html> selects the
          dark palette. The default theme is chosen at load time from
@@ -111,6 +113,8 @@
         --launch-btn: #8b5cf6;
         --card-hover-border: rgba(139, 92, 246, 0.6);
         --grid-opacity: 0.06;
+        --tx-ok: #22c55e;
+        --tx-err: #ef4444;
       }
       body {
         margin: 0;
@@ -909,6 +913,137 @@
           opacity: 0;
         }
       }
+
+      /* ── Transaction status toasts ─────────────────────────────────────────
+         A globally-mounted stack of compact toasts that surface the lifecycle
+         of any transaction the page initiates through the Usernode bridge.
+         Driven by the controller IIFE / window.usernodeTx façade. Mirrors the
+         launch overlay's card idiom, fade behavior, and reduced-motion gating. */
+      #txToastHost {
+        position: fixed;
+        right: 16px;
+        bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+        z-index: 2000;
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 8px;
+        max-width: min(320px, calc(100vw - 32px));
+        pointer-events: none;
+      }
+      @media (max-width: 480px) {
+        #txToastHost {
+          left: 16px;
+          right: 16px;
+          max-width: none;
+        }
+      }
+      .txToast {
+        pointer-events: auto;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 12px 14px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+        color: var(--fg);
+      }
+      .txToastGlyph {
+        flex: 0 0 auto;
+        width: 20px;
+        height: 20px;
+        margin-top: 1px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .txToastSpinner {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid var(--border);
+        border-top-color: var(--accent);
+      }
+      .txToastCheck {
+        color: var(--tx-ok);
+        font-size: 18px;
+        line-height: 1;
+        font-weight: 700;
+      }
+      .txToastCross {
+        color: var(--tx-err);
+        font-size: 18px;
+        line-height: 1;
+        font-weight: 700;
+      }
+      .txToastBody {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .txToastTitle {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--fg);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .txToastMeta {
+        font-size: 12.5px;
+        color: var(--muted);
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .txToast.is-failed .txToastMeta {
+        color: var(--tx-err);
+      }
+      .txToastHash {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .txToastClose {
+        flex: 0 0 auto;
+        appearance: none;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+        padding: 0 2px;
+        margin: -2px -4px 0 0;
+        border-radius: 6px;
+      }
+      .txToastClose:hover {
+        color: var(--fg);
+      }
+      .txToastClose:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        @keyframes txToastIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes txToastOut {
+          from { opacity: 1; transform: translateY(0); }
+          to   { opacity: 0; transform: translateY(8px); }
+        }
+        .txToast {
+          animation: txToastIn 200ms ease-out both;
+        }
+        .txToast.is-hiding {
+          animation: txToastOut 220ms ease-in both;
+        }
+        .txToastSpinner {
+          animation: spin 900ms linear infinite;
+        }
+      }
     </style>
   </head>
   <body>
@@ -954,6 +1089,7 @@
           <div id="launchMsg"></div>
         </div>
       </div>
+      <div id="txToastHost" role="status" aria-live="polite" aria-label="Transaction status"></div>
     </main>
     <div
       class="previewOverlay"
@@ -1407,6 +1543,303 @@
       if (_launchOverlay) {
         _launchOverlay.addEventListener("pointerup", () => _hideOverlay());
       }
+
+      // ── Transaction status toasts ───────────────────────────────────────────
+      // Globally-mounted toast stack that surfaces the lifecycle of any
+      // transaction the page initiates through the Usernode bridge. The toast
+      // controller subscribes once to `usernode:tx` CustomEvents on window
+      // (mechanism A). The `window.usernodeTx` façade (mechanism B) and the
+      // defensive bridge auto-wrap (mechanism C) are emitters that feed those
+      // events — keeping the toast fully decoupled from how a transaction is
+      // actually sent. See the spec for the lifecycle contract.
+      (function txToasts() {
+        if (window.__txToastController) return;
+        window.__txToastController = true;
+
+        const host = document.getElementById("txToastHost");
+        if (!host) return;
+
+        const MAX_VISIBLE = 4;
+        const CONFIRMED_DISMISS_MS = 3500;
+        const HIDE_ANIM_MS = 240;
+        const TERMINAL = { confirmed: true, failed: true };
+        const STATES = { submitting: true, pending: true, confirmed: true, failed: true };
+
+        // id -> { el, state, timers: [], titleEl, metaEl, glyphEl, hashEl }
+        const toasts = new Map();
+
+        function reducedMotion() {
+          return !!(
+            window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          );
+        }
+
+        function shortHash(h) {
+          if (typeof h !== "string" || h.length <= 14) return h || "";
+          return h.slice(0, 6) + "…" + h.slice(-4);
+        }
+
+        function stateMeta(state) {
+          switch (state) {
+            case "submitting": return "Submitting…";
+            case "pending": return "Pending — waiting for confirmation";
+            case "confirmed": return "Confirmed";
+            case "failed": return "Failed";
+            default: return "";
+          }
+        }
+
+        function buildGlyph(state) {
+          const wrap = document.createElement("div");
+          wrap.className = "txToastGlyph";
+          if (state === "confirmed") {
+            const c = document.createElement("span");
+            c.className = "txToastCheck";
+            c.setAttribute("aria-hidden", "true");
+            c.textContent = "✓";
+            wrap.appendChild(c);
+          } else if (state === "failed") {
+            const x = document.createElement("span");
+            x.className = "txToastCross";
+            x.setAttribute("aria-hidden", "true");
+            x.textContent = "✕";
+            wrap.appendChild(x);
+          } else {
+            const s = document.createElement("div");
+            s.className = "txToastSpinner";
+            s.setAttribute("aria-hidden", "true");
+            wrap.appendChild(s);
+          }
+          return wrap;
+        }
+
+        function clearTimers(entry) {
+          entry.timers.forEach(clearTimeout);
+          entry.timers = [];
+        }
+
+        function removeToast(id) {
+          const entry = toasts.get(id);
+          if (!entry) return;
+          clearTimers(entry);
+          toasts.delete(id);
+          const el = entry.el;
+          if (reducedMotion()) {
+            if (el.parentNode) el.parentNode.removeChild(el);
+            return;
+          }
+          el.classList.add("is-hiding");
+          setTimeout(() => {
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }, HIDE_ANIM_MS);
+        }
+
+        // Evict the oldest already-resolved toast when over the visible cap.
+        // Never auto-evict an in-flight (submitting/pending) toast — if all
+        // visible toasts are in-flight we allow the stack to exceed the cap
+        // rather than hide live status.
+        function enforceCap() {
+          if (toasts.size <= MAX_VISIBLE) return;
+          for (const [id, entry] of toasts) {
+            if (TERMINAL[entry.state]) {
+              removeToast(id);
+              break;
+            }
+          }
+        }
+
+        function applyState(entry, state, extra) {
+          entry.state = state;
+          // Swap the glyph in place.
+          const newGlyph = buildGlyph(state);
+          entry.el.replaceChild(newGlyph, entry.glyphEl);
+          entry.glyphEl = newGlyph;
+
+          entry.el.classList.toggle("is-failed", state === "failed");
+
+          // Meta line: state text, plus an error detail on failure.
+          let meta = stateMeta(state);
+          if (state === "failed" && extra && extra.error) {
+            meta = "Failed — " + extra.error;
+          }
+          entry.metaEl.textContent = meta;
+
+          // Optional short hash/txid line.
+          const hash = extra && (extra.hash || extra.txid);
+          if (hash) {
+            entry.hashEl.textContent = shortHash(hash);
+            entry.hashEl.style.display = "";
+          }
+
+          // Arm/cancel auto-dismiss. Only `confirmed` auto-dismisses; `failed`
+          // is sticky; in-flight states never auto-dismiss.
+          clearTimers(entry);
+          if (state === "confirmed") {
+            entry.timers.push(
+              setTimeout(() => removeToast(entry.id), CONFIRMED_DISMISS_MS)
+            );
+          }
+        }
+
+        function createToast(id, state, label, extra) {
+          const el = document.createElement("div");
+          el.className = "txToast";
+
+          const glyphEl = buildGlyph(state);
+
+          const body = document.createElement("div");
+          body.className = "txToastBody";
+
+          const titleEl = document.createElement("div");
+          titleEl.className = "txToastTitle";
+          titleEl.textContent = label || "Transaction";
+
+          const metaEl = document.createElement("div");
+          metaEl.className = "txToastMeta";
+
+          const hashEl = document.createElement("div");
+          hashEl.className = "txToastHash";
+          hashEl.style.display = "none";
+
+          body.appendChild(titleEl);
+          body.appendChild(metaEl);
+          body.appendChild(hashEl);
+
+          const closeBtn = document.createElement("button");
+          closeBtn.type = "button";
+          closeBtn.className = "txToastClose";
+          closeBtn.setAttribute("aria-label", "Dismiss");
+          closeBtn.textContent = "×";
+          closeBtn.addEventListener("click", () => removeToast(id));
+
+          el.appendChild(glyphEl);
+          el.appendChild(body);
+          el.appendChild(closeBtn);
+
+          // Newest-on-top: column-reverse host means appended children render
+          // at the top of the stack.
+          host.appendChild(el);
+
+          const entry = { id, el, state, timers: [], titleEl, metaEl, glyphEl, hashEl };
+          toasts.set(id, entry);
+          applyState(entry, state, extra);
+          enforceCap();
+          return entry;
+        }
+
+        function handle(detail) {
+          if (!detail) return;
+          const state = detail.state;
+          if (!STATES[state]) return;
+          const id = detail.id != null ? String(detail.id) : genId();
+
+          let entry = toasts.get(id);
+          if (!entry) {
+            // Lazily create a toast for an unknown id (a bridge may emit only
+            // confirmed/failed) — it then follows the normal dismissal rule.
+            createToast(id, state, detail.label, detail);
+            return;
+          }
+
+          // Terminal states are sticky: ignore regressions and duplicate
+          // terminal events for an id already in that state.
+          if (TERMINAL[entry.state]) return;
+
+          if (detail.label) entry.titleEl.textContent = detail.label;
+          applyState(entry, state, detail);
+        }
+
+        window.addEventListener("usernode:tx", (e) => {
+          try { handle(e && e.detail); } catch (_) {}
+        });
+
+        // ── window.usernodeTx façade (mechanism B) ───────────────────────────
+        let _seq = 0;
+        function genId() {
+          _seq += 1;
+          // No Date.now()/Math.random() needed — a monotonic counter plus the
+          // page's nav timing is enough to keep ids unique within a session.
+          const base =
+            (window.performance && performance.now
+              ? Math.floor(performance.now())
+              : 0) + "";
+          return "tx-" + base + "-" + _seq;
+        }
+
+        function emit(id, state, extra) {
+          const detail = Object.assign({ id, state }, extra || {});
+          window.dispatchEvent(new CustomEvent("usernode:tx", { detail }));
+        }
+
+        const usernodeTx = {
+          begin(label) {
+            const id = genId();
+            emit(id, "submitting", { label });
+            return id;
+          },
+          update(id, state, extra) {
+            if (id == null) return;
+            emit(String(id), state, extra);
+          },
+          track(id, promise, label) {
+            const tid = id != null ? String(id) : genId();
+            emit(tid, "pending", label ? { label } : undefined);
+            Promise.resolve(promise).then(
+              (res) => {
+                const extra = {};
+                if (res && typeof res === "object") {
+                  if (res.hash) extra.hash = res.hash;
+                  if (res.txid) extra.txid = res.txid;
+                }
+                emit(tid, "confirmed", extra);
+                return res;
+              },
+              (err) => {
+                emit(tid, "failed", {
+                  error: (err && (err.message || String(err))) || "Transaction failed",
+                });
+                throw err;
+              }
+            );
+            return tid;
+          },
+        };
+        window.usernodeTx = usernodeTx;
+
+        // ── Defensive bridge auto-wrap (mechanism C) ─────────────────────────
+        // If a real bridge global exists and exposes sendTransaction, wrap it
+        // once so every call automatically surfaces status. No-op if absent.
+        function wrapBridge(bridge) {
+          if (!bridge || typeof bridge.sendTransaction !== "function") return false;
+          if (bridge.__txToastWrapped) return true;
+          const orig = bridge.sendTransaction.bind(bridge);
+          bridge.sendTransaction = function (...args) {
+            const label =
+              (args[0] && (args[0].label || args[0].name || args[0].dapp)) ||
+              "Transaction";
+            const id = usernodeTx.begin(label);
+            let result;
+            try {
+              result = orig(...args);
+            } catch (err) {
+              usernodeTx.update(id, "failed", {
+                error: (err && (err.message || String(err))) || "Transaction failed",
+              });
+              throw err;
+            }
+            if (result && typeof result.then === "function") {
+              usernodeTx.track(id, result);
+            } else {
+              usernodeTx.update(id, "confirmed");
+            }
+            return result;
+          };
+          bridge.__txToastWrapped = true;
+          return true;
+        }
+        wrapBridge(window.usernode) || wrapBridge(window.usernodeBridge);
+      })();
 
       (async function main() {
         addRow("(loading dapps...)");
