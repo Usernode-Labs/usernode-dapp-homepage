@@ -331,12 +331,12 @@
         margin: 0;
         display: grid;
         gap: 10px;
-        will-change: transform;
-        touch-action: none;
         flex: 1 1 auto;
         min-height: 0;
         align-content: start;
         grid-auto-rows: max-content;
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
       }
       li {
         border: 1px solid var(--card-item-border);
@@ -365,7 +365,6 @@
         padding: 12px 12px;
         color: inherit;
         text-decoration: none;
-        touch-action: none;
       }
       .dappLink:hover {
         text-decoration: none;
@@ -2057,51 +2056,15 @@
         }
       });
 
-      // --- Rubber-band (overscroll-like) stretch config ---
-      const RUBBER_BAND = {
-        deadzonePx: 6,
-        maxPullPx: 92,
-        constant: 0.56,
-        snapMs: 210,
-        snapEasing: "cubic-bezier(0.2, 0.9, 0.2, 1)",
-        enableScaleY: true,
-        scaleDivisor: 850,
-      };
-
-      function rubberBandDistance(d, dimension, constant) {
-        const abs = Math.abs(d);
-        if (dimension <= 0) return 0;
-        const result = (constant * abs * dimension) / (dimension + constant * abs);
-        return Math.sign(d) * result;
-      }
-
-      (function attachRubberBand() {
+      (function attachTapDetector() {
         const listEl = document.getElementById("dappList");
         if (!listEl) return;
 
+        const DEADZONE_PX = 10;
         let startY = 0;
         let activePointerId = null;
         let dragging = false;
         let moved = false;
-
-        function apply(offset) {
-          const t = offset;
-          if (RUBBER_BAND.enableScaleY) {
-            const s = 1 + Math.abs(offset) / RUBBER_BAND.scaleDivisor;
-            listEl.style.transform = `translateY(${t}px) scaleY(${s})`;
-          } else {
-            listEl.style.transform = `translateY(${t}px)`;
-          }
-        }
-
-        function reset() {
-          listEl.style.transition = `transform ${RUBBER_BAND.snapMs}ms ${RUBBER_BAND.snapEasing}`;
-          listEl.style.transform = "";
-          window.setTimeout(() => {
-            listEl.style.transition = "";
-          }, RUBBER_BAND.snapMs + 40);
-        }
-
         let downTarget = null;
         let pressedLi = null;
 
@@ -2112,42 +2075,16 @@
           dragging = true;
           moved = false;
           downTarget = e.target;
-          listEl.style.transition = "";
-          try {
-            listEl.setPointerCapture(activePointerId);
-          } catch (_) {}
 
           pressedLi = e.target.closest("li");
           if (pressedLi) pressedLi.classList.add("is-pressed");
         });
 
-        listEl.addEventListener(
-          "pointermove",
-          (e) => {
-            if (!dragging || e.pointerId !== activePointerId) return;
-            const dy = e.clientY - startY;
-
-            if (!moved && Math.abs(dy) > RUBBER_BAND.deadzonePx) moved = true;
-            const effectiveDy =
-              Math.abs(dy) <= RUBBER_BAND.deadzonePx
-                ? 0
-                : dy - Math.sign(dy) * RUBBER_BAND.deadzonePx;
-
-            const dim = window.innerHeight || 800;
-            let offset = rubberBandDistance(
-              effectiveDy,
-              dim,
-              RUBBER_BAND.constant
-            );
-
-            const max = RUBBER_BAND.maxPullPx;
-            if (offset > max) offset = max;
-            if (offset < -max) offset = -max;
-
-            apply(offset);
-          },
-          { passive: false }
-        );
+        listEl.addEventListener("pointermove", (e) => {
+          if (!dragging || e.pointerId !== activePointerId) return;
+          const dy = e.clientY - startY;
+          if (!moved && Math.abs(dy) > DEADZONE_PX) moved = true;
+        });
 
         function end(e) {
           if (!dragging || e.pointerId !== activePointerId) return;
@@ -2158,8 +2095,6 @@
             pressedLi.classList.remove("is-pressed");
             pressedLi = null;
           }
-
-          reset();
 
           if (!moved && downTarget) {
             const li = downTarget.closest("li");
@@ -2187,7 +2122,12 @@
         }
 
         listEl.addEventListener("pointerup", end);
-        listEl.addEventListener("pointercancel", end);
+        // pointercancel means the browser took over the gesture (e.g. scroll) —
+        // always treat as non-tap so we don't accidentally open the preview.
+        listEl.addEventListener("pointercancel", (e) => {
+          moved = true;
+          end(e);
+        });
 
         listEl.addEventListener(
           "click",
