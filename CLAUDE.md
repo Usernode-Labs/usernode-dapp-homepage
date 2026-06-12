@@ -133,3 +133,48 @@ like a private IP. Same convention as every other dapp in the fleet.
   part of why this app is robust.
 - **`/api/stats` and `/api/transactions` are intentionally public**.
   They expose a global summary identical for every viewer.
+
+## Submit-a-dapp flow (on-chain fee + validator approval)
+
+Anyone can propose a new dapp via the **Submit** button in the header.
+The flow charges a one-time on-chain fee (`SUBMISSION_FEE`, default
+1000 tokens) paid to the **Community Fund Reserve**
+(`COMMUNITY_FUND_RESERVE_ADDRESS`, may be a burn address). Paid
+submissions go to a **pending** queue and only appear on the homepage
+once a **delegated validator** approves them. Fees are
+**non-refundable** — rejection moves no funds.
+
+- **Storage is file-backed, not Postgres.** Submissions live in
+  `submissions.json` (gitignored), written atomically (temp file +
+  `rename`) and loaded into memory on boot — same zero-dependency,
+  file-as-source-of-truth approach as `dapps.json`. The app still
+  ignores `DATABASE_URL`. Override the path with `SUBMISSIONS_JSON_PATH`.
+- **Payment verification is server-side and trustless.** The poller
+  adds `COMMUNITY_FUND_RESERVE_ADDRESS` to its tracked set;
+  `reconcileSubmissionPayments()` (run each 30s tick) credits a
+  submission only when a **confirmed** transfer to the Reserve carries
+  `amount >= SUBMISSION_FEE` and a memo
+  `{"app":"dapp-homepage","type":"submit","sid":"<id>"}` whose `sid`
+  matches an awaiting/expired submission. `consumedTxIds` (re-seeded
+  from `payment_tx_hash` on boot) ensures one tx credits one submission.
+  Never trusts a client claim of payment.
+- **Approval appends to `dapps.json`.** `POST /api/review/:id/approve`
+  pushes the proposed entry into `dapps.json` (atomic write); the
+  poller then tracks the new pubkey on its next tick. Reject just flags
+  the record. Unpaid submissions are swept to `expired` after
+  `SUBMISSION_TTL_HOURS`.
+- **The `/review` queue is the ONLY authenticated surface.** Its API
+  (`GET /api/review`, `POST /api/review/:id/{approve,reject}`) requires
+  `Authorization: Bearer <VALIDATOR_TOKEN>` (constant-time compare).
+  Everything else stays public. `VALIDATOR_TOKEN` is the only `private`
+  secret in `dapp.json`; the Reserve/validator addresses are public.
+- **Public submit endpoints**: `POST /api/submissions` (create + get
+  pay instructions), `GET /api/submissions/:id` (status poll),
+  `GET /api/submit-config`. These accept writes but expose only a
+  global, per-submission view — no user data.
+- New secrets are declared in `dapp.json`:
+  `COMMUNITY_FUND_RESERVE_ADDRESS`, `SUBMISSION_FEE`,
+  `VALIDATOR_ADDRESS`, `VALIDATOR_TOKEN`, `SUBMISSION_TTL_HOURS`. When
+  `COMMUNITY_FUND_RESERVE_ADDRESS` is unset the submit flow is disabled
+  (the form returns 503); when `VALIDATOR_TOKEN` is unset the review
+  surface stays locked.

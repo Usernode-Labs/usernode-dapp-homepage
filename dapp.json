@@ -1,0 +1,44 @@
+{
+  "name": "Usernode Dapps",
+  "secrets": [
+    {
+      "key": "COMMUNITY_FUND_RESERVE_ADDRESS",
+      "description": "Usernode address (ut1…) that submission fees are paid to — the Community Fund Reserve (may be a burn address). When unset, the submit-a-dapp flow is disabled. Public on-chain address.",
+      "required": false,
+      "private": false,
+      "default": "",
+      "staging_default": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az"
+    },
+    {
+      "key": "SUBMISSION_FEE",
+      "description": "One-time fee in tokens required to submit a dapp. A confirmed transfer must carry amount >= this value.",
+      "required": false,
+      "private": false,
+      "default": "1000",
+      "staging_default": "1000"
+    },
+    {
+      "key": "VALIDATOR_ADDRESS",
+      "description": "Usernode address (ut1…) of the delegated validator who reviews submissions. Recorded for audit/display in the review queue. Public address.",
+      "required": false,
+      "private": false,
+      "default": "",
+      "staging_default": ""
+    },
+    {
+      "key": "VALIDATOR_TOKEN",
+      "description": "Shared bearer secret that gates the /review validator queue and its approve/reject API. Treat as a credential. When unset, the review surface stays locked.",
+      "required": false,
+      "private": true,
+      "staging_default": "staging-validator-token"
+    },
+    {
+      "key": "SUBMISSION_TTL_HOURS",
+      "description": "Hours an unpaid submission stays in 'awaiting_payment' before being swept to 'expired'. A genuine late payment is still credited.",
+      "required": false,
+      "private": false,
+      "default": "24",
+      "staging_default": "24"
+    }
+  ]
+}
