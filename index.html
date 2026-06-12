@@ -303,6 +303,7 @@
       }
       .sortMenu.open {
         display: flex;
+        flex-direction: column;
       }
       .sortOpt {
         display: flex;
@@ -935,9 +936,8 @@
               <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
             </button>
             <div class="sortWrap">
-              <button class="sortBtn" id="sortBtn">
+              <button class="sortBtn" id="sortBtn" aria-label="Sort" title="Sort">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
-                <span id="sortLabel">Popular</span>
               </button>
               <div class="sortMenu" id="sortMenu" role="menu">
                 <button class="sortOpt" data-sort="popular" role="menuitemradio" aria-label="Popular" title="Popular">
@@ -1022,7 +1022,6 @@
       const list = document.getElementById("dappList");
       const sortBtn = document.getElementById("sortBtn");
       const sortMenu = document.getElementById("sortMenu");
-      const sortLabel = document.getElementById("sortLabel");
       const themeBtn = document.getElementById("themeBtn");
 
       // Theme toggle. The initial class is applied pre-paint in <head>; here we
@@ -1343,9 +1342,15 @@
 
       // --- Sort menu ---
       function updateSortUI() {
-        sortLabel.textContent = SORT_LABELS[currentSort] || "Popular";
+        const label = SORT_LABELS[currentSort] || "Popular";
+        // Trigger shows only the icon; surface the active sort via the
+        // accessible name + hover tooltip instead of a visible text label.
+        sortBtn.setAttribute("aria-label", `Sort: ${label}`);
+        sortBtn.setAttribute("title", `Sort: ${label}`);
         sortMenu.querySelectorAll(".sortOpt").forEach((btn) => {
-          btn.classList.toggle("active", btn.dataset.sort === currentSort);
+          const active = btn.dataset.sort === currentSort;
+          btn.classList.toggle("active", active);
+          btn.setAttribute("aria-checked", active ? "true" : "false");
         });
       }
 
