@@ -1060,39 +1060,10 @@
       .statusPill .dot { width: 8px; height: 8px; border-radius: 50%; }
       .statusAwaiting { background: rgba(245, 158, 11, 0.14); color: #f59e0b; }
       .statusAwaiting .dot { background: #f59e0b; animation: spin 1s linear infinite; box-shadow: 0 0 0 2px rgba(245,158,11,.25); }
-      .statusPending  { background: rgba(56, 189, 248, 0.14); color: #38bdf8; }
-      .statusPending .dot { background: #38bdf8; }
-      .statusApproved { background: rgba(16, 185, 129, 0.14); color: #10b981; }
-      .statusApproved .dot { background: #10b981; }
-      .statusRejected, .statusExpired { background: rgba(148, 163, 184, 0.14); color: var(--muted); }
-      .statusRejected .dot, .statusExpired .dot { background: var(--muted); }
-      .miniSpinner {
-        width: 16px; height: 16px;
-        border: 2px solid var(--border);
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        display: inline-block;
-        animation: spin 800ms linear infinite;
-        vertical-align: middle;
-      }
-
-      /* ── Validator review queue ───────────────────────────────────────────── */
-      .reviewWrap { max-width: 820px; margin: 0 auto; width: 100%; }
-      .reviewHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-      .reviewTitle { font-size: 20px; font-weight: 700; }
-      .reviewItem {
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 14px;
-        margin-bottom: 12px;
-        background: var(--card);
-      }
-      .reviewItem h3 { margin: 0 0 4px; font-size: 16px; }
-      .reviewMeta { font-size: 12px; color: var(--muted); margin: 3px 0; word-break: break-all; }
-      .reviewMeta a { color: var(--accent); }
-      .reviewBtns { display: flex; gap: 10px; margin-top: 12px; }
-      .btnApprove { background: #10b981; color: #fff; border: none; border-radius: 9px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
-      .btnReject  { background: transparent; color: #ef4444; border: 1px solid rgba(239,68,68,.4); border-radius: 9px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
+      .statusPublished { background: rgba(16, 185, 129, 0.14); color: #10b981; }
+      .statusPublished .dot { background: #10b981; }
+      .statusExpired { background: rgba(148, 163, 184, 0.14); color: var(--muted); }
+      .statusExpired .dot { background: var(--muted); }
       @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
@@ -1141,20 +1112,6 @@
           <div class="launchSpinner"></div>
           <div id="launchDappName"></div>
           <div id="launchMsg"></div>
-        </div>
-      </div>
-
-      <!-- Validator review queue: shown only when the path is /review. -->
-      <div class="card" id="reviewCard" hidden style="overflow:auto;">
-        <div class="header"><div class="headerRow"><div class="reviewTitle">Pending submissions</div></div></div>
-        <div style="padding:18px;">
-          <div id="reviewAuth">
-            <p class="modalNote">Enter the validator token to review pending dapp submissions.</p>
-            <input class="fieldInput" id="reviewToken" type="password" placeholder="Validator token" autocomplete="off" />
-            <div class="modalActions"><button class="btnPrimary" id="reviewLoadBtn" type="button">Load queue</button></div>
-            <div class="modalError" id="reviewError" hidden></div>
-          </div>
-          <div id="reviewList" style="margin-top:14px;"></div>
         </div>
       </div>
     </main>
@@ -1210,7 +1167,7 @@
 
         <!-- Step 1: form -->
         <div id="submitStepForm">
-          <p class="modalNote">List your dapp on the Usernode homepage. Submitting requires a one-time on-chain fee paid to the Community Fund Reserve. The fee is non-refundable, and your listing goes live only after a validator approves it.</p>
+          <p class="modalNote">List your dapp on the Usernode homepage. Submitting burns a one-time on-chain fee to the Community Fund Reserve. The fee is non-refundable. Once the payment is confirmed on-chain, your dapp is published to the homepage automatically — no review step.</p>
           <label class="fieldLabel" for="f_name">Name *</label>
           <input class="fieldInput" id="f_name" maxlength="80" placeholder="My Cool Dapp" />
           <label class="fieldLabel" for="f_desc">Description</label>
@@ -2284,8 +2241,8 @@
         document.getElementById("submitCancel").addEventListener("click", closeModal);
         document.getElementById("doneClose").addEventListener("click", () => {
           closeModal();
-          // A fresh approval may have just gone live — reload to reflect it.
-          if (current && current._approved) location.reload();
+          // A freshly published dapp just went live — reload to reflect it.
+          if (current && current._published) location.reload();
         });
         modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
 
@@ -2370,15 +2327,13 @@
           }
         });
 
-        function renderStatus(status, extra) {
+        function renderStatus(status) {
           const map = {
             awaiting_payment: ["statusAwaiting", "Awaiting payment…"],
-            pending: ["statusPending", "Payment received — pending validator review"],
-            approved: ["statusApproved", "Approved — your dapp is now live!"],
-            rejected: ["statusRejected", "Rejected" + (extra ? `: ${extra}` : "") + " — the fee is non-refundable."],
+            published: ["statusPublished", "Published — your dapp is now live!"],
             expired: ["statusExpired", "Expired — no payment was detected in time."],
           };
-          const [cls, label] = map[status] || ["statusPending", status];
+          const [cls, label] = map[status] || ["statusAwaiting", status];
           payStatusWrap.innerHTML = `<div class="statusPill ${cls}"><span class="dot"></span>${label}</div>`;
         }
 
@@ -2404,143 +2359,25 @@
             renderStatus("awaiting_payment");
             return;
           }
-          // Terminal-ish: stop polling and show the outcome.
+          // Terminal: stop polling and show the outcome.
           if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-          if (s.status === "pending") {
+          if (s.status === "published") {
+            current._published = true;
             const tx = s.payment_tx_hash
               ? `<p class="modalNote">Payment tx: <span style="font-family:ui-monospace,monospace;word-break:break-all">${s.payment_tx_hash}</span></p>`
               : "";
             doneBody.innerHTML =
-              `<div class="statusPill statusPending"><span class="dot"></span>Payment received</div>` +
-              `<p class="modalNote">Your submission is now <strong>pending validator review</strong>. ` +
-              `Approved dapps appear on the homepage; the fee is non-refundable regardless of the decision.</p>` + tx;
-            setStep("done");
-          } else if (s.status === "approved") {
-            current._approved = true;
-            doneBody.innerHTML =
-              `<div class="statusPill statusApproved"><span class="dot"></span>Approved</div>` +
-              `<p class="modalNote">Your dapp is now live on the homepage. 🎉</p>`;
-            setStep("done");
-          } else if (s.status === "rejected") {
-            doneBody.innerHTML =
-              `<div class="statusPill statusRejected"><span class="dot"></span>Rejected</div>` +
-              `<p class="modalNote">${s.reject_reason ? s.reject_reason + " " : ""}The fee is non-refundable.</p>`;
+              `<div class="statusPill statusPublished"><span class="dot"></span>Published</div>` +
+              `<p class="modalNote">Payment confirmed — your dapp is now live on the homepage. 🎉</p>` + tx;
             setStep("done");
           } else if (s.status === "expired") {
             renderStatus("expired");
-            if (!stepPay.hidden) {
-              doneBody.innerHTML =
-                `<div class="statusPill statusExpired"><span class="dot"></span>Expired</div>` +
-                `<p class="modalNote">No payment was detected before this submission expired. If you did pay, it may still be detected shortly.</p>`;
-              setStep("done");
-            }
+            doneBody.innerHTML =
+              `<div class="statusPill statusExpired"><span class="dot"></span>Expired</div>` +
+              `<p class="modalNote">No payment was detected before this submission expired. If you did pay, it may still be detected and published shortly.</p>`;
+            setStep("done");
           }
         }
-      })();
-
-      // ── Validator review queue (/review) ────────────────────────────────────
-      (function reviewQueue() {
-        if (!/^\/review\/?$/.test(location.pathname)) return;
-        const TOKEN_KEY = "dapphome:validatorToken";
-
-        // Swap the homepage view for the review view.
-        const mainCard = document.querySelector("main > .card:not(#reviewCard)");
-        if (mainCard) mainCard.hidden = true;
-        const openBtn = document.getElementById("openSubmitBtn");
-        if (openBtn) openBtn.style.display = "none";
-        const reviewCard = document.getElementById("reviewCard");
-        if (reviewCard) reviewCard.hidden = false;
-
-        const tokenInput = document.getElementById("reviewToken");
-        const loadBtn = document.getElementById("reviewLoadBtn");
-        const errEl = document.getElementById("reviewError");
-        const listEl = document.getElementById("reviewList");
-
-        const saved = localStorage.getItem(TOKEN_KEY);
-        if (saved && tokenInput) tokenInput.value = saved;
-
-        function token() { return (tokenInput && tokenInput.value.trim()) || ""; }
-        function showError(msg) { errEl.textContent = msg; errEl.hidden = !msg; }
-
-        function esc(s) {
-          return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
-            ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-        }
-
-        async function load() {
-          showError("");
-          listEl.innerHTML = '<span class="miniSpinner"></span>';
-          const t = token();
-          if (!t) { listEl.innerHTML = ""; return showError("Enter the validator token."); }
-          localStorage.setItem(TOKEN_KEY, t);
-          try {
-            const resp = await fetch("/api/review", { headers: { authorization: "Bearer " + t }, cache: "no-store" });
-            if (resp.status === 401) { listEl.innerHTML = ""; return showError("Invalid validator token."); }
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-            render(data.pending || []);
-          } catch (e) {
-            listEl.innerHTML = "";
-            showError(e.message || String(e));
-          }
-        }
-
-        function render(pending) {
-          if (!pending.length) {
-            listEl.innerHTML = '<p class="modalNote">No submissions awaiting review.</p>';
-            return;
-          }
-          listEl.innerHTML = pending.map((s) => {
-            const d = s.dapp || {};
-            const age = s.paid_at ? new Date(s.paid_at).toLocaleString() : "";
-            const tx = s.payment_tx_hash || "";
-            return `<div class="reviewItem" data-id="${esc(s.id)}">
-              <h3>${esc(d.name)}</h3>
-              <div class="reviewMeta">${esc(d.description || "")}</div>
-              <div class="reviewMeta">by ${esc(d.author || "unknown")}${d.category ? " · " + esc(d.category) : ""}</div>
-              <div class="reviewMeta">URL: <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a></div>
-              <div class="reviewMeta">Dapp pubkey: ${esc(d.pubkey)}</div>
-              <div class="reviewMeta">Payer: ${esc(s.payer || "?")} · Paid: ${esc(s.paid_amount)} tokens · ${esc(age)}</div>
-              <div class="reviewMeta">Payment tx: ${tx ? esc(tx) : "—"}</div>
-              <div class="reviewBtns">
-                <button class="btnApprove" data-act="approve">Approve</button>
-                <button class="btnReject" data-act="reject">Reject</button>
-              </div>
-            </div>`;
-          }).join("");
-        }
-
-        listEl.addEventListener("click", async (e) => {
-          const btn = e.target.closest("button[data-act]");
-          if (!btn) return;
-          const item = btn.closest(".reviewItem");
-          const id = item && item.dataset.id;
-          if (!id) return;
-          const act = btn.dataset.act;
-          let reason = null;
-          if (act === "reject") {
-            reason = prompt("Reason for rejecting (optional):") || "";
-          }
-          item.querySelectorAll("button").forEach((b) => (b.disabled = true));
-          try {
-            const resp = await fetch(`/api/review/${encodeURIComponent(id)}/${act}`, {
-              method: "POST",
-              headers: { authorization: "Bearer " + token(), "content-type": "application/json" },
-              body: JSON.stringify(act === "reject" ? { reason } : {}),
-            });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-            item.remove();
-            if (!listEl.querySelector(".reviewItem")) render([]);
-          } catch (err) {
-            showError(err.message || String(err));
-            item.querySelectorAll("button").forEach((b) => (b.disabled = false));
-          }
-        });
-
-        if (loadBtn) loadBtn.addEventListener("click", load);
-        if (tokenInput) tokenInput.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
-        if (saved) load();
       })();
 
     </script>

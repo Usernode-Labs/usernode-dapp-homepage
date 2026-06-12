@@ -71,11 +71,6 @@ const COMMUNITY_FUND_RESERVE_ADDRESS =
 // Required fee in tokens. A confirmed transfer must carry amount >= this.
 const SUBMISSION_FEE = Number(process.env.SUBMISSION_FEE) || 1000;
 
-// Delegated validator identity (audit/display) + the bearer token that gates
-// the review endpoints.
-const VALIDATOR_ADDRESS = (process.env.VALIDATOR_ADDRESS || "").trim();
-const VALIDATOR_TOKEN = (process.env.VALIDATOR_TOKEN || "").trim();
-
 // How long an unpaid submission stays in `awaiting_payment` before it is swept
 // to `expired` (the UI stops polling). A real late payment is still credited.
 const SUBMISSION_TTL_HOURS = Number(process.env.SUBMISSION_TTL_HOURS) || 24;
@@ -209,18 +204,17 @@ function findSubmission(id) {
 }
 
 // A submission is a live duplicate-blocker while it is still awaiting payment or
-// pending/approved. Rejected and expired records do not block a fresh attempt.
+// already published. Expired records do not block a fresh attempt.
 function isLiveSubmission(s) {
-  return s && (s.status === "awaiting_payment" || s.status === "pending" || s.status === "approved");
+  return s && (s.status === "awaiting_payment" || s.status === "published");
 }
 
 function submitMemoString(id) {
   return JSON.stringify({ app: SUBMIT_MEMO_APP, type: SUBMIT_MEMO_TYPE, sid: id });
 }
 
-// Public-safe view returned to the submitter (no payer wallet beyond what they
-// already know; no validator notes that aren't theirs to see — reject_reason is
-// intentionally surfaced so the form can explain a rejection).
+// Public-safe view returned to the submitter — a global, per-submission status
+// view with no user data beyond what the submitter already supplied.
 function publicSubmissionView(s) {
   return {
     id: s.id,
@@ -231,7 +225,7 @@ function publicSubmissionView(s) {
     payment_tx_hash: s.payment_tx_hash || null,
     created_at: s.created_at,
     expires_at: s.expires_at,
-    reject_reason: s.reject_reason || null,
+    published_at: s.published_at || null,
     dapp: s.dapp,
   };
 }
@@ -473,11 +467,12 @@ function buildUserActivity() {
   return out;
 }
 
-// ── Submission payment reconciliation ─────────────────────────────────────────
+// ── Submission payment reconciliation + auto-publish ──────────────────────────
 // Runs each poll tick after the Reserve address has been polled. Scans the
 // Reserve's inbound transfers for confirmed payments whose memo `sid` matches a
-// submission still awaiting payment, and flips it to `pending`. Trusts only
-// confirmed chain state — never a client claim of payment.
+// submission still awaiting payment (or expired), appends the dapp to dapps.json,
+// and marks the record `published`. Confirmation IS publication — no validator.
+// Trusts only confirmed chain state — never a client claim of payment.
 
 function reconcileSubmissionPayments() {
   if (!COMMUNITY_FUND_RESERVE_ADDRESS) return;
@@ -504,14 +499,27 @@ function reconcileSubmissionPayments() {
     // Credit a real confirmed payment even if the form already gave up (expired).
     if (sub.status !== "awaiting_payment" && sub.status !== "expired") continue;
 
+    // Publish: append to dapps.json unless the dapp is already listed (race /
+    // manual add — idempotent skip). If the write fails (e.g. dapps.json not
+    // writable), leave the record unpublished and the tx unconsumed so the next
+    // tick retries — the fee is already burned regardless.
+    try {
+      if (!listingHas(sub.dapp.url, sub.dapp.pubkey)) {
+        appendDappToListing(sub.dapp);
+      }
+    } catch (e) {
+      console.warn(`[submit] could not publish ${sub.id} to dapps.json (will retry): ${e.message}`);
+      continue;
+    }
+
     sub.payer = tx.source || tx.from_pubkey || tx.from || null;
     sub.payment_tx_hash = txId;
     sub.paid_amount = amount;
-    sub.paid_at = Date.now();
-    sub.status = "pending";
+    sub.published_at = Date.now();
+    sub.status = "published";
     consumedTxIds.add(txId);
     dirty = true;
-    console.log(`[submit] payment confirmed for ${sub.id} (${amount} tokens from ${sub.payer}) — now pending`);
+    console.log(`[submit] payment confirmed for ${sub.id} (${amount} tokens from ${sub.payer}) — published "${sub.dapp.name}"`);
   }
 
   if (dirty) saveSubmissions();
@@ -531,7 +539,7 @@ function expireStaleSubmissions() {
   if (dirty) saveSubmissions();
 }
 
-// Promote an approved submission's dapp entry into dapps.json so the homepage
+// Append a published submission's dapp entry into dapps.json so the homepage
 // shows it and the poller tracks its pubkey on the next tick. Atomic write.
 function appendDappToListing(dapp) {
   const raw = fs.readFileSync(DAPPS_PATH, "utf8");
@@ -595,20 +603,6 @@ function readJsonBody(req, limitBytes, cb) {
     catch (e) { cb(new Error("invalid JSON body"), null); }
   });
   req.on("error", (e) => { if (!aborted) cb(e, null); });
-}
-
-// Constant-time bearer-token check against VALIDATOR_TOKEN. Returns false when
-// no validator token is configured (review surface is locked until set).
-function isValidator(req) {
-  if (!VALIDATOR_TOKEN) return false;
-  const header = req.headers["authorization"] || "";
-  const m = /^Bearer\s+(.+)$/.exec(header);
-  const presented = m ? m[1].trim() : "";
-  if (!presented) return false;
-  const a = Buffer.from(presented);
-  const b = Buffer.from(VALIDATOR_TOKEN);
-  if (a.length !== b.length) return false;
-  try { return crypto.timingSafeEqual(a, b); } catch (_) { return false; }
 }
 
 const TX_PREFIX = "ut1";
@@ -777,10 +771,7 @@ const server = http.createServer((req, res) => {
         fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS,
         created_at: now,
         expires_at: now + SUBMISSION_TTL_HOURS * 3600 * 1000,
-        paid_at: null,
-        reviewed_at: null,
-        reviewed_by: null,
-        reject_reason: null,
+        published_at: null,
       };
       submissions.push(record);
       saveSubmissions();
@@ -801,66 +792,6 @@ const server = http.createServer((req, res) => {
     const sub = findSubmission(id);
     if (!sub) return sendJson(res, 404, { error: "Submission not found." });
     return sendJson(res, 200, publicSubmissionView(sub));
-  }
-
-  // ── Validator review API (token-gated — the only authenticated surface) ────
-
-  if (pathname === "/api/review" && req.method === "GET") {
-    if (!isValidator(req)) return sendJson(res, 401, { error: "Not authorized." });
-    const pending = submissions
-      .filter((s) => s.status === "pending")
-      .sort((a, b) => (a.paid_at || a.created_at) - (b.paid_at || b.created_at));
-    return sendJson(res, 200, {
-      validator: VALIDATOR_ADDRESS || null,
-      fee: SUBMISSION_FEE,
-      pending,
-    });
-  }
-
-  // POST /api/review/:id/approve  and  /api/review/:id/reject
-  const reviewMatch = /^\/api\/review\/([^/]+)\/(approve|reject)$/.exec(pathname);
-  if (reviewMatch && req.method === "POST") {
-    if (!isValidator(req)) return sendJson(res, 401, { error: "Not authorized." });
-    const id = decodeURIComponent(reviewMatch[1]);
-    const action = reviewMatch[2];
-    const sub = findSubmission(id);
-    if (!sub) return sendJson(res, 404, { error: "Submission not found." });
-    if (sub.status !== "pending") {
-      return sendJson(res, 409, { error: `Submission is '${sub.status}', not 'pending'.` });
-    }
-    return readJsonBody(req, 8 * 1024, (err, body) => {
-      const reviewer = VALIDATOR_ADDRESS || "validator";
-      if (action === "approve") {
-        // Guard against a duplicate landing in dapps.json (race / manual add).
-        if (listingHas(sub.dapp.url, sub.dapp.pubkey)) {
-          sub.status = "rejected";
-          sub.reviewed_at = Date.now();
-          sub.reviewed_by = reviewer;
-          sub.reject_reason = "Already present in the listing at approval time.";
-          saveSubmissions();
-          return sendJson(res, 409, { error: "This dapp is already listed; submission marked rejected." });
-        }
-        try {
-          appendDappToListing(sub.dapp);
-        } catch (e) {
-          return sendJson(res, 500, { error: `Could not update dapps.json: ${e.message}` });
-        }
-        sub.status = "approved";
-        sub.reviewed_at = Date.now();
-        sub.reviewed_by = reviewer;
-        saveSubmissions();
-        console.log(`[submit] approved ${sub.id} (${sub.dapp.name}) — added to listing`);
-        return sendJson(res, 200, { ok: true, status: sub.status });
-      }
-      // reject
-      sub.status = "rejected";
-      sub.reviewed_at = Date.now();
-      sub.reviewed_by = reviewer;
-      sub.reject_reason = (body && typeof body.reason === "string" && body.reason.trim()) || null;
-      saveSubmissions();
-      console.log(`[submit] rejected ${sub.id} (${sub.dapp.name})`);
-      return sendJson(res, 200, { ok: true, status: sub.status });
-    });
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {
