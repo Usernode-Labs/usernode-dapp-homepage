@@ -909,6 +909,162 @@
           opacity: 0;
         }
       }
+
+      /* ── Submit-a-dapp button + modal ─────────────────────────────────────── */
+      .submitBtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 9px;
+        border: 1px solid var(--border);
+        background: var(--accent);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .submitBtn svg { width: 15px; height: 15px; }
+      .submitBtn:hover { filter: brightness(1.06); }
+      @media (max-width: 420px) {
+        .submitBtnLabel { display: none; }
+        .submitBtn { padding: 0 9px; }
+      }
+
+      .modalOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 16, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        z-index: 50;
+      }
+      .modalOverlay[hidden] { display: none; }
+      .modalCard {
+        width: 100%;
+        max-width: 460px;
+        max-height: calc(100dvh - 32px);
+        overflow-y: auto;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px;
+        box-sizing: border-box;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      }
+      .modalHead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+      .modalTitle { font-size: 17px; font-weight: 700; }
+      .modalClose {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 22px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 2px 6px;
+      }
+      .modalClose:hover { color: var(--fg); }
+      .fieldLabel {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin: 12px 0 5px;
+        font-weight: 600;
+      }
+      .fieldInput, .fieldTextarea {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 9px 11px;
+      }
+      .fieldTextarea { resize: vertical; min-height: 60px; }
+      .fieldInput:focus, .fieldTextarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+      .modalActions { display: flex; gap: 10px; margin-top: 18px; }
+      .btnPrimary {
+        flex: 1 1 auto;
+        height: 40px;
+        border: none;
+        border-radius: 10px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .btnPrimary:disabled { opacity: 0.55; cursor: default; }
+      .btnGhost {
+        height: 40px;
+        padding: 0 16px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: transparent;
+        color: var(--fg);
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .modalNote { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
+      .modalError {
+        font-size: 13px;
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: 9px;
+        padding: 9px 11px;
+        margin-top: 12px;
+      }
+      .modalError[hidden] { display: none; }
+      .payBox {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        margin-top: 12px;
+      }
+      .payRow { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin: 6px 0; }
+      .payRow .k { font-size: 12px; color: var(--muted); flex: 0 0 auto; }
+      .payRow .v { font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; text-align: right; }
+      .copyBtn {
+        font-size: 11px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--accent);
+        border-radius: 6px;
+        padding: 2px 7px;
+        cursor: pointer;
+        margin-left: 6px;
+      }
+      .statusPill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 999px;
+        margin-top: 14px;
+      }
+      .statusPill .dot { width: 8px; height: 8px; border-radius: 50%; }
+      .statusAwaiting { background: rgba(245, 158, 11, 0.14); color: #f59e0b; }
+      .statusAwaiting .dot { background: #f59e0b; animation: spin 1s linear infinite; box-shadow: 0 0 0 2px rgba(245,158,11,.25); }
+      .statusPublished { background: rgba(16, 185, 129, 0.14); color: #10b981; }
+      .statusPublished .dot { background: #10b981; }
+      .statusExpired { background: rgba(148, 163, 184, 0.14); color: var(--muted); }
+      .statusExpired .dot { background: var(--muted); }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
@@ -926,6 +1082,10 @@
               </a>
             </div>
             <div class="headerActions">
+            <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span class="submitBtnLabel">Submit</span>
+            </button>
             <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
               <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -996,6 +1156,65 @@
         </div>
       </div>
     </div>
+
+    <!-- Submit-a-dapp modal -->
+    <div class="modalOverlay" id="submitModal" hidden role="dialog" aria-modal="true" aria-label="Submit a dapp">
+      <div class="modalCard">
+        <div class="modalHead">
+          <div class="modalTitle" id="submitModalTitle">Submit your dapp</div>
+          <button class="modalClose" id="submitClose" type="button" aria-label="Close">&times;</button>
+        </div>
+
+        <!-- Step 1: form -->
+        <div id="submitStepForm">
+          <p class="modalNote">List your dapp on the Usernode homepage. Submitting burns a one-time on-chain fee to the Community Fund Reserve. The fee is non-refundable. Once the payment is confirmed on-chain, your dapp is published to the homepage automatically — no review step.</p>
+          <label class="fieldLabel" for="f_name">Name *</label>
+          <input class="fieldInput" id="f_name" maxlength="80" placeholder="My Cool Dapp" />
+          <label class="fieldLabel" for="f_desc">Description</label>
+          <textarea class="fieldTextarea" id="f_desc" maxlength="280" placeholder="One line about what it does."></textarea>
+          <label class="fieldLabel" for="f_author">Author</label>
+          <input class="fieldInput" id="f_author" maxlength="80" placeholder="Your name or team" />
+          <label class="fieldLabel" for="f_url">URL * (https)</label>
+          <input class="fieldInput" id="f_url" placeholder="https://my-dapp.example.org" />
+          <label class="fieldLabel" for="f_pubkey">Dapp pubkey * (ut1…)</label>
+          <input class="fieldInput" id="f_pubkey" placeholder="ut1…" />
+          <label class="fieldLabel" for="f_category">Category</label>
+          <input class="fieldInput" id="f_category" maxlength="40" placeholder="Game, Market, Utility, Social…" />
+          <div class="modalError" id="submitError" hidden></div>
+          <div class="modalActions">
+            <button class="btnGhost" id="submitCancel" type="button">Cancel</button>
+            <button class="btnPrimary" id="submitContinue" type="button">Continue to payment</button>
+          </div>
+        </div>
+
+        <!-- Step 2: pay + status -->
+        <div id="submitStepPay" hidden>
+          <p class="modalNote">Send the exact fee below to the Community Fund Reserve, including the memo (it ties the payment to your submission). When the network confirms it, this page advances automatically.</p>
+          <div class="payBox">
+            <div class="payRow"><span class="k">Amount</span><span class="v" id="payAmount"></span></div>
+            <div class="payRow"><span class="k">Pay to</span><span class="v" id="payTo"></span><button class="copyBtn" data-copy="payTo" type="button">Copy</button></div>
+            <div class="payRow"><span class="k">Memo</span><span class="v" id="payMemo"></span><button class="copyBtn" data-copy="payMemo" type="button">Copy</button></div>
+          </div>
+          <div class="modalActions">
+            <button class="btnPrimary" id="payWithWallet" type="button">Pay with wallet</button>
+          </div>
+          <div id="payStatusWrap"></div>
+          <div class="modalError" id="payError" hidden></div>
+          <p class="modalNote" id="paidHint" hidden>Paid from your own wallet instead? No problem — as long as the amount and memo match, this will detect it within ~30 seconds.</p>
+        </div>
+
+        <!-- Step 3: terminal status -->
+        <div id="submitStepDone" hidden>
+          <div id="doneBody"></div>
+          <div class="modalActions"><button class="btnPrimary" id="doneClose" type="button">Done</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Centrally-hosted Usernode bridge (used to request the fee transfer).
+         The server verifies payment from chain state, so a manual transfer
+         works too if the bridge is unavailable. -->
+    <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
     <script>
       const SORT_KEY = "dapphome:sort";
       const THEME_KEY = "dapphome:theme";
@@ -1978,6 +2197,189 @@
           },
           true
         );
+      })();
+
+      // ── Submit-a-dapp flow ──────────────────────────────────────────────────
+      (function submitFlow() {
+        const modal = document.getElementById("submitModal");
+        const openBtn = document.getElementById("openSubmitBtn");
+        if (!modal || !openBtn) return;
+
+        const stepForm = document.getElementById("submitStepForm");
+        const stepPay = document.getElementById("submitStepPay");
+        const stepDone = document.getElementById("submitStepDone");
+        const errForm = document.getElementById("submitError");
+        const errPay = document.getElementById("payError");
+        const continueBtn = document.getElementById("submitContinue");
+        const payWalletBtn = document.getElementById("payWithWallet");
+        const paidHint = document.getElementById("paidHint");
+        const payStatusWrap = document.getElementById("payStatusWrap");
+        const doneBody = document.getElementById("doneBody");
+
+        const F = (id) => document.getElementById(id);
+        let pollTimer = null;
+        let current = null; // { id, pay_to, amount, memo }
+
+        function showError(el, msg) { el.textContent = msg; el.hidden = !msg; }
+        function setStep(which) {
+          stepForm.hidden = which !== "form";
+          stepPay.hidden = which !== "pay";
+          stepDone.hidden = which !== "done";
+        }
+
+        function openModal() {
+          showError(errForm, "");
+          showError(errPay, "");
+          setStep("form");
+          modal.hidden = false;
+        }
+        function closeModal() {
+          modal.hidden = true;
+          if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        }
+
+        openBtn.addEventListener("click", openModal);
+        document.getElementById("submitClose").addEventListener("click", closeModal);
+        document.getElementById("submitCancel").addEventListener("click", closeModal);
+        document.getElementById("doneClose").addEventListener("click", () => {
+          closeModal();
+          // A freshly published dapp just went live — reload to reflect it.
+          if (current && current._published) location.reload();
+        });
+        modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+
+        // Copy buttons in the pay box.
+        stepPay.addEventListener("click", (e) => {
+          const btn = e.target.closest(".copyBtn");
+          if (!btn) return;
+          const src = F(btn.dataset.copy);
+          if (src && navigator.clipboard) {
+            navigator.clipboard.writeText(src.textContent).then(() => {
+              const old = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = old), 1200);
+            }).catch(() => {});
+          }
+        });
+
+        continueBtn.addEventListener("click", async () => {
+          showError(errForm, "");
+          const body = {
+            name: F("f_name").value.trim(),
+            description: F("f_desc").value.trim(),
+            author: F("f_author").value.trim(),
+            url: F("f_url").value.trim(),
+            pubkey: F("f_pubkey").value.trim(),
+            category: F("f_category").value.trim(),
+          };
+          if (!body.name) return showError(errForm, "Name is required.");
+          if (!/^https:\/\//i.test(body.url)) return showError(errForm, "URL must start with https://");
+          if (!body.pubkey.startsWith("ut1")) return showError(errForm, "Pubkey must start with ut1.");
+
+          continueBtn.disabled = true;
+          continueBtn.textContent = "Submitting…";
+          try {
+            const resp = await fetch("/api/submissions", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+            current = data;
+            F("payAmount").textContent = `${data.amount} tokens`;
+            F("payTo").textContent = data.pay_to;
+            F("payMemo").textContent = data.memo;
+            paidHint.hidden = false;
+            setStep("pay");
+            renderStatus("awaiting_payment");
+            startPolling(data.id);
+          } catch (e) {
+            showError(errForm, e.message || String(e));
+          } finally {
+            continueBtn.disabled = false;
+            continueBtn.textContent = "Continue to payment";
+          }
+        });
+
+        // Try the centrally-hosted Usernode bridge to request the transfer.
+        // Falls back to manual instructions (already on screen) if unavailable.
+        async function requestPaymentViaBridge(to, amount, memo) {
+          const candidates = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge];
+          const b = candidates.find((x) => x && typeof x.sendTransaction === "function");
+          if (!b) throw new Error("Wallet bridge unavailable — pay manually using the details above.");
+          // Bridge signature varies; pass a superset of common field names.
+          return b.sendTransaction({
+            to, recipient: to, destination: to,
+            amount, value: amount,
+            memo,
+          });
+        }
+
+        payWalletBtn.addEventListener("click", async () => {
+          if (!current) return;
+          showError(errPay, "");
+          payWalletBtn.disabled = true;
+          payWalletBtn.textContent = "Requesting…";
+          try {
+            await requestPaymentViaBridge(current.pay_to, current.amount, current.memo);
+            payWalletBtn.textContent = "Payment requested — waiting…";
+          } catch (e) {
+            showError(errPay, e.message || String(e));
+            payWalletBtn.disabled = false;
+            payWalletBtn.textContent = "Pay with wallet";
+          }
+        });
+
+        function renderStatus(status) {
+          const map = {
+            awaiting_payment: ["statusAwaiting", "Awaiting payment…"],
+            published: ["statusPublished", "Published — your dapp is now live!"],
+            expired: ["statusExpired", "Expired — no payment was detected in time."],
+          };
+          const [cls, label] = map[status] || ["statusAwaiting", status];
+          payStatusWrap.innerHTML = `<div class="statusPill ${cls}"><span class="dot"></span>${label}</div>`;
+        }
+
+        function startPolling(id) {
+          if (pollTimer) clearTimeout(pollTimer);
+          let delay = 4000;
+          async function tick() {
+            try {
+              const resp = await fetch(`/api/submissions/${encodeURIComponent(id)}`, { cache: "no-store" });
+              const s = await resp.json();
+              if (resp.ok) handleStatus(s);
+              else throw new Error(s.error || `HTTP ${resp.status}`);
+            } catch (_) { /* transient — keep polling */ }
+            // Back off slightly, capped, so a never-confirming payment is gentle.
+            delay = Math.min(delay + 1000, 15000);
+            pollTimer = setTimeout(tick, delay);
+          }
+          pollTimer = setTimeout(tick, delay);
+        }
+
+        function handleStatus(s) {
+          if (s.status === "awaiting_payment") {
+            renderStatus("awaiting_payment");
+            return;
+          }
+          // Terminal: stop polling and show the outcome.
+          if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+          if (s.status === "published") {
+            current._published = true;
+            const tx = s.payment_tx_hash
+              ? `<p class="modalNote">Payment tx: <span style="font-family:ui-monospace,monospace;word-break:break-all">${s.payment_tx_hash}</span></p>`
+              : "";
+            doneBody.innerHTML =
+              `<div class="statusPill statusPublished"><span class="dot"></span>Published</div>` +
+              `<p class="modalNote">Payment confirmed — your dapp is now live on the homepage. 🎉</p>` + tx;
+            setStep("done");
+          } else if (s.status === "expired") {
+            renderStatus("expired");
+            doneBody.innerHTML =
+              `<div class="statusPill statusExpired"><span class="dot"></span>Expired</div>` +
+              `<p class="modalNote">No payment was detected before this submission expired. If you did pay, it may still be detected and published shortly.</p>`;
+            setStep("done");
+          }
+        }
       })();
 
     </script>
