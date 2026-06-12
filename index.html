@@ -1963,20 +1963,26 @@
         // Plain text only — never inject untrusted strings as HTML.
         previewDesc.textContent = dapp.longDescription || dapp.description || "";
 
+        buildShowcase(dapp);
+
+        // Reveal the overlay BEFORE running the entrance reveal. The panel
+        // slide-up (previewIn) only fires on the display:none→flex flip, and
+        // applyStaggerReveal()'s reflow-based animation restart is a no-op
+        // while the panel is still hidden. Rendering the panel first lets both
+        // animations play on every open (including re-opening after a launch).
+        previewOverlay.classList.add("open");
+        previewOverlay.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+
         // Feature showcase (resets to step 0). When the dapp has no authored
         // highlights, fall back to a staggered entrance reveal of the standard
         // preview elements so the panel always animates gracefully.
-        buildShowcase(dapp);
         const revealEls = [previewLogo, previewHeadText, previewMeta, previewDesc];
         if (previewShowcase.hidden) {
           applyStaggerReveal(revealEls);
         } else {
           clearStaggerReveal(revealEls);
         }
-
-        previewOverlay.classList.add("open");
-        previewOverlay.setAttribute("aria-hidden", "false");
-        document.body.style.overflow = "hidden";
 
         previewCloseBtn.focus();
       }
@@ -1987,6 +1993,10 @@
         previewOverlay.classList.remove("open");
         previewOverlay.setAttribute("aria-hidden", "true");
         document.body.style.overflow = "";
+        // Reset the entrance-reveal state so stale revealItem opacity / delays
+        // never leak into the next open — otherwise the description and header
+        // can stay stuck invisible when re-opening after launching from a panel.
+        clearStaggerReveal([previewLogo, previewHeadText, previewMeta, previewDesc]);
         previewCurrentDapp = null;
         const ret = previewReturnFocus;
         previewReturnFocus = null;
