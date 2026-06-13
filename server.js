@@ -31,6 +31,7 @@ const crypto = require("crypto");
 const LOCAL_DEV = process.argv.includes("--local-dev");
 const PORT = Number(process.env.PORT) || 8000;
 const INDEX_PATH = path.join(__dirname, "index.html");
+const NFT_TERMINAL_PATH = path.join(__dirname, "nft-terminal.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
 
@@ -74,6 +75,14 @@ const SUBMISSION_FEE = Number(process.env.SUBMISSION_FEE) || 1000;
 // How long an unpaid submission stays in `awaiting_payment` before it is swept
 // to `expired` (the UI stops polling). A real late payment is still credited.
 const SUBMISSION_TTL_HOURS = Number(process.env.SUBMISSION_TTL_HOURS) || 24;
+
+// ── NODER NFT TERMINAL config ──────────────────────────────────────────────────
+// Standalone arcade-cabinet dapp served at /nft-terminal. The mint flow burns a
+// per-mint fee to the treasury via the wallet bridge. Mirrors the submit-flow
+// secret pattern: env-driven with an in-code default. When the treasury address
+// is unset the mint flow reports itself disabled (the UI degrades gracefully).
+const NFT_TREASURY_ADDRESS = (process.env.NFT_TREASURY_ADDRESS || "").trim();
+const MINT_FEE = Number(process.env.MINT_FEE) || 50;
 
 const EXPLORER_PROD_HOST = "testnet-explorer.usernodelabs.org";
 const EXPLORER_PROD_BASE = "/api";
@@ -737,6 +746,17 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  // Public config the NODER NFT TERMINAL needs to render: the per-mint fee, the
+  // treasury address the bridge pays, and whether minting is enabled at all.
+  // Public by design — identical for every viewer, exposes no user data.
+  if (pathname === "/api/nft-config" && req.method === "GET") {
+    return sendJson(res, 200, {
+      enabled: !!NFT_TREASURY_ADDRESS,
+      mintFee: MINT_FEE,
+      treasuryAddress: NFT_TREASURY_ADDRESS || null,
+    });
+  }
+
   // Create a submission → returns on-chain payment instructions.
   if (pathname === "/api/submissions" && req.method === "POST") {
     if (!COMMUNITY_FUND_RESERVE_ADDRESS) {
@@ -872,6 +892,39 @@ const server = http.createServer((req, res) => {
         200,
         {
           "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        },
+        buf
+      );
+    });
+  }
+
+  // Standalone NODER NFT TERMINAL arcade cabinet. Served as its own page so the
+  // homepage can link out to it like any other dapp. Same no-store posture as
+  // the SPA shell.
+  if (pathname === "/nft-terminal" || pathname === "/nft-terminal/") {
+    return fs.readFile(NFT_TERMINAL_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read nft-terminal.html: ${err.message}\n`
+        );
+      }
+      if (req.method === "HEAD") {
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "content-length": buf.length,
+          "cache-control": "no-store",
+        });
+        return res.end();
+      }
+      return send(
+        res,
+        200,
+        {
+          "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
         },
         buf

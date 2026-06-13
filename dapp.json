@@ -24,6 +24,22 @@
       "private": false,
       "default": "24",
       "staging_default": "24"
+    },
+    {
+      "key": "NFT_TREASURY_ADDRESS",
+      "description": "Usernode address (ut1…) that receives NODER NFT TERMINAL mint fees. When unset, the mint flow is disabled. Public on-chain address.",
+      "required": false,
+      "private": false,
+      "default": "",
+      "staging_default": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az"
+    },
+    {
+      "key": "MINT_FEE",
+      "description": "Coin cost to mint one NODER NFT. A mint of N items charges N × this value. Default 50.",
+      "required": false,
+      "private": false,
+      "default": "50",
+      "staging_default": "50"
     }
   ]
 }
