@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Usernode Hold'em</title>
+  <script>
+    // usernode-dev-console@1
+    (function () {
+      if (window.__usernodeDevConsole) return;
+      window.__usernodeDevConsole = true;
+      var S = '__usernodeDevConsole';
+      function forward(level, args) {
+        try {
+          var payload = {
+            source: S, level: level,
+            message: Array.prototype.map.call(args, function (a) {
+              try { return typeof a === 'string' ? a : JSON.stringify(a); }
+              catch (e) { return String(a); }
+            }).join(' '),
+            ts: Date.now()
+          };
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(payload, '*');
+          }
+        } catch (e) {}
+      }
+      ['log', 'info', 'warn', 'error', 'debug'].forEach(function (lvl) {
+        var orig = console[lvl] ? console[lvl].bind(console) : function () {};
+        console[lvl] = function () { forward(lvl, arguments); orig.apply(null, arguments); };
+      });
+      window.addEventListener('error', function (e) { forward('error', [e.message + ' @ ' + (e.filename || '') + ':' + (e.lineno || '')]); });
+      window.addEventListener('unhandledrejection', function (e) { forward('error', ['unhandledrejection: ' + (e.reason && e.reason.message || e.reason)]); });
+    })();
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    body { background: #0b1220; color: #e5e7eb; }
+    .felt {
+      background: radial-gradient(ellipse at center, #15803d 0%, #14532d 70%, #0f3d22 100%);
+      border: 8px solid #3f2d18; border-radius: 48% / 60%;
+    }
+    .seat-spot { transition: box-shadow .2s, transform .2s; }
+    .seat-actor { box-shadow: 0 0 0 3px #fbbf24, 0 0 22px #fbbf2488; }
+    .card {
+      width: 42px; height: 60px; border-radius: 6px; background: #fff; color: #111;
+      display: inline-flex; align-items: center; justify-content: center; font-weight: 700;
+      box-shadow: 0 1px 3px #0008; font-size: 18px;
+    }
+    .card.back { background: linear-gradient(135deg, #1e3a8a, #1e40af); color: transparent; }
+    .card.red { color: #dc2626; }
+    .timer-ring { transition: width 1s linear; }
+    @media (max-width: 720px) {
+      .felt { border-radius: 32px; }
+    }
+    .chip-pill { background:#0008; border:1px solid #ffffff22; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div id="app" class="max-w-5xl mx-auto px-3 pb-40 pt-4"></div>
+
+  <!-- Buy-in modal -->
+  <div id="buyinModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-40 p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5">
+      <h3 class="text-lg font-bold mb-1">Buy in</h3>
+      <p class="text-sm text-slate-400 mb-3">Pay an on-chain transfer to the table bank. Your chips are credited 1:1 once the deposit confirms (~a few seconds).</p>
+      <div id="buyinStep1">
+        <label class="block text-sm mb-1">Seat</label>
+        <div id="seatPicker" class="flex flex-wrap gap-2 mb-3"></div>
+        <label class="block text-sm mb-1">Amount (chips = tokens)</label>
+        <input id="buyinAmount" type="number" class="w-full bg-slate-800 rounded px-3 py-2 mb-1" />
+        <p id="buyinRange" class="text-xs text-slate-500 mb-3"></p>
+        <p id="buyinErr" class="text-sm text-red-400 mb-2"></p>
+        <div class="flex gap-2">
+          <button id="buyinContinue" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded py-2 font-semibold">Continue to payment</button>
+          <button onclick="closeBuyin()" class="px-4 bg-slate-700 rounded py-2">Cancel</button>
+        </div>
+      </div>
+      <div id="buyinStep2" class="hidden">
+        <div class="text-sm space-y-2 mb-3">
+          <div>Pay to: <code id="payTo" class="text-xs break-all text-emerald-300"></code></div>
+          <div>Amount: <span id="payAmount" class="font-semibold"></span> tokens</div>
+          <div>Memo: <code id="payMemo" class="text-[10px] break-all text-slate-400"></code></div>
+        </div>
+        <div id="payStatus" class="mb-3 text-sm"></div>
+        <p class="text-xs text-slate-500 mb-3">Paid from your own wallet instead? As long as the amount and memo match, this is detected within ~30s.</p>
+        <div class="flex gap-2">
+          <button id="payWithWallet" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded py-2 font-semibold">Pay with wallet</button>
+          <button onclick="closeBuyin()" class="px-4 bg-slate-700 rounded py-2">Close</button>
+        </div>
+        <p id="payErr" class="text-sm text-red-400 mt-2"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Verify modal -->
+  <div id="verifyModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-40 p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-5 max-h-[85vh] overflow-auto">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="text-lg font-bold">Verify this hand</h3>
+        <button onclick="document.getElementById('verifyModal').classList.add('hidden')" class="text-slate-400">✕</button>
+      </div>
+      <div id="verifyBody" class="text-sm space-y-2"></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const params = new URLSearchParams(location.search);
+    const TOKEN = params.get('token') || '';
+    let ME = null, CURRENT_TABLE = null, ES = null, LAST_VIEW = null, BUYIN = {};
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ 'content-type': 'application/json' }, opts.headers || {});
+      if (TOKEN) headers['x-usernode-token'] = TOKEN;
+      const resp = await fetch(path, Object.assign({}, opts, { headers }));
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+      return data;
+    }
+
+    function suitColor(card) { return /[hd]/.test(card[1]) ? 'red' : ''; }
+    function cardHtml(card, faceDown) {
+      if (faceDown || !card) return `<span class="card back">x</span>`;
+      const suit = { c: '♣', d: '♦', h: '♥', s: '♠' }[card[1]] || '';
+      return `<span class="card ${suitColor(card)}">${card[0]}${suit}</span>`;
+    }
+
+    // ── Lobby ──────────────────────────────────────────────────────────────
+    async function showLobby() {
+      stopStream();
+      try {
+        const data = await api('/api/tables');
+        ME = data.you;
+        const rows = data.tables.map((t) => `
+          <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <div class="font-semibold">${escapeHtml(t.name)}</div>
+              <div class="text-sm text-slate-400">Blinds ${t.sb}/${t.bb} · Buy-in ${t.min_buyin}–${t.max_buyin} · ${t.seated}/${t.max_seats} seated</div>
+            </div>
+            <button onclick="openTable('${t.id}')" class="bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">Open</button>
+          </div>`).join('');
+        $('app').innerHTML = `
+          <div class="flex items-center justify-between mb-4">
+            <h1 class="text-2xl font-bold">♠ Usernode Hold'em</h1>
+            <button onclick="createTable()" class="bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-2 text-sm">+ Create table</button>
+          </div>
+          <p class="text-sm text-slate-400 mb-3">Signed in as <b>${escapeHtml(ME.username || 'guest')}</b>${ME.wallet ? '' : ' · <span class="text-amber-400">no wallet linked</span>'}</p>
+          <div class="space-y-3">${rows || '<p class="text-slate-500">No open tables.</p>'}</div>`;
+      } catch (e) {
+        $('app').innerHTML = `<p class="text-red-400">${escapeHtml(e.message)}</p>`;
+      }
+    }
+
+    async function createTable() {
+      try { const r = await api('/api/tables', { method: 'POST', body: '{}' }); openTable(r.id); }
+      catch (e) { alert(e.message); }
+    }
+
+    // ── Table ──────────────────────────────────────────────────────────────
+    function openTable(id) {
+      CURRENT_TABLE = id;
+      stopStream();
+      ES = new EventSource(`/api/tables/${id}/stream?token=${encodeURIComponent(TOKEN)}`);
+      ES.onmessage = (ev) => { try { renderTable(JSON.parse(ev.data)); } catch (_) {} };
+      ES.onerror = () => {};
+    }
+    function stopStream() { if (ES) { ES.close(); ES = null; } }
+
+    function seatPosition(i, n) {
+      // Distribute seats around an ellipse; viewer's seat is rotated to bottom.
+      const angle = Math.PI / 2 + (2 * Math.PI * i) / n;
+      const x = 50 + 42 * Math.cos(angle);
+      const y = 52 + 40 * Math.sin(angle);
+      return { x, y };
+    }
+
+    function renderTable(view) {
+      LAST_VIEW = view;
+      const t = view.table;
+      const you = view.you.seat;
+      const seats = view.seats;
+      const n = seats.length;
+
+      // Rotate so the viewer sits at the bottom.
+      const order = [];
+      const base = you != null ? you : 0;
+      for (let k = 0; k < n; k++) order.push(seats[(base + k) % n]);
+
+      const seatEls = order.map((s, i) => {
+        const pos = seatPosition(i, n);
+        const isMe = s.isYou;
+        const cards = (s.holeCards && s.holeCards.length)
+          ? s.holeCards.map((c) => cardHtml(c)).join('')
+          : (s.holeCount ? cardHtml(null, true).repeat(s.holeCount) : '');
+        const occ = s.occupied;
+        return `<div class="seat-spot absolute -translate-x-1/2 -translate-y-1/2 ${s.isActor ? 'seat-actor' : ''} rounded-xl px-2 py-1 ${occ ? 'bg-slate-900/85 border border-slate-600' : 'bg-slate-800/40 border border-dashed border-slate-700'}"
+            style="left:${pos.x}%;top:${pos.y}%;min-width:96px;text-align:center">
+            ${occ ? `
+              <div class="text-xs font-semibold truncate ${isMe ? 'text-emerald-300' : ''}">${escapeHtml(s.username || '')}${isMe ? ' (you)' : ''}</div>
+              <div class="text-[11px] text-amber-300 chip-pill rounded px-1 inline-block mt-0.5">${s.stack} ${s.folded ? '· folded' : ''}${s.allIn ? '· all-in' : ''}</div>
+              <div class="mt-1 flex gap-0.5 justify-center" style="transform:scale(.62);transform-origin:center">${cards}</div>
+              ${s.committed ? `<div class="text-[10px] text-slate-300 mt-0.5">bet ${s.committed}</div>` : ''}
+            ` : `<button onclick="startBuyin(${s.seat_no})" class="text-xs text-slate-400 hover:text-emerald-300 py-3">Sit here</button>`}
+          </div>`;
+      }).join('');
+
+      const hand = view.hand;
+      const board = hand ? hand.board : [];
+      const boardEls = board.map((c) => cardHtml(c)).join('') || '<span class="text-slate-400 text-sm">waiting for players…</span>';
+      const pot = hand && hand.pots && hand.pots.length ? hand.pots.reduce((a, p) => a + p.amount, 0) : 0;
+
+      $('app').innerHTML = `
+        <div class="flex items-center justify-between mb-3">
+          <button onclick="showLobby()" class="text-sm text-slate-400 hover:text-white">← Lobby</button>
+          <div class="text-sm text-slate-300">${escapeHtml(t.name)} · ${t.sb}/${t.bb}</div>
+          <button onclick="cashOut()" class="text-sm bg-slate-700 hover:bg-slate-600 rounded px-3 py-1">Cash out</button>
+        </div>
+        <div class="relative felt mx-auto" style="max-width:680px;height:380px">
+          <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+            <div class="flex gap-1 justify-center mb-2">${boardEls}</div>
+            <div class="text-amber-300 font-semibold">Pot: ${pot}</div>
+            ${hand && hand.commitment ? `<div class="text-[10px] text-emerald-200/70 mt-1">fair commit: ${hand.commitment.slice(0, 16)}…</div>` : ''}
+            ${hand && hand.timer && hand.timer.paused ? `<div class="text-[11px] text-amber-200 mt-1">⏸ timer paused — confirming on-chain…</div>` : ''}
+          </div>
+          ${seatEls}
+        </div>
+        ${renderResultBanner(hand)}
+        <div id="historyWrap" class="mt-5"></div>`;
+
+      renderActionBar(view);
+      loadHistory(t.id);
+    }
+
+    function renderResultBanner(hand) {
+      if (!hand || !hand.result) return '';
+      const w = hand.result.winners || [];
+      const txt = w.map((x) => `${escapeHtml(x.username || ('seat ' + x.seat))} wins ${x.amount}${x.name ? ' (' + x.name + ')' : ''}`).join(' · ');
+      return `<div class="mt-3 text-center bg-emerald-900/40 border border-emerald-700 rounded-lg py-2 text-sm">${txt || 'Hand complete'}</div>`;
+    }
+
+    // ── Action bar (fixed, thumb-reachable on mobile) ──────────────────────
+    function renderActionBar(view) {
+      const old = $('actionBar'); if (old) old.remove();
+      const hand = view.hand;
+      if (!hand || !hand.legal) return;
+      const L = hand.legal;
+      const bb = view.table.bb;
+      const bar = document.createElement('div');
+      bar.id = 'actionBar';
+      bar.className = 'fixed bottom-0 inset-x-0 bg-slate-900/95 border-t border-slate-700 p-3 z-30';
+      const minTo = L.canRaise ? L.minRaiseTo : (L.canBet ? L.minBet : 0);
+      bar.innerHTML = `
+        <div class="max-w-3xl mx-auto">
+          <div class="flex items-center gap-2 mb-2 ${(L.canBet || L.canRaise) ? '' : 'hidden'}">
+            <input id="betSlider" type="range" min="${minTo}" max="${L.maxTo}" value="${minTo}" class="flex-1">
+            <input id="betInput" type="number" min="${minTo}" max="${L.maxTo}" value="${minTo}" class="w-24 bg-slate-800 rounded px-2 py-1 text-right">
+          </div>
+          <div class="flex gap-2">
+            <button onclick="act('fold')" class="flex-1 bg-rose-700 hover:bg-rose-600 rounded-lg py-3 font-semibold">Fold</button>
+            ${L.canCheck ? `<button onclick="act('check')" class="flex-1 bg-slate-600 hover:bg-slate-500 rounded-lg py-3 font-semibold">Check</button>` : ''}
+            ${L.canCall ? `<button onclick="act('call')" class="flex-1 bg-sky-700 hover:bg-sky-600 rounded-lg py-3 font-semibold">Call ${L.callAmount}</button>` : ''}
+            ${(L.canBet || L.canRaise) ? `<button onclick="actBet()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded-lg py-3 font-semibold">${L.canRaise ? 'Raise' : 'Bet'}</button>` : ''}
+          </div>
+          <div class="flex gap-2 mt-2 ${(L.canBet || L.canRaise) ? '' : 'hidden'}">
+            <button onclick="quickBet(${minTo})" class="text-xs bg-slate-800 rounded px-2 py-1">Min</button>
+            <button onclick="quickBetPot(0.5)" class="text-xs bg-slate-800 rounded px-2 py-1">½ Pot</button>
+            <button onclick="quickBetPot(1)" class="text-xs bg-slate-800 rounded px-2 py-1">Pot</button>
+            <button onclick="quickBet(${L.maxTo})" class="text-xs bg-slate-800 rounded px-2 py-1">All-in (${L.maxTo})</button>
+          </div>
+        </div>`;
+      document.body.appendChild(bar);
+      const slider = $('betSlider'), input = $('betInput');
+      if (slider) { slider.oninput = () => input.value = slider.value; input.oninput = () => slider.value = input.value; }
+    }
+    function quickBet(v) { if ($('betSlider')) { $('betSlider').value = v; $('betInput').value = v; } }
+    function quickBetPot(frac) {
+      const pot = (LAST_VIEW.hand.pots || []).reduce((a, p) => a + p.amount, 0);
+      const L = LAST_VIEW.hand.legal;
+      let v = Math.max(L.minRaiseTo || L.minBet, Math.round((L.callAmount || 0) + pot * frac));
+      v = Math.min(v, L.maxTo); quickBet(v);
+    }
+    async function act(type) {
+      try { await api(`/api/tables/${CURRENT_TABLE}/action`, { method: 'POST', body: JSON.stringify({ type }) }); }
+      catch (e) { alert(e.message); }
+    }
+    async function actBet() {
+      const amount = Number($('betInput').value);
+      const L = LAST_VIEW.hand.legal;
+      try { await api(`/api/tables/${CURRENT_TABLE}/action`, { method: 'POST', body: JSON.stringify({ type: L.canRaise ? 'raise' : 'bet', amount }) }); }
+      catch (e) { alert(e.message); }
+    }
+
+    async function cashOut() {
+      if (!confirm('Leave the table and cash out your chips on-chain?')) return;
+      try { const r = await api(`/api/tables/${CURRENT_TABLE}/cashout`, { method: 'POST', body: '{}' }); alert('Cashing out ' + r.cashed_out + ' chips.'); }
+      catch (e) { alert(e.message); }
+    }
+
+    // ── Buy-in flow ────────────────────────────────────────────────────────
+    function startBuyin(seatNo) {
+      const t = LAST_VIEW.table;
+      BUYIN = { seat: seatNo };
+      $('buyinStep1').classList.remove('hidden');
+      $('buyinStep2').classList.add('hidden');
+      $('buyinErr').textContent = '';
+      $('seatPicker').innerHTML = `<span class="bg-emerald-700 rounded px-3 py-1 text-sm">Seat ${seatNo + 1}</span>`;
+      $('buyinRange').textContent = `Between ${t.min_buyin} and ${t.max_buyin}`;
+      $('buyinAmount').value = t.min_buyin;
+      $('buyinModal').classList.remove('hidden'); $('buyinModal').classList.add('flex');
+    }
+    function closeBuyin() { $('buyinModal').classList.add('hidden'); $('buyinModal').classList.remove('flex'); }
+
+    $('buyinContinue').onclick = async () => {
+      const amount = Number($('buyinAmount').value);
+      try {
+        const r = await api(`/api/tables/${CURRENT_TABLE}/buyin`, { method: 'POST', body: JSON.stringify({ seat_no: BUYIN.seat, amount }) });
+        BUYIN.sid = r.sid;
+        $('payTo').textContent = r.pay_to;
+        $('payAmount').textContent = r.amount;
+        $('payMemo').textContent = r.memo;
+        BUYIN.pay = r;
+        $('buyinStep1').classList.add('hidden');
+        $('buyinStep2').classList.remove('hidden');
+        $('payStatus').innerHTML = '<span class="text-amber-300">Awaiting payment…</span>';
+        pollSession(r.sid);
+      } catch (e) { $('buyinErr').textContent = e.message; }
+    };
+
+    $('payWithWallet').onclick = async () => {
+      $('payErr').textContent = '';
+      const b = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge].find((x) => x && typeof x.sendTransaction === 'function');
+      if (!b) { $('payErr').textContent = 'Wallet bridge unavailable — pay manually using the details above.'; return; }
+      try {
+        await b.sendTransaction({ to: BUYIN.pay.pay_to, recipient: BUYIN.pay.pay_to, destination: BUYIN.pay.pay_to, amount: BUYIN.pay.amount, value: BUYIN.pay.amount, memo: BUYIN.pay.memo });
+        $('payStatus').innerHTML = '<span class="text-amber-300">Payment requested — waiting for confirmation…</span>';
+      } catch (e) { $('payErr').textContent = e.message || String(e); }
+    };
+
+    async function pollSession(sid) {
+      let delay = 3000;
+      async function tick() {
+        try {
+          const s = await api(`/api/tables/${CURRENT_TABLE}/session/${sid}`);
+          if (s.status === 'credited') {
+            $('payStatus').innerHTML = '<span class="text-emerald-400">Deposit confirmed — you are seated!</span>';
+            setTimeout(closeBuyin, 1200);
+            return;
+          }
+          if (s.status === 'expired') { $('payStatus').innerHTML = '<span class="text-rose-400">Session expired — no payment detected.</span>'; return; }
+        } catch (_) {}
+        delay = Math.min(delay + 1000, 15000);
+        setTimeout(tick, delay);
+      }
+      setTimeout(tick, delay);
+    }
+
+    // ── History + verify ──────────────────────────────────────────────────
+    async function loadHistory(tableId) {
+      try {
+        const data = await api(`/api/tables/${tableId}/hands`);
+        if (!data.hands.length) { $('historyWrap').innerHTML = ''; return; }
+        const rows = data.hands.map((h) => {
+          const w = (h.result && h.result.winners) || [];
+          const wtxt = w.map((x) => `${escapeHtml(x.username || ('seat ' + x.seat))} +${x.amount}`).join(', ');
+          return `<div class="flex items-center justify-between bg-slate-800/50 rounded-lg px-3 py-2 text-sm">
+            <div>#${h.hand_no} · <span class="text-slate-400">${(h.board || []).join(' ')}</span> · ${wtxt}</div>
+            <button onclick="verifyHand('${h.id}')" class="text-xs bg-slate-700 hover:bg-slate-600 rounded px-2 py-1">Verify ✓</button>
+          </div>`;
+        }).join('');
+        $('historyWrap').innerHTML = `<h3 class="font-semibold mb-2">Hand history</h3><div class="space-y-1">${rows}</div>`;
+      } catch (_) {}
+    }
+
+    async function verifyHand(id) {
+      try {
+        const v = await api(`/api/hands/${id}/verify`);
+        const ok = v.verification && v.verification.ok;
+        $('verifyBody').innerHTML = `
+          <div class="rounded-lg p-2 ${ok ? 'bg-emerald-900/50 border border-emerald-700' : 'bg-rose-900/50 border border-rose-700'}">
+            ${ok ? '✓ Verified — the deck matches the commitment and the revealed seed.' : '✗ Verification failed: ' + (v.verification.reasons || []).join('; ')}
+          </div>
+          <div><b>Commitment</b><div class="text-xs break-all text-slate-400">${v.commitment || '—'}</div></div>
+          <div><b>Revealed seed</b><div class="text-xs break-all text-slate-400">${v.revealed_seed || '—'}</div></div>
+          <div><b>Player entropy nonces</b><div class="text-xs break-all text-slate-400">${(v.nonces || []).join(', ') || '—'}</div></div>
+          <div><b>Shuffle seed</b><div class="text-xs break-all text-slate-400">${v.shuffle_seed || '—'}</div></div>
+          <div><b>On-chain commit tx</b><div class="text-xs break-all text-slate-400">${v.commit_tx || '(not anchored)'}</div></div>
+          <div><b>On-chain reveal tx</b><div class="text-xs break-all text-slate-400">${v.reveal_tx || '(not anchored)'}</div></div>
+          <div><b>Dealt deck</b><div class="text-xs break-all text-slate-500">${(v.deck || []).join(' ')}</div></div>`;
+        $('verifyModal').classList.remove('hidden'); $('verifyModal').classList.add('flex');
+      } catch (e) { alert(e.message); }
+    }
+
+    function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    showLobby();
+  </script>
+</body>
+</html>
