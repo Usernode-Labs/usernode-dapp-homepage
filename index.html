@@ -750,22 +750,27 @@
         }
       }
       .previewMeta {
+        /* Single two-column grid so every label shares one column edge and
+           all values align to a common left edge. Rows use display:contents
+           (below) so their label/value become direct grid items. The label
+           column auto-sizes to the widest label via max-content. */
         display: grid;
-        gap: 6px;
+        grid-template-columns: max-content 1fr;
+        align-items: baseline;
+        gap: 10px 14px;
         font-size: 13px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
       }
       .previewMetaRow {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
+        display: contents;
       }
       .previewMetaLabel {
         color: var(--muted);
-        flex: 0 0 auto;
-        min-width: 92px;
         font-size: 12px;
         text-transform: uppercase;
         letter-spacing: 0.4px;
+        white-space: nowrap;
       }
       .previewMetaVal {
         color: var(--fg);
@@ -779,11 +784,53 @@
       .previewMetaVal a:hover {
         text-decoration: underline;
       }
+      .previewDescBlock {
+        display: grid;
+        gap: 6px;
+      }
+      .previewSummary {
+        color: var(--fg);
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+      }
       .previewDesc {
         color: var(--fg);
         font-size: 14px;
         line-height: 1.55;
-        white-space: pre-wrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .previewDesc.clamped {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .previewDescToggle {
+        appearance: none;
+        background: transparent;
+        border: none;
+        padding: 2px 0;
+        min-height: 28px;
+        align-self: start;
+        justify-self: start;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--accent);
+        cursor: pointer;
+        line-height: 1.2;
+      }
+      .previewDescToggle:hover {
+        text-decoration: underline;
+      }
+      .previewDescToggle:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--accent);
+        border-radius: 4px;
       }
       .previewStats {
         display: flex;
@@ -1148,8 +1195,19 @@
               aria-label="Choose feature highlight"
             ></div>
           </div>
+          <div class="previewDescBlock" id="previewDescBlock">
+            <div class="previewSummary" id="previewSummary" hidden></div>
+            <div class="previewDesc clamped" id="previewDesc"></div>
+            <button
+              class="previewDescToggle"
+              id="previewDescToggle"
+              type="button"
+              aria-expanded="false"
+              aria-controls="previewDesc"
+              hidden
+            >Read more</button>
+          </div>
           <div class="previewMeta" id="previewMeta"></div>
-          <div class="previewDesc" id="previewDesc"></div>
         </div>
         <div class="previewFooter">
           <button class="previewLaunch" id="previewLaunch" type="button">Launch</button>
@@ -1652,6 +1710,9 @@
       const previewTagRow = document.getElementById("previewTagRow");
       const previewMeta = document.getElementById("previewMeta");
       const previewDesc = document.getElementById("previewDesc");
+      const previewDescBlock = document.getElementById("previewDescBlock");
+      const previewSummary = document.getElementById("previewSummary");
+      const previewDescToggle = document.getElementById("previewDescToggle");
       const previewHeadText = document.querySelector(".previewHeadText");
       const previewShowcase = document.getElementById("previewShowcase");
       const showcaseViewport = document.getElementById("showcaseViewport");
@@ -1942,6 +2003,76 @@
         previewTagRow.appendChild(tag);
       }
 
+      // Populate the description block: an emphasized summary lead (short
+      // `description`) over the long body (`longDescription`), collapsed to a
+      // few lines. Plain text only — never inject untrusted strings as HTML.
+      // Fallbacks: only one field present → render it as the body with no
+      // duplicate lead; neither present → hide the whole block.
+      function buildPreviewDesc(dapp) {
+        const short = (dapp.description || "").trim();
+        const long = (dapp.longDescription || "").trim();
+
+        let summaryText = "";
+        let bodyText = "";
+        if (short && long) {
+          summaryText = short;
+          bodyText = long;
+        } else {
+          // Exactly one (or neither) present: use whichever exists as the body
+          // and skip the lead so we never echo the same string twice.
+          bodyText = long || short;
+        }
+
+        if (!summaryText && !bodyText) {
+          previewDescBlock.hidden = true;
+          previewSummary.hidden = true;
+          previewSummary.textContent = "";
+          previewDesc.textContent = "";
+          return;
+        }
+        previewDescBlock.hidden = false;
+
+        if (summaryText) {
+          previewSummary.textContent = summaryText;
+          previewSummary.hidden = false;
+        } else {
+          previewSummary.textContent = "";
+          previewSummary.hidden = true;
+        }
+
+        previewDesc.textContent = bodyText;
+
+        // Always reset to the collapsed state for each dapp; refreshDescToggle()
+        // decides whether the toggle is actually needed once the panel is shown.
+        previewDesc.classList.add("clamped");
+        previewDescToggle.hidden = true;
+        previewDescToggle.textContent = "Read more";
+        previewDescToggle.setAttribute("aria-expanded", "false");
+      }
+
+      // Show the Read more/less toggle only when the clamped body overflows the
+      // collapsed (3-line) height. Must be called while the panel is visible.
+      function refreshDescToggle() {
+        if (previewDescBlock.hidden) return;
+        previewDesc.classList.add("clamped");
+        previewDescToggle.textContent = "Read more";
+        previewDescToggle.setAttribute("aria-expanded", "false");
+        // Force layout, then compare against the clamped box height (+epsilon).
+        void previewDesc.offsetHeight;
+        const overflows =
+          previewDesc.scrollHeight > previewDesc.clientHeight + 2;
+        previewDescToggle.hidden = !overflows;
+      }
+
+      function toggleDesc() {
+        const collapsed = previewDesc.classList.toggle("clamped");
+        previewDescToggle.textContent = collapsed ? "Read more" : "Read less";
+        previewDescToggle.setAttribute(
+          "aria-expanded",
+          collapsed ? "false" : "true"
+        );
+      }
+
       function openPreview(dapp, originEl) {
         if (!dapp) return;
         previewCurrentDapp = dapp;
@@ -1962,14 +2093,13 @@
         buildPreviewTag(dapp);
         buildPreviewMeta(dapp);
 
-        // Plain text only — never inject untrusted strings as HTML.
-        previewDesc.textContent = dapp.longDescription || dapp.description || "";
+        buildPreviewDesc(dapp);
 
         // Feature showcase (resets to step 0). When the dapp has no authored
         // highlights, fall back to a staggered entrance reveal of the standard
         // preview elements so the panel always animates gracefully.
         buildShowcase(dapp);
-        const revealEls = [previewLogo, previewHeadText, previewMeta, previewDesc];
+        const revealEls = [previewLogo, previewHeadText, previewDescBlock, previewMeta];
         if (previewShowcase.hidden) {
           applyStaggerReveal(revealEls);
         } else {
@@ -1979,6 +2109,12 @@
         previewOverlay.classList.add("open");
         previewOverlay.setAttribute("aria-hidden", "false");
         document.body.style.overflow = "hidden";
+
+        // Overflow detection must run after the panel is displayed (a
+        // display:none ancestor reports 0 for scroll/clientHeight). The
+        // description starts collapsed; only surface the toggle when the
+        // clamped body actually overflows three lines.
+        refreshDescToggle();
 
         previewCloseBtn.focus();
       }
@@ -2000,6 +2136,10 @@
       }
 
       previewCloseBtn.addEventListener("click", closePreview);
+      previewDescToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleDesc();
+      });
       previewLaunchBtn.addEventListener("click", () => {
         launchDapp(previewCurrentDapp);
       });
