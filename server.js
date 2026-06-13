@@ -13,6 +13,16 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
+// `pg` is the app's single runtime dependency (see package.json). Require it
+// lazily/defensively so a stray local run without `npm install` still serves
+// the public homepage — pin routes degrade to 503 when the client is absent.
+let PgPool = null;
+try {
+  PgPool = require("pg").Pool;
+} catch (_) {
+  console.warn("[pins] 'pg' module not available — pin features disabled");
+}
+
 // ── .env loader ──────────────────────────────────────────────────────────────
 (function loadDotEnv() {
   const envPath = path.join(__dirname, ".env");
@@ -53,6 +63,10 @@ const DAPPS_PATH = (() => {
   }
   return path.join(__dirname, "dapps.json");
 })();
+
+const JWT_SECRET = process.env.JWT_SECRET || "";
+const DATABASE_URL = process.env.DATABASE_URL || "";
+const IS_STAGING = process.env.USERNODE_ENV === "staging";
 
 // ── Submit-a-dapp config ──────────────────────────────────────────────────────
 // On-chain submission fee flow. All values are read from process.env with an
@@ -570,6 +584,208 @@ loadSubmissions();
   setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
 })();
 
+// ── Database (per-user dapp pins) ────────────────────────────────────────────
+// The homepage itself is public, but pinning a dapp is a per-user action, so it
+// needs the platform's Postgres (DATABASE_URL) + JWT auth (JWT_SECRET). Only the
+// /api/pins routes consult auth/DB; every existing route stays public.
+
+let pinsPool = null;   // pg.Pool once initialised
+let pinsReady = false; // true after a successful migration
+
+// dapp_pins is marked `staging:private` (see migration COMMENT) because a row
+// ties a Usernode identity to the dapps they personally favorite — that's
+// owner-only preference data, not public app content. Staging therefore gets
+// the table schema-only and must seed its own rows (IS_STAGING block below).
+const SEED_PINS = [
+  // Obviously-synthetic staging users pinning real dapps from dapps.json so the
+  // Pinned section + sorting can be exercised in a staging preview.
+  { user_id: "staging-demo-user-1", pubkey: "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms" }, // Opinion Market
+  { user_id: "staging-demo-user-1", pubkey: "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu" }, // Falling Sands
+  { user_id: "staging-demo-user-2", pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05" }, // Last One Wins
+];
+
+async function initPinsDb() {
+  if (!PgPool) return;
+  if (!DATABASE_URL) {
+    console.warn("[pins] DATABASE_URL not set — pin features disabled");
+    return;
+  }
+  try {
+    pinsPool = new PgPool({ connectionString: DATABASE_URL });
+    pinsPool.on("error", (err) => console.warn(`[pins] pool error: ${err.message}`));
+
+    await pinsPool.query(`
+      CREATE TABLE IF NOT EXISTS dapp_pins (
+        user_id     TEXT        NOT NULL,
+        dapp_pubkey TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, dapp_pubkey)
+      )
+    `);
+    await pinsPool.query(
+      `CREATE INDEX IF NOT EXISTS dapp_pins_user_id_idx ON dapp_pins (user_id)`
+    );
+    // staging:private — staging gets structure only, never prod rows.
+    await pinsPool.query(`COMMENT ON TABLE dapp_pins IS 'staging:private'`);
+
+    pinsReady = true;
+    console.log("[pins] dapp_pins table ready");
+
+    if (IS_STAGING) {
+      for (const p of SEED_PINS) {
+        await pinsPool.query(
+          `INSERT INTO dapp_pins (user_id, dapp_pubkey)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, dapp_pubkey) DO NOTHING`,
+          [p.user_id, p.pubkey]
+        );
+      }
+      console.log(`[pins] seeded ${SEED_PINS.length} staging demo pin(s)`);
+    }
+  } catch (e) {
+    pinsReady = false;
+    console.warn(`[pins] could not initialise database: ${e.message}`);
+  }
+}
+
+// ── JWT auth (built-in crypto, HS256 only) ───────────────────────────────────
+// The platform shell injects a `?token=…` JWT on iframe load; the frontend
+// forwards it via the `x-usernode-token` header. We verify HS256 against
+// JWT_SECRET without pulling in a `jsonwebtoken` dependency.
+
+function b64urlToBuf(str) {
+  const pad = str.length % 4 === 0 ? "" : "=".repeat(4 - (str.length % 4));
+  return Buffer.from(str.replace(/-/g, "+").replace(/_/g, "/") + pad, "base64");
+}
+
+function verifyJwt(token) {
+  if (!token || !JWT_SECRET) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+
+  let header;
+  try {
+    header = JSON.parse(b64urlToBuf(headerB64).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  if (!header || header.alg !== "HS256") return null;
+
+  const expected = crypto
+    .createHmac("sha256", JWT_SECRET)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest();
+  const got = b64urlToBuf(sigB64);
+  if (expected.length !== got.length || !crypto.timingSafeEqual(expected, got)) {
+    return null;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(b64urlToBuf(payloadB64).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  // Reject expired tokens (exp is seconds since epoch, per JWT spec).
+  if (payload && typeof payload.exp === "number" && payload.exp * 1000 <= Date.now()) {
+    return null;
+  }
+  return payload;
+}
+
+function getUser(req) {
+  const headerTok = req.headers["x-usernode-token"];
+  let token = Array.isArray(headerTok) ? headerTok[0] : headerTok;
+  if (!token) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      token = u.searchParams.get("token") || "";
+    } catch (_) {}
+  }
+  const payload = verifyJwt(token);
+  if (!payload || payload.id == null) return null;
+  return payload;
+}
+
+function jsonRes(res, status, obj) {
+  return send(
+    res,
+    status,
+    { "content-type": "application/json", "cache-control": "no-store" },
+    JSON.stringify(obj)
+  );
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      if (!chunks.length) return resolve(null);
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch (_) {
+        resolve(undefined); // signals malformed JSON
+      }
+    });
+    req.on("error", () => resolve(null));
+  });
+}
+
+async function handlePins(req, res, urlObj) {
+  const user = getUser(req);
+  if (!user) return jsonRes(res, 401, { error: "auth required" });
+  if (!pinsReady) return jsonRes(res, 503, { error: "pins unavailable" });
+  const userId = String(user.id);
+
+  try {
+    if (req.method === "GET") {
+      const { rows } = await pinsPool.query(
+        `SELECT dapp_pubkey FROM dapp_pins WHERE user_id = $1`,
+        [userId]
+      );
+      return jsonRes(res, 200, { pins: rows.map((r) => r.dapp_pubkey) });
+    }
+
+    if (req.method === "POST") {
+      const body = await readBody(req);
+      if (body === undefined) return jsonRes(res, 400, { error: "invalid JSON" });
+      const pubkey = body && typeof body.pubkey === "string" ? body.pubkey.trim() : "";
+      if (!pubkey) return jsonRes(res, 400, { error: "pubkey required" });
+      // Only honour pins for dapps we actually list; unknown keys are ignored
+      // (still 200 to keep the client simple).
+      if (loadPubkeys().includes(pubkey)) {
+        await pinsPool.query(
+          `INSERT INTO dapp_pins (user_id, dapp_pubkey)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, dapp_pubkey) DO NOTHING`,
+          [userId, pubkey]
+        );
+      }
+      return jsonRes(res, 200, { pinned: true });
+    }
+
+    if (req.method === "DELETE") {
+      const pubkey = (urlObj.searchParams.get("pubkey") || "").trim();
+      if (!pubkey) return jsonRes(res, 400, { error: "pubkey required" });
+      await pinsPool.query(
+        `DELETE FROM dapp_pins WHERE user_id = $1 AND dapp_pubkey = $2`,
+        [userId, pubkey]
+      );
+      return jsonRes(res, 200, { pinned: false });
+    }
+
+    return jsonRes(res, 405, { error: "method not allowed" });
+  } catch (e) {
+    console.warn(`[pins] request error: ${e.message}`);
+    return jsonRes(res, 500, { error: "internal error" });
+  }
+}
+
+// Kick off DB init (non-blocking — the homepage serves regardless).
+initPinsDb();
+
 // ── HTTP helpers for the submit/review API ───────────────────────────────────
 
 function sendJson(res, statusCode, obj) {
@@ -636,7 +852,6 @@ function validateSubmissionInput(body) {
   if (logo) dapp.logo = logo;
   return { ok: true, dapp };
 }
-
 // ── HTTP server ──────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
@@ -652,6 +867,12 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith(EXPLORER_PROXY_PREFIX)) {
     const subPath = pathname.slice(EXPLORER_PROXY_PREFIX.length);
     return proxyExplorer(req, res, subPath);
+  }
+
+  if (pathname === "/api/pins") {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    handlePins(req, res, urlObj);
+    return;
   }
 
   if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
