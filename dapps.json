@@ -156,6 +156,41 @@
           "body": "The simplest possible build — handy for debugging wallet connectivity."
         }
       ]
+    },
+    {
+      "name": "Noder NFT",
+      "description": "Mint unique Noder NFTs on the Usernode testnet. Pay once in native coin, own a piece of the chain.",
+      "longDescription": "Noder NFT lets anyone mint a one-of-a-kind on-chain Noder — an abstract node-graph character — by paying a one-time fee in the native coin of the Usernode testnet. Browse a live public gallery of every minted Noder, then mint your own: the payment is a real on-chain transaction to the project treasury, and your unique artwork is revealed the moment the network confirms it. Every mint is provably yours and auditable on the Usernode chain.",
+      "author": "Usernode Labs",
+      "developerUrl": "https://usernodelabs.org",
+      "url": "https://noder-nft.social-vibecoding.usernodelabs.org",
+      "pubkey": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az",
+      "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#4f46e5'/><g stroke='#c7d2fe' stroke-width='2'><line x1='12' y1='12' x2='20' y2='20'/><line x1='28' y1='12' x2='20' y2='20'/><line x1='12' y1='28' x2='20' y2='20'/><line x1='28' y1='28' x2='20' y2='20'/></g><g fill='#a5b4fc'><circle cx='12' cy='12' r='3'/><circle cx='28' cy='12' r='3'/><circle cx='12' cy='28' r='3'/><circle cx='28' cy='28' r='3'/></g><circle cx='20' cy='20' r='5' fill='#eef2ff'/></svg>",
+      "category": "NFT",
+      "version": "1.0.0",
+      "updated": "2026-06-13",
+      "highlights": [
+        {
+          "icon": "🪙",
+          "title": "Mint with native coin",
+          "body": "Pay a one-time fee in the Usernode testnet's native coin to mint a Noder."
+        },
+        {
+          "icon": "🎁",
+          "title": "Surprise artwork",
+          "body": "Your unique Noder is revealed the moment your payment confirms on-chain."
+        },
+        {
+          "icon": "🖼️",
+          "title": "Live public gallery",
+          "body": "Browse every minted Noder and see who owns what, in real time."
+        },
+        {
+          "icon": "🔗",
+          "title": "Provably yours",
+          "body": "Each mint is a verifiable transaction on the Usernode chain."
+        }
+      ]
     }
   ]
 }
