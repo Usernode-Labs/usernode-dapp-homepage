@@ -16,6 +16,8 @@ RUN npm install --omit=dev --no-audit --no-fund
 
 # App sources.
 COPY --chown=node:node server.js index.html dapps.json ./
+# Static screenshot assets served at /screenshots/* by server.js.
+COPY --chown=node:node public ./public
 
 ENV NODE_ENV=production
 ENV PORT=8000
