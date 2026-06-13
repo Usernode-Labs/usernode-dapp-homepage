@@ -33,6 +33,7 @@ const PORT = Number(process.env.PORT) || 8000;
 const INDEX_PATH = path.join(__dirname, "index.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
+const MINECRAFT_PATH = path.join(PUBLIC_DIR, "minecraft.html");
 
 // Static content-type lookup for screenshot assets served from public/.
 const STATIC_CONTENT_TYPES = {
@@ -844,6 +845,29 @@ const server = http.createServer((req, res) => {
           }
         })
         .pipe(res);
+    });
+  }
+
+  // Mini Minecraft — self-contained block-sandbox game page.
+  if (pathname === "/minecraft" || pathname === "/minecraft.html") {
+    return fs.readFile(MINECRAFT_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read minecraft.html: ${err.message}\n`
+        );
+      }
+      const headers = {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      };
+      if (req.method === "HEAD") {
+        res.writeHead(200, { ...headers, "content-length": buf.length });
+        return res.end();
+      }
+      return send(res, 200, headers, buf);
     });
   }
 
