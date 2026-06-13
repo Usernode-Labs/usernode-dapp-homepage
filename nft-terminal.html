@@ -515,7 +515,7 @@
           mode: "SPLASH",
           connected: false,
           walletAddress: null,
-          coinBalance: 1000,
+          pointsBalance: null,  // server-tracked points; null until fetched
           quantity: 1,
           mintedIds: new Set(),
           mintFee: 50,
@@ -786,12 +786,20 @@
 
         async function loadConfig() {
           try {
-            var r = await fetch("/api/nft-config", { cache: "no-store" });
+            var r = await fetch("/api/nft-config", {
+              cache: "no-store",
+              headers: { "x-usernode-token": (new URL(location.href).searchParams.get("token") || "") }
+            });
             if (!r.ok) throw new Error("HTTP " + r.status);
             var d = await r.json();
             state.mintFee = Number(d.mintFee) || 50;
             state.treasuryAddress = d.treasuryAddress || null;
             state.mintEnabled = !!d.enabled && !!d.treasuryAddress;
+            // Server returns pointsBalance if user is authenticated, null otherwise.
+            if (typeof d.pointsBalance === "number") {
+              state.pointsBalance = d.pointsBalance;
+              state.connected = true;  // authenticated user
+            }
           } catch (e) {
             state.configError = true;
             state.mintEnabled = false;
@@ -804,27 +812,13 @@
         async function doConnect() {
           if (state.connected) return;
           resumeAudio();
-          var addr = null, bal = null;
-          var b = getBridge();
-          if (b) {
-            try { if (typeof b.getAddress === "function") addr = await b.getAddress(); } catch (_) {}
-            try {
-              if (typeof b.getBalance === "function") {
-                var raw = await b.getBalance();
-                bal = (raw && typeof raw === "object") ? (raw.balance != null ? raw.balance : raw.amount) : raw;
-              }
-            } catch (_) {}
+          // With server-tracked points, connect is auth-only and happens at config load.
+          // This button is now disabled for authenticated users (pointsBalance !== null).
+          // If user clicks it while not authenticated, reload to trigger auth flow.
+          if (state.pointsBalance === null) {
+            // User is not authenticated yet. Reload to get a fresh token from the parent.
+            location.reload();
           }
-          state.walletAddress = addr || "ut1????????????????xxxx";
-          state.coinBalance = (typeof bal === "number" && isFinite(bal)) ? bal : 1000;
-          state.connected = true;
-          sfxPowerUp();
-          // brief address flash in the coin readout
-          coinReadout.classList.remove("disconnected");
-          coinReadout.classList.add("connected");
-          coinReadout.textContent = "LINKED: " + maskAddress(state.walletAddress);
-          setTimeout(function () { render(); }, 1600);
-          render();
         }
 
         function pickIds(n) {
@@ -843,36 +837,50 @@
         async function doMint() {
           if (state.busy) return;
           if (maxMintableNow() <= 0) return;
-          if (!state.connected) { doConnect(); return; }
+          if (state.pointsBalance === null) { doConnect(); return; }
           state.busy = true;
           resumeAudio();
           sfxCoinDrop();
           var qty = Math.min(state.quantity, maxMintableNow());
-          var ids = pickIds(qty);
+          var cost = qty * state.mintFee;
+          // Check balance before attempting.
+          if (state.pointsBalance < cost) {
+            onMintFailure("INSUFFICIENT POINTS");
+            state.busy = false;
+            return;
+          }
           showLoading();
           var laser = sfxLaserCharge();
           var minTime = sleep(REDUCE_MOTION ? 600 : 2300);
-          var reason = null, ok = false;
+          var reason = null, ok = false, newBalance = null;
           try {
             if (state.configError) throw new Error("CONFIG UNAVAILABLE");
             if (!state.mintEnabled || !state.treasuryAddress) throw new Error("TREASURY OFFLINE");
-            var b = getBridge();
-            if (!b) throw new Error("WALLET BRIDGE UNAVAILABLE");
-            await b.sendTransaction({
-              to: state.treasuryAddress,
-              recipient: state.treasuryAddress,
-              destination: state.treasuryAddress,
-              amount: qty * state.mintFee,
-              value: qty * state.mintFee,
-              memo: JSON.stringify({ app: "noder-nft-terminal", action: "mint", nftIds: ids }),
+            // Call server mint endpoint which deducts points and returns NFT IDs.
+            var r = await fetch("/api/mint", {
+              method: "POST",
+              cache: "no-store",
+              headers: {
+                "content-type": "application/json",
+                "x-usernode-token": (new URL(location.href).searchParams.get("token") || "")
+              },
+              body: JSON.stringify({ quantity: qty })
             });
+            var d = await r.json();
+            if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
             ok = true;
+            newBalance = d.newBalance;
+            // Server assigned NFT IDs; use them instead of local pickIds.
+            var ids = d.nftIds || [];
           } catch (e) {
             reason = (e && e.message) ? String(e.message).toUpperCase() : "TRANSACTION REJECTED";
           }
           await minTime;
           try { if (laser) laser.stop(); } catch (_) {}
-          if (ok) onMintSuccess(ids, qty);
+          if (ok) {
+            state.pointsBalance = newBalance;
+            onMintSuccess(ids, qty);
+          }
           else onMintFailure(reason);
           state.busy = false;
         }
@@ -942,10 +950,10 @@
         function onMintSuccess(ids, qty) {
           stopLoading();
           sfxFanfare();
-          var oldBal = state.coinBalance;
+          var oldBal = state.pointsBalance;
           ids.forEach(function (id) { state.mintedIds.add(id); });
           var cost = qty * state.mintFee;
-          var newBal = Math.max(0, oldBal - cost);
+          var newBal = state.pointsBalance;  // already deducted server-side
           var featured = ids[0];
           var rar = rarityForId(featured);
           ids.forEach(function (id) { pushWorldEvent("YOU MINTED NODER #" + pad(id, 3)); });
@@ -1008,7 +1016,6 @@
             var cur = Math.round(oldBal + (newBal - oldBal) * p);
             el.textContent = pad(cur, 5);
             if (p < 1) requestAnimationFrame(tick);
-            else { state.coinBalance = newBal; }
           }
           requestAnimationFrame(tick);
           setFeatured(featured);
@@ -1037,20 +1044,24 @@
 
         // ── Render ──────────────────────────────────────────────
         function render() {
-          // coin readout
-          if (state.connected) {
+          // points readout (server-tracked, color-coded)
+          var cost = totalCost();
+          if (state.pointsBalance !== null) {
             coinReadout.classList.remove("disconnected");
             coinReadout.classList.add("connected");
-            coinReadout.textContent = "COINS: " + pad(state.coinBalance, 5);
+            var color = (state.pointsBalance >= cost) ? "var(--green)" : "var(--red)";
+            coinReadout.style.color = color;
+            coinReadout.textContent = "POINTS: " + pad(state.pointsBalance, 5);
           } else {
             coinReadout.classList.add("disconnected");
             coinReadout.classList.remove("connected");
-            coinReadout.textContent = "NO COINS — INSERT WALLET";
+            coinReadout.style.color = "var(--red)";
+            coinReadout.textContent = "NO ACCOUNT — INSERT WALLET";
           }
           // connect button
-          if (state.connected) {
+          if (state.pointsBalance !== null) {
             connectBtn.classList.add("connected");
-            connectBtn.textContent = "[ WALLET LINKED ✓ ]";
+            connectBtn.textContent = "[ ACCOUNT LINKED ✓ ]";
           } else {
             connectBtn.classList.remove("connected");
             connectBtn.textContent = "[ PLUG IN CONTROLLER / INSERT WALLET ]";
@@ -1062,7 +1073,7 @@
           if (state.quantity > maxQ) state.quantity = maxQ;
           if (state.quantity < 1) state.quantity = 1;
           qtyVal.textContent = String(state.quantity);
-          totalLine.textContent = "TOTAL: " + totalCost() + " COINS";
+          totalLine.textContent = "TOTAL: " + cost + " POINTS";
           qtyMinus.disabled = state.quantity <= 1;
           qtyPlus.disabled = state.quantity >= maxMintableNow();
 
@@ -1071,15 +1082,18 @@
           if (maxMintableNow() <= 0) {
             startBtn.classList.add("offline");
             startBtn.textContent = "SOLD OUT — 100/100";
-          } else if (!state.connected) {
+          } else if (state.pointsBalance === null) {
             startBtn.classList.add("locked");
             startBtn.textContent = "[ INSERT WALLET TO PLAY ]";
+          } else if (state.pointsBalance < cost) {
+            startBtn.classList.add("offline");
+            startBtn.textContent = "[ INSUFFICIENT POINTS ]";
           } else if (state.configError || !state.mintEnabled) {
             startBtn.classList.add("offline");
             startBtn.textContent = state.configError ? "[ MINT OFFLINE — CONFIG ]" : "[ MINT OFFLINE ]";
           } else {
             startBtn.classList.add("armed");
-            startBtn.textContent = "[ INSERT COINS & START MINTING — " + totalCost() + " COINS ]";
+            startBtn.textContent = "[ INSERT COINS & START MINTING — " + cost + " POINTS ]";
           }
         }
 
