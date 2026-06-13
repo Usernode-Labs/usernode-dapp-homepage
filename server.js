@@ -905,11 +905,20 @@ const server = http.createServer((req, res) => {
   if (pathname === "/nft-terminal" || pathname === "/nft-terminal/") {
     return fs.readFile(NFT_TERMINAL_PATH, (err, buf) => {
       if (err) {
+        // Degrade gracefully — never let a missing/unreadable file throw an
+        // unhandled error. A missing file (ENOENT) is a 404; any other read
+        // failure (permissions, I/O) is a 500. Both are clear plain text.
+        const missing = err.code === "ENOENT";
+        console.error(
+          `[/nft-terminal] failed to read ${NFT_TERMINAL_PATH}: ${err.code || ""} ${err.message}`
+        );
         return send(
           res,
-          500,
-          { "content-type": "text/plain" },
-          `Failed to read nft-terminal.html: ${err.message}\n`
+          missing ? 404 : 500,
+          { "content-type": "text/plain", "cache-control": "no-store" },
+          missing
+            ? "NODER NFT TERMINAL is unavailable: page file not found on the server.\n"
+            : `Failed to read nft-terminal.html: ${err.message}\n`
         );
       }
       if (req.method === "HEAD") {
