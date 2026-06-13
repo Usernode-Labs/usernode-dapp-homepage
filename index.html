@@ -219,6 +219,7 @@
         grid-auto-rows: max-content;
       }
       li {
+        position: relative;
         border: 1px solid var(--border);
         border-radius: 12px;
         padding: 0;
@@ -273,6 +274,50 @@
         color: var(--muted);
         opacity: 0.5;
       }
+      .starBtn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 5;
+        appearance: none;
+        background: transparent;
+        border: none;
+        padding: 4px;
+        margin: 0;
+        cursor: pointer;
+        color: var(--muted);
+        line-height: 0;
+        border-radius: 8px;
+        touch-action: none;
+      }
+      .starBtn:hover {
+        color: var(--accent);
+        background: var(--border);
+      }
+      .starBtn svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+      }
+      .starBtn.pinned {
+        color: var(--accent);
+      }
+      li.withStar .dappLink {
+        padding-right: 42px;
+      }
+      .sectionHeader {
+        border: none;
+        border-radius: 0;
+        overflow: visible;
+        padding: 6px 6px 2px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: transparent;
+        list-style: none;
+      }
       .author {
         color: var(--muted);
         font-size: 13px;
@@ -323,6 +368,25 @@
       let allApps = [];
       let statsMap = {};
       let currentSort = localStorage.getItem(SORT_KEY) || "popular";
+
+      // --- Pins / auth ---
+      // The platform shell injects the session JWT as ?token=… on iframe load.
+      // We forward it via the x-usernode-token header on /api/pins calls. With
+      // no token (page viewed outside the shell) we stay in signed-out mode and
+      // never render star controls.
+      const USERNODE_TOKEN = (() => {
+        try { return new URLSearchParams(location.search).get("token") || ""; }
+        catch (_) { return ""; }
+      })();
+      let signedIn = false;
+      let pinnedSet = new Set();
+
+      function pinHeaders(withJson) {
+        const h = {};
+        if (USERNODE_TOKEN) h["x-usernode-token"] = USERNODE_TOKEN;
+        if (withJson) h["content-type"] = "application/json";
+        return h;
+      }
 
       const SORT_LABELS = {
         popular: "Popular",
@@ -395,6 +459,104 @@
         return sorted;
       }
 
+      function starIcon(filled) {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", filled ? "currentColor" : "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "2");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        svg.innerHTML =
+          '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>';
+        return svg;
+      }
+
+      function buildDappLi(dapp) {
+        const li = document.createElement("li");
+
+        const link = document.createElement("a");
+        link.className = "dappLink";
+        link.href = dapp.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+
+        const nameRow = document.createElement("div");
+        nameRow.className = "nameRow";
+
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = dapp.name || "(unnamed)";
+        nameRow.appendChild(name);
+
+        if (dapp.pubkey) {
+          const s = statsMap[dapp.pubkey];
+          const statsEl = document.createElement("div");
+          statsEl.className = "stats";
+
+          if (s) {
+            const userStat = document.createElement("span");
+            userStat.className = "stat";
+            userStat.appendChild(personIcon());
+            userStat.appendChild(document.createTextNode(formatNum(s.users)));
+
+            const txStat = document.createElement("span");
+            txStat.className = "stat";
+            txStat.appendChild(txIcon());
+            txStat.appendChild(document.createTextNode(formatNum(s.txns)));
+
+            statsEl.appendChild(userStat);
+            statsEl.appendChild(txStat);
+          } else {
+            const loading = document.createElement("span");
+            loading.className = "statsLoading";
+            loading.textContent = "loading...";
+            statsEl.appendChild(loading);
+          }
+
+          nameRow.appendChild(statsEl);
+        }
+
+        const author = document.createElement("div");
+        author.className = "author";
+        author.textContent = `by ${dapp.author || "unknown"}`;
+
+        const url = document.createElement("div");
+        url.className = "url";
+        url.innerHTML = `<span class="urlText">${dapp.url || ""}</span>`;
+
+        link.appendChild(nameRow);
+        link.appendChild(author);
+        link.appendChild(url);
+        li.appendChild(link);
+
+        // Star/pin control — only when signed in. Rendered as a SIBLING of the
+        // anchor (not inside it) and tagged so the list's pointer handler
+        // toggles the pin instead of opening the dapp. See attachRubberBand().
+        if (signedIn && dapp.pubkey) {
+          const pinned = pinnedSet.has(dapp.pubkey);
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "starBtn" + (pinned ? " pinned" : "");
+          btn.dataset.pubkey = dapp.pubkey;
+          const label = pinned ? "Unpin from top" : "Pin to top";
+          btn.setAttribute("aria-label", label);
+          btn.setAttribute("title", label);
+          btn.appendChild(starIcon(pinned));
+          li.appendChild(btn);
+          li.classList.add("withStar");
+        }
+
+        return li;
+      }
+
+      function sectionHeaderLi(text) {
+        const li = document.createElement("li");
+        li.className = "sectionHeader";
+        li.textContent = text;
+        return li;
+      }
+
       function renderDapps(dapps) {
         if (!list) return;
         clearList();
@@ -406,64 +568,68 @@
 
         const sorted = sortApps(dapps);
 
-        for (const dapp of sorted) {
-          const li = document.createElement("li");
+        // Signed-out (or no pins yet): flat list, identical to the original UI.
+        const pinned = signedIn
+          ? sorted.filter((d) => d.pubkey && pinnedSet.has(d.pubkey))
+          : [];
 
-          const link = document.createElement("a");
-          link.className = "dappLink";
-          link.href = dapp.url;
-          link.target = "_blank";
-          link.rel = "noopener";
+        if (pinned.length > 0) {
+          const rest = sorted.filter((d) => !(d.pubkey && pinnedSet.has(d.pubkey)));
+          list.appendChild(sectionHeaderLi("Pinned"));
+          for (const dapp of pinned) list.appendChild(buildDappLi(dapp));
+          list.appendChild(sectionHeaderLi("All dapps"));
+          for (const dapp of rest) list.appendChild(buildDappLi(dapp));
+        } else {
+          for (const dapp of sorted) list.appendChild(buildDappLi(dapp));
+        }
+      }
 
-          const nameRow = document.createElement("div");
-          nameRow.className = "nameRow";
+      async function togglePin(pubkey) {
+        if (!signedIn || !pubkey) return;
+        const willPin = !pinnedSet.has(pubkey);
+        // Optimistic update.
+        if (willPin) pinnedSet.add(pubkey);
+        else pinnedSet.delete(pubkey);
+        renderDapps(allApps);
 
-          const name = document.createElement("div");
-          name.className = "name";
-          name.textContent = dapp.name || "(unnamed)";
-          nameRow.appendChild(name);
-
-          if (dapp.pubkey) {
-            const s = statsMap[dapp.pubkey];
-            const statsEl = document.createElement("div");
-            statsEl.className = "stats";
-
-            if (s) {
-              const userStat = document.createElement("span");
-              userStat.className = "stat";
-              userStat.appendChild(personIcon());
-              userStat.appendChild(document.createTextNode(formatNum(s.users)));
-
-              const txStat = document.createElement("span");
-              txStat.className = "stat";
-              txStat.appendChild(txIcon());
-              txStat.appendChild(document.createTextNode(formatNum(s.txns)));
-
-              statsEl.appendChild(userStat);
-              statsEl.appendChild(txStat);
-            } else {
-              const loading = document.createElement("span");
-              loading.className = "statsLoading";
-              loading.textContent = "loading...";
-              statsEl.appendChild(loading);
-            }
-
-            nameRow.appendChild(statsEl);
+        try {
+          let resp;
+          if (willPin) {
+            resp = await fetch("/api/pins", {
+              method: "POST",
+              headers: pinHeaders(true),
+              body: JSON.stringify({ pubkey }),
+            });
+          } else {
+            resp = await fetch("/api/pins?pubkey=" + encodeURIComponent(pubkey), {
+              method: "DELETE",
+              headers: pinHeaders(false),
+            });
           }
+          if (!resp.ok) throw new Error("pin API " + resp.status);
+        } catch (e) {
+          console.warn("Could not save pin:", e);
+          // Revert on failure.
+          if (willPin) pinnedSet.delete(pubkey);
+          else pinnedSet.add(pubkey);
+          renderDapps(allApps);
+        }
+      }
 
-          const author = document.createElement("div");
-          author.className = "author";
-          author.textContent = `by ${dapp.author || "unknown"}`;
-
-          const url = document.createElement("div");
-          url.className = "url";
-          url.innerHTML = `<span class="urlText">${dapp.url || ""}</span>`;
-
-          link.appendChild(nameRow);
-          link.appendChild(author);
-          link.appendChild(url);
-          li.appendChild(link);
-          list.appendChild(li);
+      async function loadPins() {
+        if (!USERNODE_TOKEN) return; // signed out — keep star controls hidden
+        try {
+          const resp = await fetch("/api/pins", {
+            headers: pinHeaders(false),
+            cache: "no-store",
+          });
+          if (!resp.ok) return; // 401/503 → stay signed-out, list still renders
+          const data = await resp.json();
+          pinnedSet = new Set(Array.isArray(data.pins) ? data.pins : []);
+          signedIn = true;
+          renderDapps(allApps);
+        } catch (e) {
+          console.warn("Could not load pins:", e);
         }
       }
 
@@ -525,6 +691,7 @@
           allApps = Array.isArray(json) ? json : json.apps || json.items || [];
           renderDapps(allApps);
           loadAllStats(allApps);
+          loadPins();
         } catch (e) {
           clearList();
           addRow(
@@ -628,6 +795,13 @@
           reset();
 
           if (!moved && downTarget) {
+            // Tap on the star/pin control toggles the pin and never navigates.
+            const star = downTarget.closest(".starBtn");
+            if (star) {
+              togglePin(star.dataset.pubkey);
+              downTarget = null;
+              return;
+            }
             const link = downTarget.closest("a");
             if (link && link.href) {
               window.open(link.href, link.target || "_self", "noopener");

@@ -1,0 +1,14 @@
+{
+  "name": "usernode-dapp-homepage",
+  "version": "1.0.0",
+  "description": "Directory listing of dapps built on the Usernode chain, with on-chain stats and per-user pinned favorites.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --local-dev"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  }
+}
