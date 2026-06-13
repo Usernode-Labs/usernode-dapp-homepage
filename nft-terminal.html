@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>NODER NFT TERMINAL</title>
+    <script>
+    // usernode-dev-console@1
+    (function () {
+      if (window.__usernodeDevConsole) return;
+      window.__usernodeDevConsole = true;
+      var S = '__usernodeDevConsole';
+      function serialize(v, depth) {
+        depth = depth || 0;
+        try {
+          if (v === undefined) return 'undefined';
+          if (v === null) return 'null';
+          if (typeof v === 'string') return v;
+          if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+          if (typeof v === 'function') return '[Function ' + (v.name || 'anonymous') + ']';
+          if (v instanceof Error) return (v.stack || (v.name + ': ' + v.message));
+          if (depth > 3) return '[…]';
+          var seen = new WeakSet();
+          return JSON.stringify(v, function (k, val) {
+            if (typeof val === 'object' && val !== null) {
+              if (seen.has(val)) return '[Circular]';
+              seen.add(val);
+            }
+            if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
+            if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+            return val;
+          });
+        } catch (e) { try { return String(v); } catch (_) { return '[unserializable]'; } }
+      }
+      function post(level, args, meta) {
+        try {
+          var payload = {
+            sentinel: S,
+            level: level,
+            args: Array.prototype.slice.call(args).map(function (a) { return serialize(a); }),
+            ts: Date.now(),
+            url: location.href,
+          };
+          if (meta) for (var k in meta) payload[k] = meta[k];
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(payload, '*');
+          }
+        } catch (_) {}
+      }
+      ['log','info','warn','error','debug'].forEach(function (level) {
+        var orig = console[level] ? console[level].bind(console) : function () {};
+        console[level] = function () { post(level, arguments); orig.apply(null, arguments); };
+      });
+      window.addEventListener('error', function (e) {
+        var msg = (e.error && (e.error.stack || e.error.message)) || e.message || 'Error';
+        post('error', [msg], { source: e.filename || '', line: e.lineno || 0, col: e.colno || 0, kind: 'error' });
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        var msg = (r && (r.stack || r.message)) || String(r);
+        post('error', [msg], { kind: 'unhandledrejection' });
+      });
+      try { post('info', ['[dev-console ready]'], { kind: 'ready' }); } catch (_) {}
+    })();
+    </script>
+    <style>
+      :root {
+        --green: #00ff41;
+        --green-dim: #0a9e34;
+        --cyan: #25f4ee;
+        --yellow: #ffcf33;
+        --red: #ff3b3b;
+        --bg: #050807;
+        --panel: #0a1410;
+        --metal: #2a3b34;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        background: #000;
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: manipulation;
+        font-family: 'Courier New', Courier, monospace;
+        color: var(--green);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        -webkit-font-smoothing: none;
+      }
+      #cabinet {
+        position: fixed;
+        inset: 0;
+        /* Dynamic viewport units so the cabinet always fits between the mobile
+           browser's URL bar and the bottom chrome — no clipped buttons. */
+        height: 100vh;
+        height: 100dvh;
+        background:
+          radial-gradient(ellipse at center, #0a140f 0%, #030504 75%, #000 100%);
+        overflow: hidden;
+        image-rendering: pixelated;
+      }
+      /* CRT scanlines + vignette overlay (decorative, never eats clicks). */
+      #crtOverlay {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 50;
+        background:
+          repeating-linear-gradient(
+            to bottom,
+            rgba(0, 0, 0, 0) 0px,
+            rgba(0, 0, 0, 0) 2px,
+            rgba(0, 0, 0, 0.22) 3px,
+            rgba(0, 0, 0, 0.22) 4px
+          );
+        box-shadow: inset 0 0 160px 40px rgba(0, 0, 0, 0.9);
+        mix-blend-mode: multiply;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        #crtOverlay { animation: flicker 5s steps(60) infinite; }
+        @keyframes flicker {
+          0%, 96%, 100% { opacity: 1; }
+          97% { opacity: 0.86; }
+          98% { opacity: 0.97; }
+          99% { opacity: 0.9; }
+        }
+      }
+
+      .layer { position: absolute; inset: 0; display: none; }
+      .layer.active { display: block; }
+
+      .glow { text-shadow: 0 0 6px currentColor, 0 0 12px currentColor; }
+      .blink { }
+      @media (prefers-reduced-motion: no-preference) {
+        .blink { animation: blink 1s steps(2, start) infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+      }
+
+      /* ── SPLASH ─────────────────────────────────────────────── */
+      #splash { background: #000; cursor: pointer; }
+      #poweron {
+        position: absolute; inset: 0; background: #fff; z-index: 30;
+        transform-origin: center;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        #poweron.run { animation: poweron 900ms ease-out forwards; }
+        @keyframes poweron {
+          0%   { opacity: 1; transform: scaleY(1) scaleX(1); }
+          18%  { opacity: 1; transform: scaleY(0.012) scaleX(1); }
+          55%  { opacity: 1; transform: scaleY(0.012) scaleX(0.02); }
+          100% { opacity: 0; transform: scaleY(0.012) scaleX(0); }
+        }
+      }
+      #rain { position: absolute; inset: 0; z-index: 10; }
+      #memcheck {
+        position: absolute; left: 0; right: 0; bottom: 18%;
+        text-align: center; font-size: clamp(11px, 3vw, 14px); color: var(--green);
+        z-index: 12; padding: 0 10px;
+      }
+      #logoWrap {
+        position: absolute; inset: 0; z-index: 14;
+        display: none; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: clamp(16px, 4vh, 26px); padding: 16px;
+      }
+      #logoWrap.show { display: flex; }
+      /* Canvas keeps its intrinsic 2:1 aspect but never exceeds the viewport. */
+      #logoCanvas {
+        image-rendering: pixelated;
+        width: min(320px, 78vw); height: auto; max-height: 40vh;
+      }
+      #pressKey {
+        color: var(--yellow); font-size: clamp(12px, 3.4vw, 20px);
+        text-align: center; max-width: 92vw;
+      }
+
+      /* ── MAIN ───────────────────────────────────────────────── */
+      #main { padding: 0; }
+      #cab {
+        position: absolute; inset: clamp(6px, 1.8vw, 14px);
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: clamp(7px, 1.4vw, 12px);
+        border: 3px solid var(--green-dim);
+        border-radius: 10px;
+        background: linear-gradient(180deg, #07100c 0%, #050807 100%);
+        box-shadow: 0 0 24px rgba(0,255,65,0.18), inset 0 0 40px rgba(0,0,0,0.7);
+        padding: clamp(8px, 1.6vw, 12px);
+        min-height: 0; overflow: hidden;
+      }
+
+      /* HUD */
+      #hud {
+        display: grid; grid-template-columns: 1fr auto 1fr;
+        align-items: center; gap: 10px;
+        border-bottom: 2px solid var(--metal); padding-bottom: 10px;
+        font-size: clamp(10px, 1.6vw, 14px);
+      }
+      #netStat { display: flex; align-items: center; gap: 8px; color: var(--green); }
+      #heartbeat {
+        width: 12px; height: 12px; background: var(--green);
+        box-shadow: 0 0 8px var(--green);
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        #heartbeat { animation: blink 1.1s steps(2, start) infinite; }
+      }
+      #connectBtn {
+        justify-self: center;
+        font: inherit; text-transform: uppercase; cursor: pointer;
+        color: var(--cyan); background: #06120f;
+        border: 2px solid var(--cyan); padding: 7px 12px; border-radius: 4px;
+        text-shadow: 0 0 6px var(--cyan);
+        box-shadow: 0 0 10px rgba(37,244,238,0.25);
+        font-size: clamp(9px, 1.5vw, 13px);
+      }
+      #connectBtn:hover { background: #0a1d18; }
+      #connectBtn.connected { color: var(--green); border-color: var(--green-dim); text-shadow: 0 0 6px var(--green); cursor: default; }
+      #coinReadout { justify-self: end; text-align: right; font-weight: bold; }
+      #coinReadout.disconnected { color: var(--red); }
+      @media (prefers-reduced-motion: no-preference) {
+        #coinReadout.disconnected { animation: blink 0.9s steps(2, start) infinite; }
+      }
+      #coinReadout.connected { color: var(--green); }
+
+      /* Middle panel */
+      #panel {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-height: 0;
+      }
+      .panelBox {
+        border: 2px solid var(--metal); border-radius: 6px;
+        background: #050b08; padding: 10px; min-height: 0;
+        display: flex; flex-direction: column;
+      }
+      .boxTitle { font-size: 11px; color: var(--green-dim); margin-bottom: 8px; }
+
+      /* Display case */
+      #caseFrame {
+        flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+        border: 4px solid; border-image: linear-gradient(135deg, #6b7c75, #2a3b34, #9fb3aa) 1;
+        background: radial-gradient(ellipse at center, #0c1c15 0%, #030806 100%);
+        position: relative; overflow: hidden;
+      }
+      #caseCanvas { image-rendering: pixelated; max-width: 92%; max-height: 92%; }
+      #caseEmpty {
+        position: absolute; color: var(--green-dim); font-size: 12px; text-align: center; padding: 10px;
+      }
+      #marqueeWrap {
+        margin-top: 8px; overflow: hidden; white-space: nowrap;
+        border-top: 1px solid var(--metal); padding-top: 6px; font-size: 12px; color: var(--cyan);
+      }
+      #marquee { display: inline-block; padding-left: 100%; }
+      @media (prefers-reduced-motion: no-preference) {
+        #marquee { animation: marq 12s linear infinite; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #marquee { padding-left: 0; }
+      }
+      @keyframes marq { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+      /* Transaction console */
+      #console { justify-content: space-between; }
+      #priceLine { font-size: clamp(11px, 1.7vw, 15px); color: var(--green); margin-bottom: 6px; }
+      #qtyRow {
+        display: flex; align-items: center; justify-content: center; gap: 14px;
+        margin: 8px 0; font-size: 22px;
+      }
+      .qtyBtn {
+        font: inherit; cursor: pointer; width: 44px; height: 44px;
+        background: #06120f; color: var(--green); border: 2px solid var(--green-dim);
+        border-radius: 4px; font-size: 24px; line-height: 1; text-shadow: 0 0 6px var(--green);
+      }
+      .qtyBtn:hover { background: #0a1d18; }
+      .qtyBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+      #qtyVal { min-width: 64px; text-align: center; font-size: 30px; color: var(--yellow); text-shadow: 0 0 8px var(--yellow); }
+      #totalLine { text-align: center; font-size: clamp(11px, 1.7vw, 15px); color: var(--cyan); margin: 4px 0 10px; }
+      #supplyLine { text-align: center; font-size: 12px; color: var(--green-dim); margin-bottom: 8px; }
+      #startBtn {
+        font: inherit; text-transform: uppercase; cursor: pointer; width: 100%;
+        padding: 14px 10px; border-radius: 6px; font-size: clamp(11px, 1.7vw, 15px);
+        background: #1a0606; color: var(--red); border: 2px solid var(--red);
+        text-shadow: 0 0 8px var(--red); box-shadow: 0 0 14px rgba(255,59,59,0.3);
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        #startBtn.armed { animation: pulseRed 1.1s ease-in-out infinite; }
+        @keyframes pulseRed {
+          0%, 100% { box-shadow: 0 0 8px rgba(255,59,59,0.3); transform: scale(1); }
+          50% { box-shadow: 0 0 22px rgba(255,59,59,0.7); transform: scale(1.015); }
+        }
+      }
+      #startBtn.offline { color: var(--green-dim); border-color: var(--metal); background: #0a0f0d; text-shadow: none; box-shadow: none; cursor: not-allowed; }
+      #startBtn.locked { color: var(--cyan); border-color: var(--cyan); background: #06120f; text-shadow: 0 0 6px var(--cyan); box-shadow: none; }
+
+      /* Bottom world-activity ticker */
+      #worldTickerWrap {
+        border-top: 2px solid var(--metal); padding-top: 8px;
+        overflow: hidden; white-space: nowrap; font-size: 12px; color: var(--green-dim);
+      }
+      #worldTicker { display: inline-block; padding-left: 100%; }
+      @media (prefers-reduced-motion: no-preference) {
+        #worldTicker { animation: marq 26s linear infinite; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #worldTicker { padding-left: 0; white-space: normal; }
+      }
+
+      /* ── OVERLAYS ───────────────────────────────────────────── */
+      #overlay {
+        position: absolute; inset: 0; z-index: 40; display: none;
+        background: rgba(0,0,0,0.82);
+        align-items: center; justify-content: center;
+      }
+      #overlay.active { display: flex; }
+      #overlayInner {
+        text-align: center; display: flex; flex-direction: column; align-items: center;
+        gap: clamp(10px, 2.4vh, 16px);
+        padding: clamp(14px, 3vw, 24px); max-width: 94vw; max-height: 92dvh; overflow: auto;
+      }
+      #overlayCanvas { image-rendering: pixelated; max-width: min(86vw, 220px); height: auto; }
+      #overlayTitle { font-size: clamp(15px, 4.6vw, 30px); line-height: 1.2; }
+      #overlaySub { font-size: clamp(11px, 1.9vw, 16px); color: var(--green-dim); }
+      #progressTrack {
+        width: min(70vw, 360px); height: 26px; border: 2px solid var(--green-dim);
+        background: #04140b; padding: 3px; display: flex; gap: 2px;
+      }
+      .progSeg { flex: 1; background: #0a1f12; }
+      .progSeg.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+      #overlayBtn {
+        font: inherit; text-transform: uppercase; cursor: pointer;
+        padding: 12px 18px; border-radius: 6px; font-size: clamp(11px, 1.8vw, 15px);
+        background: #06120f; color: var(--yellow); border: 2px solid var(--yellow);
+        text-shadow: 0 0 6px var(--yellow);
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        #overlayBtn { animation: blink 1.1s steps(2, start) infinite; }
+      }
+      .win { color: var(--yellow); }
+      .lose { color: var(--red); }
+
+      #redTint {
+        position: absolute; inset: 0; z-index: 45; background: var(--red);
+        opacity: 0; pointer-events: none; mix-blend-mode: screen;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        #redTint.flash { animation: tintFlash 600ms ease-out; }
+        @keyframes tintFlash { 0% { opacity: 0.55; } 100% { opacity: 0; } }
+        #cab.shake { animation: shake 500ms ease-in-out; }
+        @keyframes shake {
+          0%,100% { transform: translate(0,0); }
+          20% { transform: translate(-8px, 4px); }
+          40% { transform: translate(7px, -5px); }
+          60% { transform: translate(-6px, 6px); }
+          80% { transform: translate(5px, -3px); }
+        }
+      }
+
+      /* Mute toggle */
+      #muteBtn {
+        position: fixed; right: 12px; bottom: 10px; z-index: 60;
+        font: inherit; text-transform: uppercase; cursor: pointer; font-size: 11px;
+        background: rgba(5,8,7,0.8); color: var(--green-dim);
+        border: 1px solid var(--metal); border-radius: 4px; padding: 5px 8px;
+      }
+
+      /* ── Responsive: narrow portrait phones ──────────────────── */
+      @media (max-width: 640px) {
+        /* HUD: net status + coin readout share the top row; the long
+           connect button drops to its own full-width row below. */
+        #hud {
+          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-areas: "net coins" "btn btn";
+          row-gap: 8px; column-gap: 8px;
+        }
+        #netStat { grid-area: net; min-width: 0; flex-wrap: wrap; }
+        #coinReadout { grid-area: coins; justify-self: end; min-width: 0; }
+        #connectBtn {
+          grid-area: btn; justify-self: stretch;
+          white-space: normal; line-height: 1.25;
+        }
+        /* Stack the two-column middle panel; let it scroll internally
+           rather than push the ticker or buttons off-screen. */
+        #panel {
+          grid-template-columns: 1fr;
+          grid-auto-rows: minmax(min-content, max-content);
+          overflow-y: auto; -webkit-overflow-scrolling: touch; gap: 8px;
+        }
+        .panelBox { min-height: 0; }
+        #caseFrame { min-height: 26vh; }
+      }
+
+      /* ── Very narrow phones: center everything, shrink controls ─ */
+      @media (max-width: 420px) {
+        #hud {
+          grid-template-columns: 1fr;
+          grid-template-areas: "net" "coins" "btn";
+          justify-items: center; text-align: center;
+        }
+        #coinReadout { justify-self: center; text-align: center; }
+        #netStat { justify-content: center; }
+        #caseFrame { min-height: 22vh; }
+        .qtyBtn { width: 40px; height: 40px; font-size: 22px; }
+        #qtyVal { font-size: 26px; min-width: 52px; }
+        #startBtn { padding: 12px 8px; }
+      }
+
+      /* ── Short / landscape phones: compress vertical rhythm ───── */
+      @media (max-height: 540px) and (orientation: landscape) {
+        #cab { inset: 5px; gap: 6px; padding: 7px; }
+        #logoWrap { gap: 10px; }
+        #logoCanvas { width: min(260px, 38vh); max-height: 46vh; }
+        #pressKey { font-size: clamp(11px, 3.6vh, 16px); }
+        #qtyRow { margin: 4px 0; }
+        .qtyBtn { width: 38px; height: 38px; font-size: 20px; }
+        #qtyVal { font-size: 22px; }
+        #startBtn { padding: 9px 8px; }
+        #caseFrame { min-height: 60px; }
+        /* In landscape the panel is wide enough to keep two columns, but
+           guarantee no overflow by allowing it to scroll if needed. */
+        #panel { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        #boxTitle, .boxTitle { margin-bottom: 4px; }
+        #priceLine { margin-bottom: 3px; }
+        #totalLine { margin: 3px 0 6px; }
+        #supplyLine { margin-bottom: 5px; }
+      }
+
+      /* ── Short landscape AND narrow (small phones sideways) ───── */
+      @media (max-height: 540px) and (max-width: 740px) {
+        #panel { overflow-y: auto; }
+        #caseFrame { min-height: 56px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="cabinet">
+      <!-- ── SPLASH ─────────────────────────────────────────── -->
+      <div id="splash" class="layer active">
+        <canvas id="rain"></canvas>
+        <div id="memcheck">CHECKING MEMORY... 0000K</div>
+        <div id="logoWrap">
+          <canvas id="logoCanvas" width="320" height="160"></canvas>
+          <div id="pressKey" class="blink glow">[ PRESS ANY KEY TO ENTER ]</div>
+        </div>
+        <div id="poweron"></div>
+      </div>
+
+      <!-- ── MAIN ───────────────────────────────────────────── -->
+      <div id="main" class="layer">
+        <div id="cab">
+          <div id="hud">
+            <div id="netStat" class="glow"><span id="heartbeat"></span> NETWORK: USERNODE NATIVE</div>
+            <button id="connectBtn" type="button">[ PLUG IN CONTROLLER / INSERT WALLET ]</button>
+            <div id="coinReadout" class="disconnected glow">NO COINS — INSERT WALLET</div>
+          </div>
+
+          <div id="panel">
+            <div class="panelBox">
+              <div class="boxTitle">// NFT DISPLAY CASE</div>
+              <div id="caseFrame">
+                <div id="caseEmpty" class="glow">AWAITING FIRST MINT<br />— INSERT WALLET —</div>
+                <canvas id="caseCanvas" width="160" height="160" hidden></canvas>
+              </div>
+              <div id="marqueeWrap"><span id="marquee" class="glow">NODER NFT TERMINAL · 100 SUPPLY · MINT ON USERNODE NATIVE</span></div>
+            </div>
+
+            <div class="panelBox" id="console">
+              <div>
+                <div class="boxTitle">// TRANSACTION CONSOLE</div>
+                <div id="priceLine" class="glow">1 MINT = 50 USERNODE COINS</div>
+                <div id="supplyLine">SUPPLY [021/100] MINTED</div>
+                <div id="qtyRow">
+                  <button class="qtyBtn" id="qtyMinus" type="button">[-]</button>
+                  <span id="qtyVal" class="glow">1</span>
+                  <button class="qtyBtn" id="qtyPlus" type="button">[+]</button>
+                </div>
+                <div id="totalLine" class="glow">TOTAL: 50 COINS</div>
+              </div>
+              <button id="startBtn" class="locked" type="button">[ INSERT WALLET TO PLAY ]</button>
+            </div>
+          </div>
+
+          <div id="worldTickerWrap"><span id="worldTicker"></span></div>
+        </div>
+
+        <div id="redTint"></div>
+        <div id="overlay">
+          <div id="overlayInner">
+            <div id="overlayTitle" class="glow"></div>
+            <canvas id="overlayCanvas" width="220" height="160" hidden></canvas>
+            <div id="progressTrack" hidden></div>
+            <div id="overlaySub"></div>
+            <button id="overlayBtn" type="button" hidden></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button id="muteBtn" type="button">♪ SOUND: ON</button>
+    <div id="crtOverlay"></div>
+
+    <!-- Centrally-hosted Usernode bridge (used to request the mint transfer).
+         Best-effort: if it's unavailable the cabinet still runs in a simulated
+         mode and a real sendTransaction is attempted at mint time. -->
+    <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+    <script>
+      (function () {
+        "use strict";
+
+        var REDUCE_MOTION = false;
+        try { REDUCE_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (_) {}
+
+        // ── Session state ───────────────────────────────────────
+        var state = {
+          mode: "SPLASH",
+          connected: false,
+          walletAddress: null,
+          pointsBalance: null,  // server-tracked points; null until fetched
+          quantity: 1,
+          mintedIds: new Set(),
+          mintFee: 50,
+          treasuryAddress: null,
+          mintEnabled: false,
+          configError: false,
+          busy: false,
+        };
+        var SESSION_START_SUPPLY = 21;
+
+        function displayedSupply() { return SESSION_START_SUPPLY + state.mintedIds.size; }
+        function maxMintableNow() { return Math.max(0, 100 - displayedSupply()); }
+        function totalCost() { return state.quantity * state.mintFee; }
+        function pad(n, w) { return String(n).padStart(w, "0"); }
+
+        // ── Deterministic helpers ───────────────────────────────
+        function mulberry32(a) {
+          return function () {
+            a |= 0; a = (a + 0x6D2B79F5) | 0;
+            var t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+        var RARITIES = ["COMMON", "RARE", "EPIC", "LEGENDARY"];
+        function rarityForId(id) {
+          var r = (id * 73) % 100;
+          if (r < 5) return "LEGENDARY";
+          if (r < 22) return "EPIC";
+          if (r < 52) return "RARE";
+          return "COMMON";
+        }
+        function rarityGems(rar) {
+          return { COMMON: "◇", RARE: "◆◆", EPIC: "◆◆◆", LEGENDARY: "◆◆◆◆" }[rar] || "◇";
+        }
+        function rarityColor(rar) {
+          return { COMMON: "#9fb3aa", RARE: "#25f4ee", EPIC: "#c06bff", LEGENDARY: "#ffcf33" }[rar] || "#9fb3aa";
+        }
+
+        // ── Pixel-art NFT generator (deterministic per id) ──────
+        function drawNftArt(ctx, id, px) {
+          var rng = mulberry32(id * 2654435761);
+          var grid = 8;
+          var size = grid * px;
+          ctx.canvas.width = size; ctx.canvas.height = size;
+          ctx.imageSmoothingEnabled = false;
+          ctx.clearRect(0, 0, size, size);
+          // background tint by rarity
+          var rar = rarityForId(id);
+          var bgs = { COMMON: "#08130d", RARE: "#04161a", EPIC: "#160a1f", LEGENDARY: "#1a1505" };
+          ctx.fillStyle = bgs[rar] || "#08130d";
+          ctx.fillRect(0, 0, size, size);
+          var pal = [rarityColor(rar), "#00ff41", "#25f4ee", "#0a9e34"];
+          for (var y = 0; y < grid; y++) {
+            for (var x = 0; x < grid / 2; x++) {
+              if (rng() > 0.5) {
+                ctx.fillStyle = pal[(Math.floor(rng() * pal.length))];
+                ctx.fillRect(x * px, y * px, px, px);
+                ctx.fillRect((grid - 1 - x) * px, y * px, px, px); // mirror
+              }
+            }
+          }
+          // glowing frame
+          ctx.strokeStyle = rarityColor(rar);
+          ctx.lineWidth = Math.max(2, px / 4);
+          ctx.strokeRect(1, 1, size - 2, size - 2);
+        }
+
+        // ── Audio engine (Web Audio, no asset files) ────────────
+        var audio = {
+          ctx: null,
+          master: null,
+          on: !REDUCE_MOTION,
+          humOsc: null,
+          synthTimer: null,
+        };
+        function ensureAudio() {
+          if (audio.ctx) return audio.ctx;
+          try {
+            var AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return null;
+            audio.ctx = new AC();
+            audio.master = audio.ctx.createGain();
+            audio.master.gain.value = audio.on ? 0.5 : 0.0;
+            audio.master.connect(audio.ctx.destination);
+          } catch (_) { audio.ctx = null; }
+          return audio.ctx;
+        }
+        function resumeAudio() {
+          var c = ensureAudio();
+          if (c && c.state === "suspended") { try { c.resume(); } catch (_) {} }
+        }
+        function tone(freq, dur, type, gain, when) {
+          var c = audio.ctx; if (!c) return;
+          var t0 = (when || c.currentTime);
+          var o = c.createOscillator();
+          var g = c.createGain();
+          o.type = type || "square";
+          o.frequency.setValueAtTime(freq, t0);
+          g.gain.setValueAtTime(0.0001, t0);
+          g.gain.exponentialRampToValueAtTime(gain || 0.3, t0 + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+          o.connect(g); g.connect(audio.master);
+          o.start(t0); o.stop(t0 + dur + 0.02);
+          return o;
+        }
+        function startHum() {
+          var c = ensureAudio(); if (!c || audio.humOsc) return;
+          var o = c.createOscillator(); var g = c.createGain();
+          o.type = "triangle"; o.frequency.value = 58;
+          g.gain.value = 0.06; o.connect(g); g.connect(audio.master);
+          o.start(); audio.humOsc = o;
+        }
+        var SCALE = [261.6, 329.6, 392.0, 523.3, 392.0, 329.6];
+        function startSynthwave() {
+          var c = ensureAudio(); if (!c || audio.synthTimer) return;
+          var i = 0;
+          audio.synthTimer = setInterval(function () {
+            if (!audio.ctx) return;
+            var f = SCALE[i % SCALE.length];
+            tone(f / 2, 0.32, "sawtooth", 0.05);
+            if (i % 2 === 0) tone(f, 0.18, "square", 0.04);
+            i++;
+          }, 380);
+        }
+        function sfxBlip() { tone(880, 0.08, "square", 0.25); tone(1320, 0.06, "square", 0.2, audio.ctx ? audio.ctx.currentTime + 0.05 : 0); }
+        function sfxCoinDrop() {
+          var c = audio.ctx; if (!c) return; var t = c.currentTime;
+          tone(1180, 0.07, "square", 0.3, t);
+          tone(1560, 0.09, "square", 0.3, t + 0.07);
+          tone(880, 0.12, "square", 0.25, t + 0.16);
+        }
+        function sfxPowerUp() {
+          var c = audio.ctx; if (!c) return; var t = c.currentTime;
+          [392, 523, 659, 784].forEach(function (f, i) { tone(f, 0.12, "square", 0.25, t + i * 0.07); });
+        }
+        function sfxLaserCharge() {
+          var c = audio.ctx; if (!c) return null; var t = c.currentTime;
+          var o = c.createOscillator(); var g = c.createGain();
+          o.type = "sawtooth";
+          o.frequency.setValueAtTime(120, t);
+          o.frequency.exponentialRampToValueAtTime(900, t + 2.2);
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(0.12, t + 0.2);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+          o.connect(g); g.connect(audio.master);
+          o.start(t); o.stop(t + 2.5);
+          return o;
+        }
+        function sfxFanfare() {
+          var c = audio.ctx; if (!c) return; var t = c.currentTime;
+          [523, 659, 784, 1046, 1318].forEach(function (f, i) { tone(f, 0.18, "square", 0.28, t + i * 0.11); });
+        }
+        function sfxError() {
+          var c = audio.ctx; if (!c) return; var t = c.currentTime;
+          tone(140, 0.5, "sawtooth", 0.3, t);
+          tone(146, 0.5, "square", 0.25, t);
+        }
+
+        // ── DOM refs ────────────────────────────────────────────
+        var $ = function (id) { return document.getElementById(id); };
+        var splashLayer = $("splash"), mainLayer = $("main");
+        var rainCanvas = $("rain"), memcheck = $("memcheck"), logoWrap = $("logoWrap");
+        var connectBtn = $("connectBtn"), coinReadout = $("coinReadout");
+        var caseCanvas = $("caseCanvas"), caseEmpty = $("caseEmpty"), marquee = $("marquee");
+        var priceLine = $("priceLine"), supplyLine = $("supplyLine");
+        var qtyVal = $("qtyVal"), qtyMinus = $("qtyMinus"), qtyPlus = $("qtyPlus"), totalLine = $("totalLine");
+        var startBtn = $("startBtn"), worldTicker = $("worldTicker");
+        var overlay = $("overlay"), overlayTitle = $("overlayTitle"), overlayCanvas = $("overlayCanvas");
+        var progressTrack = $("progressTrack"), overlaySub = $("overlaySub"), overlayBtn = $("overlayBtn");
+        var redTint = $("redTint"), cabEl = $("cab"), muteBtn = $("muteBtn");
+
+        // ── World-activity ticker (simulated, client-side flavor) ─
+        var SEED_PLAYERS = [
+          "PLAYER_K7X", "0xWHALE", "ANON_4F2", "NEONRIDER", "PIXEL_PALADIN",
+          "GHOST_IN_THE_NODE", "SYNTH_LORD", "CRT_KID", "VAULT_HUNTER", "BYTE_BANDIT",
+          "ARCADE_GHOST", "MEGA_MINTER",
+        ];
+        function buildWorldTicker() {
+          var parts = [];
+          var rng = mulberry32(424242);
+          for (var i = 0; i < 14; i++) {
+            var p = SEED_PLAYERS[Math.floor(rng() * SEED_PLAYERS.length)];
+            var id = 1 + Math.floor(rng() * 100);
+            var rar = rarityForId(id);
+            var tag = (rar === "LEGENDARY" || rar === "EPIC") ? " (" + rar + "!)" : "";
+            parts.push(">> " + p + " MINTED NODER #" + pad(id, 3) + tag);
+          }
+          worldTicker.textContent = parts.join("   ") + "   ";
+        }
+        function pushWorldEvent(text) {
+          worldTicker.textContent = ">> " + text + "   " + worldTicker.textContent;
+        }
+
+        // ── Code rain (splash memory check) ─────────────────────
+        function runRain(durationMs, done) {
+          var ctx = rainCanvas.getContext("2d");
+          function fit() { rainCanvas.width = window.innerWidth; rainCanvas.height = window.innerHeight; }
+          fit();
+          var glyphs = "01ABCDEFｱｲｳ#%&*+=<>NODER".split("");
+          var fontSize = 16;
+          var cols = Math.floor(rainCanvas.width / fontSize);
+          var drops = new Array(cols).fill(0).map(function () { return Math.floor(Math.random() * -50); });
+          var start = Date.now();
+          var memTarget = 640, memNow = 0;
+          var raf;
+          function frame() {
+            var elapsed = Date.now() - start;
+            ctx.fillStyle = "rgba(0,0,0,0.08)";
+            ctx.fillRect(0, 0, rainCanvas.width, rainCanvas.height);
+            ctx.font = fontSize + "px 'Courier New', monospace";
+            for (var i = 0; i < cols; i++) {
+              var ch = glyphs[Math.floor(Math.random() * glyphs.length)];
+              var x = i * fontSize, y = drops[i] * fontSize;
+              ctx.fillStyle = "#bfffce";
+              ctx.fillText(ch, x, y);
+              ctx.fillStyle = "#00ff41";
+              ctx.fillText(ch, x, y - fontSize);
+              if (y > rainCanvas.height && Math.random() > 0.975) drops[i] = 0;
+              drops[i]++;
+            }
+            memNow = Math.min(memTarget, Math.floor((elapsed / durationMs) * memTarget));
+            memcheck.textContent = "CHECKING MEMORY... " + pad(memNow, 4) + "K" + (memNow >= memTarget ? " OK" : "");
+            if (elapsed < durationMs) { raf = requestAnimationFrame(frame); }
+            else { cancelAnimationFrame(raf); done(); }
+          }
+          window.addEventListener("resize", fit);
+          frame();
+        }
+
+        // ── Pixel UserNode logo (splash) ────────────────────────
+        function drawLogo() {
+          var ctx = $("logoCanvas").getContext("2d");
+          var W = 320, H = 160;
+          ctx.clearRect(0, 0, W, H);
+          ctx.imageSmoothingEnabled = false;
+          // blocky node-graph emblem
+          ctx.shadowColor = "#00ff41"; ctx.shadowBlur = 18;
+          ctx.fillStyle = "#00ff41";
+          var nodes = [[160, 28], [110, 60], [210, 60], [130, 96], [190, 96]];
+          ctx.strokeStyle = "#25f4ee"; ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(160, 28);
+          [[110, 60], [210, 60], [130, 96], [190, 96]].forEach(function (p) { ctx.moveTo(160, 28); ctx.lineTo(p[0], p[1]); });
+          ctx.stroke();
+          nodes.forEach(function (p) { ctx.fillRect(p[0] - 7, p[1] - 7, 14, 14); });
+          // pixel text
+          ctx.shadowBlur = 12;
+          ctx.fillStyle = "#00ff41";
+          ctx.font = "bold 30px 'Courier New', monospace";
+          ctx.textAlign = "center";
+          ctx.fillText("USERNODE", W / 2, 140);
+          ctx.shadowBlur = 0;
+        }
+
+        // ── Bridge integration ──────────────────────────────────
+        function getBridge() {
+          var cands = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge];
+          for (var i = 0; i < cands.length; i++) {
+            if (cands[i] && typeof cands[i].sendTransaction === "function") return cands[i];
+          }
+          return null;
+        }
+        function maskAddress(a) {
+          if (!a || typeof a !== "string" || a.length < 10) return a || "";
+          return a.slice(0, 4).toUpperCase() + "••••••••" + a.slice(-4).toUpperCase();
+        }
+
+        async function loadConfig() {
+          try {
+            var r = await fetch("/api/nft-config", {
+              cache: "no-store",
+              headers: { "x-usernode-token": (new URL(location.href).searchParams.get("token") || "") }
+            });
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            var d = await r.json();
+            state.mintFee = Number(d.mintFee) || 50;
+            state.treasuryAddress = d.treasuryAddress || null;
+            state.mintEnabled = !!d.enabled && !!d.treasuryAddress;
+            // Server returns pointsBalance if user is authenticated, null otherwise.
+            if (typeof d.pointsBalance === "number") {
+              state.pointsBalance = d.pointsBalance;
+              state.connected = true;  // authenticated user
+            }
+          } catch (e) {
+            state.configError = true;
+            state.mintEnabled = false;
+            console.warn("nft-config fetch failed:", e && e.message);
+          }
+          priceLine.textContent = "1 MINT = " + state.mintFee + " USERNODE COINS";
+          render();
+        }
+
+        async function doConnect() {
+          if (state.connected) return;
+          resumeAudio();
+          // With server-tracked points, connect is auth-only and happens at config load.
+          // This button is now disabled for authenticated users (pointsBalance !== null).
+          // If user clicks it while not authenticated, reload to trigger auth flow.
+          if (state.pointsBalance === null) {
+            // User is not authenticated yet. Reload to get a fresh token from the parent.
+            location.reload();
+          }
+        }
+
+        function pickIds(n) {
+          var avail = [];
+          for (var i = 1; i <= 100; i++) if (!state.mintedIds.has(i)) avail.push(i);
+          var out = [];
+          for (var k = 0; k < n && avail.length; k++) {
+            var idx = Math.floor(Math.random() * avail.length);
+            out.push(avail.splice(idx, 1)[0]);
+          }
+          return out;
+        }
+
+        function sleep(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+
+        async function doMint() {
+          if (state.busy) return;
+          if (maxMintableNow() <= 0) return;
+          if (state.pointsBalance === null) { doConnect(); return; }
+          state.busy = true;
+          resumeAudio();
+          sfxCoinDrop();
+          var qty = Math.min(state.quantity, maxMintableNow());
+          var cost = qty * state.mintFee;
+          // Check balance before attempting.
+          if (state.pointsBalance < cost) {
+            onMintFailure("INSUFFICIENT POINTS");
+            state.busy = false;
+            return;
+          }
+          showLoading();
+          var laser = sfxLaserCharge();
+          var minTime = sleep(REDUCE_MOTION ? 600 : 2300);
+          var reason = null, ok = false, newBalance = null;
+          try {
+            if (state.configError) throw new Error("CONFIG UNAVAILABLE");
+            if (!state.mintEnabled || !state.treasuryAddress) throw new Error("TREASURY OFFLINE");
+            // Call server mint endpoint which deducts points and returns NFT IDs.
+            var r = await fetch("/api/mint", {
+              method: "POST",
+              cache: "no-store",
+              headers: {
+                "content-type": "application/json",
+                "x-usernode-token": (new URL(location.href).searchParams.get("token") || "")
+              },
+              body: JSON.stringify({ quantity: qty })
+            });
+            var d = await r.json();
+            if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+            ok = true;
+            newBalance = d.newBalance;
+            // Server assigned NFT IDs; use them instead of local pickIds.
+            var ids = d.nftIds || [];
+          } catch (e) {
+            reason = (e && e.message) ? String(e.message).toUpperCase() : "TRANSACTION REJECTED";
+          }
+          await minTime;
+          try { if (laser) laser.stop(); } catch (_) {}
+          if (ok) {
+            state.pointsBalance = newBalance;
+            onMintSuccess(ids, qty);
+          }
+          else onMintFailure(reason);
+          state.busy = false;
+        }
+
+        // ── Loading mini-game ───────────────────────────────────
+        var loadingRAF = null;
+        function showLoading() {
+          overlay.classList.add("active");
+          overlayTitle.className = "glow";
+          overlayTitle.textContent = "FORGING NODER NFT...";
+          overlaySub.textContent = "MINING ON USERNODE NATIVE";
+          overlayCanvas.hidden = false;
+          overlayBtn.hidden = true;
+          progressTrack.hidden = false;
+          // build 16 segments
+          progressTrack.innerHTML = "";
+          var segs = [];
+          for (var i = 0; i < 16; i++) { var s = document.createElement("div"); s.className = "progSeg"; progressTrack.appendChild(s); segs.push(s); }
+          var ctx = overlayCanvas.getContext("2d");
+          overlayCanvas.width = 220; overlayCanvas.height = 160;
+          ctx.imageSmoothingEnabled = false;
+          var start = Date.now();
+          function frame() {
+            var t = Date.now() - start;
+            var swing = Math.sin(t / 110) > 0;
+            ctx.clearRect(0, 0, 220, 160);
+            // anvil / glowing block
+            ctx.fillStyle = "#1a2b24"; ctx.fillRect(70, 110, 80, 22);
+            var glow = 0.4 + 0.6 * Math.abs(Math.sin(t / 160));
+            ctx.fillStyle = "rgba(0,255,65," + glow.toFixed(2) + ")";
+            ctx.fillRect(92, 92, 36, 22);
+            ctx.strokeStyle = "#00ff41"; ctx.lineWidth = 2; ctx.strokeRect(92, 92, 36, 22);
+            // 8-bit forger (blocky figure)
+            ctx.fillStyle = "#25f4ee";
+            ctx.fillRect(40, 60, 16, 16);          // head
+            ctx.fillRect(38, 78, 20, 26);          // body
+            ctx.fillRect(38, 104, 8, 16); ctx.fillRect(50, 104, 8, 16); // legs
+            // pick arm + hammer
+            ctx.fillStyle = "#ffcf33";
+            if (swing) { ctx.fillRect(56, 70, 26, 6); ctx.fillRect(80, 56, 10, 24); }
+            else { ctx.fillRect(56, 84, 26, 6); ctx.fillRect(80, 86, 18, 8); }
+            // spark on down-swing
+            if (!swing && (Math.floor(t / 110) % 2 === 0)) {
+              ctx.fillStyle = "#ffffff";
+              ctx.fillRect(100, 86, 4, 4); ctx.fillRect(112, 90, 3, 3); ctx.fillRect(96, 96, 3, 3);
+            }
+            // progress fill (caps near full, completes when promise settles)
+            var pct = Math.min(0.92, t / (REDUCE_MOTION ? 600 : 2300));
+            var on = Math.floor(pct * segs.length);
+            for (var i = 0; i < segs.length; i++) segs[i].classList.toggle("on", i < on);
+            loadingRAF = requestAnimationFrame(frame);
+          }
+          frame();
+        }
+        function stopLoading() { if (loadingRAF) { cancelAnimationFrame(loadingRAF); loadingRAF = null; } }
+
+        // ── Resolve scenes ──────────────────────────────────────
+        function setFeatured(id) {
+          var rar = rarityForId(id);
+          caseEmpty.hidden = true;
+          caseCanvas.hidden = false;
+          drawNftArt(caseCanvas.getContext("2d"), id, 20);
+          marquee.textContent = "NODER #" + pad(id, 3) + " · SERIAL " + pad(id, 4) + "/100 · RARITY: " + rar + " " + rarityGems(rar) + "   ";
+          marquee.style.color = rarityColor(rar);
+        }
+
+        function onMintSuccess(ids, qty) {
+          stopLoading();
+          sfxFanfare();
+          var oldBal = state.pointsBalance;
+          ids.forEach(function (id) { state.mintedIds.add(id); });
+          var cost = qty * state.mintFee;
+          var newBal = state.pointsBalance;  // already deducted server-side
+          var featured = ids[0];
+          var rar = rarityForId(featured);
+          ids.forEach(function (id) { pushWorldEvent("YOU MINTED NODER #" + pad(id, 3)); });
+
+          overlayTitle.className = "glow win";
+          overlayTitle.textContent = "STAGE CLEAR! NEW ITEM UNLOCKED!";
+          progressTrack.hidden = true;
+          overlayCanvas.hidden = false;
+          var serials = ids.map(function (id) { return "#" + pad(id, 3); }).join(" ");
+          overlaySub.innerHTML = "NODER NFT " + serials + "<br>RARITY: " + rar + " " + rarityGems(rar) +
+            "<br>BALANCE: " + pad(oldBal, 5) + " → <span id='balCount'>" + pad(oldBal, 5) + "</span>";
+          overlayBtn.hidden = false;
+          overlayBtn.textContent = "[ RETURN TO CABINET ]";
+
+          // treasure chest reveal → NFT art
+          var ctx = overlayCanvas.getContext("2d");
+          overlayCanvas.width = 220; overlayCanvas.height = 160;
+          var t0 = Date.now();
+          var revealRAF;
+          function reveal() {
+            var t = Date.now() - t0;
+            ctx.clearRect(0, 0, 220, 160);
+            var lidOpen = Math.min(1, t / 500);
+            // chest base
+            ctx.fillStyle = "#7a4a16"; ctx.fillRect(70, 86, 80, 50);
+            ctx.fillStyle = "#ffcf33"; ctx.fillRect(70, 100, 80, 6);
+            // lid lifts
+            ctx.save();
+            ctx.translate(110, 86);
+            ctx.rotate(-lidOpen * 0.9);
+            ctx.fillStyle = "#9a5d1c"; ctx.fillRect(-40, -22, 80, 24);
+            ctx.fillStyle = "#ffcf33"; ctx.fillRect(-40, -6, 80, 5);
+            ctx.restore();
+            // light burst + NFT rising
+            if (lidOpen >= 1) {
+              var rise = Math.min(1, (t - 500) / 500);
+              ctx.fillStyle = "rgba(255,255,200," + (0.3 * (1 - rise)).toFixed(2) + ")";
+              ctx.fillRect(60, 20, 100, 110);
+              var tmp = document.createElement("canvas");
+              drawNftArt(tmp.getContext("2d"), featured, 9);
+              ctx.imageSmoothingEnabled = false;
+              ctx.drawImage(tmp, 110 - 36, 70 - rise * 40, 72, 72);
+            }
+            if (t < 1100 && !REDUCE_MOTION) revealRAF = requestAnimationFrame(reveal);
+            else {
+              if (revealRAF) cancelAnimationFrame(revealRAF);
+              var tmp2 = document.createElement("canvas");
+              drawNftArt(tmp2.getContext("2d"), featured, 9);
+              ctx.clearRect(0, 0, 220, 160);
+              ctx.drawImage(tmp2, 110 - 36, 30, 72, 72);
+            }
+          }
+          reveal();
+
+          // animated balance countdown
+          var cStart = Date.now(), dur = REDUCE_MOTION ? 1 : 650;
+          function tick() {
+            var el = $("balCount"); if (!el) return;
+            var p = Math.min(1, (Date.now() - cStart) / dur);
+            var cur = Math.round(oldBal + (newBal - oldBal) * p);
+            el.textContent = pad(cur, 5);
+            if (p < 1) requestAnimationFrame(tick);
+          }
+          requestAnimationFrame(tick);
+          setFeatured(featured);
+        }
+
+        function onMintFailure(reason) {
+          stopLoading();
+          sfxError();
+          if (!REDUCE_MOTION) {
+            redTint.classList.remove("flash"); void redTint.offsetWidth; redTint.classList.add("flash");
+            cabEl.classList.remove("shake"); void cabEl.offsetWidth; cabEl.classList.add("shake");
+          }
+          overlayTitle.className = "glow lose";
+          overlayTitle.textContent = "GAME OVER! TRANSACTION REJECTED.";
+          overlayCanvas.hidden = true;
+          progressTrack.hidden = true;
+          overlaySub.textContent = "[ " + (reason || "TRANSACTION REJECTED") + " ]  NO COINS SPENT.";
+          overlayBtn.hidden = false;
+          overlayBtn.textContent = "[ PRESS TO RETURN TO MENU ]";
+        }
+
+        function closeOverlay() {
+          overlay.classList.remove("active");
+          render();
+        }
+
+        // ── Render ──────────────────────────────────────────────
+        function render() {
+          // points readout (server-tracked, color-coded)
+          var cost = totalCost();
+          if (state.pointsBalance !== null) {
+            coinReadout.classList.remove("disconnected");
+            coinReadout.classList.add("connected");
+            var color = (state.pointsBalance >= cost) ? "var(--green)" : "var(--red)";
+            coinReadout.style.color = color;
+            coinReadout.textContent = "POINTS: " + pad(state.pointsBalance, 5);
+          } else {
+            coinReadout.classList.add("disconnected");
+            coinReadout.classList.remove("connected");
+            coinReadout.style.color = "var(--red)";
+            coinReadout.textContent = "NO ACCOUNT — INSERT WALLET";
+          }
+          // connect button
+          if (state.pointsBalance !== null) {
+            connectBtn.classList.add("connected");
+            connectBtn.textContent = "[ ACCOUNT LINKED ✓ ]";
+          } else {
+            connectBtn.classList.remove("connected");
+            connectBtn.textContent = "[ PLUG IN CONTROLLER / INSERT WALLET ]";
+          }
+          // supply + quantity
+          var sup = displayedSupply();
+          supplyLine.textContent = "SUPPLY [" + pad(sup, 3) + "/100] MINTED";
+          var maxQ = Math.max(1, maxMintableNow());
+          if (state.quantity > maxQ) state.quantity = maxQ;
+          if (state.quantity < 1) state.quantity = 1;
+          qtyVal.textContent = String(state.quantity);
+          totalLine.textContent = "TOTAL: " + cost + " POINTS";
+          qtyMinus.disabled = state.quantity <= 1;
+          qtyPlus.disabled = state.quantity >= maxMintableNow();
+
+          // start button
+          startBtn.className = "";
+          if (maxMintableNow() <= 0) {
+            startBtn.classList.add("offline");
+            startBtn.textContent = "SOLD OUT — 100/100";
+          } else if (state.pointsBalance === null) {
+            startBtn.classList.add("locked");
+            startBtn.textContent = "[ INSERT WALLET TO PLAY ]";
+          } else if (state.pointsBalance < cost) {
+            startBtn.classList.add("offline");
+            startBtn.textContent = "[ INSUFFICIENT POINTS ]";
+          } else if (state.configError || !state.mintEnabled) {
+            startBtn.classList.add("offline");
+            startBtn.textContent = state.configError ? "[ MINT OFFLINE — CONFIG ]" : "[ MINT OFFLINE ]";
+          } else {
+            startBtn.classList.add("armed");
+            startBtn.textContent = "[ INSERT COINS & START MINTING — " + cost + " POINTS ]";
+          }
+        }
+
+        // ── Splash → Main transition ────────────────────────────
+        var splashReady = false;
+        function enterMain() {
+          if (state.mode !== "SPLASH" || !splashReady) return;
+          state.mode = "MAIN";
+          resumeAudio();
+          sfxBlip();
+          startHum();
+          startSynthwave();
+          splashLayer.classList.remove("active");
+          mainLayer.classList.add("active");
+          render();
+        }
+
+        function bootSplash() {
+          drawLogo();
+          var po = $("poweron");
+          if (REDUCE_MOTION) {
+            // skip the heavy animation: go straight to logo + prompt
+            po.style.display = "none";
+            rainCanvas.style.display = "none";
+            memcheck.textContent = "MEMORY OK";
+            logoWrap.classList.add("show");
+            splashReady = true;
+            return;
+          }
+          po.classList.add("run");
+          po.addEventListener("animationend", function () { po.style.display = "none"; });
+          runRain(2600, function () {
+            rainCanvas.getContext("2d").clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+            rainCanvas.style.display = "none";
+            memcheck.style.display = "none";
+            logoWrap.classList.add("show");
+            splashReady = true;
+          });
+        }
+
+        // ── Wire events ─────────────────────────────────────────
+        function splashEnter() { resumeAudio(); enterMain(); }
+        splashLayer.addEventListener("click", splashEnter);
+        splashLayer.addEventListener("touchstart", function (e) { e.preventDefault(); splashEnter(); }, { passive: false });
+        window.addEventListener("keydown", function () { if (state.mode === "SPLASH") splashEnter(); });
+
+        connectBtn.addEventListener("click", function () { resumeAudio(); doConnect(); });
+        qtyMinus.addEventListener("click", function () { resumeAudio(); state.quantity--; render(); sfxBlip(); });
+        qtyPlus.addEventListener("click", function () { resumeAudio(); state.quantity++; render(); sfxBlip(); });
+        startBtn.addEventListener("click", function () { resumeAudio(); doMint(); });
+        overlayBtn.addEventListener("click", closeOverlay);
+
+        muteBtn.addEventListener("click", function () {
+          audio.on = !audio.on;
+          ensureAudio();
+          if (audio.master) audio.master.gain.value = audio.on ? 0.5 : 0.0;
+          muteBtn.textContent = audio.on ? "♪ SOUND: ON" : "♪ SOUND: OFF";
+          if (audio.on) resumeAudio();
+        });
+        muteBtn.textContent = audio.on ? "♪ SOUND: ON" : "♪ SOUND: OFF";
+
+        // ── Init ────────────────────────────────────────────────
+        buildWorldTicker();
+        bootSplash();
+        loadConfig();
+        render();
+      })();
+    </script>
+  </body>
+</html>

@@ -156,6 +156,42 @@
           "body": "The simplest possible build — handy for debugging wallet connectivity."
         }
       ]
+    },
+    {
+      "name": "NODER NFT TERMINAL",
+      "description": "A retro arcade cabinet for minting NFTs on Usernode.",
+      "longDescription": "NODER NFT TERMINAL is a retro 1980s arcade-cabinet experience for minting NFTs on the Usernode chain. Power on the CRT, insert your wallet like a coin, dial in how many you want, and watch an 8-bit forging mini-game resolve into a STAGE CLEAR jackpot or a GAME OVER. Every mint burns Usernode Native Coins to the treasury through the platform wallet bridge. All pixel art and chiptune audio are generated live in your browser — no downloaded assets.",
+      "author": "Usernode Labs",
+      "developerUrl": "https://usernodelabs.org",
+      "url": "/nft-terminal",
+      "pubkey": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az",
+      "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='6' fill='#050807'/><rect x='6' y='8' width='28' height='20' rx='2' fill='#0a1410' stroke='#00ff41' stroke-width='1.5'/><rect x='9' y='12' width='4' height='4' fill='#00ff41'/><rect x='15' y='12' width='4' height='4' fill='#00ff41'/><rect x='21' y='16' width='4' height='4' fill='#00ff41'/><rect x='27' y='12' width='4' height='4' fill='#00ff41'/><rect x='12' y='31' width='16' height='3' rx='1' fill='#ffcf33'/></svg>",
+      "category": "Game",
+      "version": "1.0.0",
+      "updated": "2026-06-13",
+      "screenshots": [],
+      "highlights": [
+        {
+          "icon": "🕹️",
+          "title": "Insert your wallet",
+          "body": "Plug in like a coin, dial the quantity, and pull the trigger."
+        },
+        {
+          "icon": "⛏️",
+          "title": "Minting is a mini-game",
+          "body": "An 8-bit forger hammers your NFT into existence on a CRT screen."
+        },
+        {
+          "icon": "🔊",
+          "title": "Synthesized chiptune",
+          "body": "Every hum, coin-drop, and fanfare is generated live — zero asset files."
+        },
+        {
+          "icon": "🔗",
+          "title": "Real on-chain fee",
+          "body": "Each mint burns Usernode Native Coins to the treasury via the bridge."
+        }
+      ]
     }
   ]
 }

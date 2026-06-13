@@ -1,17 +1,25 @@
 #!/usr/bin/env node
 /**
- * Minimal Node server to host index.html on http://localhost:8000
+ * Node.js server: dapps homepage + NFT terminal with server-tracked points.
+ *
+ * Refactored from bare HTTP to Express + PostgreSQL + JWT auth.
+ * Keeps all existing routes (proxy, stats, submissions) and adds:
+ * - /api/nft-config: returns authenticated user's current points balance
+ * - POST /api/mint: deducts points on successful mint, returns new balance + NFT IDs
  *
  * Run:
  *   node server.js              # production dapps.json
  *   node server.js --local-dev  # uses dapps.local.json (localnet URLs)
  */
 
+const express = require("express");
 const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
+const { Pool } = require("pg");
 
 // ── .env loader ──────────────────────────────────────────────────────────────
 (function loadDotEnv() {
@@ -30,9 +38,16 @@ const crypto = require("crypto");
 
 const LOCAL_DEV = process.argv.includes("--local-dev");
 const PORT = Number(process.env.PORT) || 8000;
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-insecure";
 const INDEX_PATH = path.join(__dirname, "index.html");
+const NFT_TERMINAL_PATH = path.join(__dirname, "nft-terminal.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
+
+// PostgreSQL connection for user_points table.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgresql://localhost/usernode_nft_test",
+});
 
 // Static content-type lookup for screenshot assets served from public/.
 const STATIC_CONTENT_TYPES = {
@@ -55,25 +70,19 @@ const DAPPS_PATH = (() => {
 })();
 
 // ── Submit-a-dapp config ──────────────────────────────────────────────────────
-// On-chain submission fee flow. All values are read from process.env with an
-// in-code default, mirroring USERNAMES_PUBKEY. The real values are provided by
-// the platform from dapp.json secrets at deploy time.
 const SUBMISSIONS_PATH = process.env.SUBMISSIONS_JSON_PATH
   ? path.resolve(process.env.SUBMISSIONS_JSON_PATH)
   : path.join(__dirname, "submissions.json");
 
-// Recipient of the submission fee (the Community Fund Reserve — may be a burn
-// address). When unset, the submit flow is effectively disabled (no recipient
-// to pay), and reconciliation has nothing to poll.
 const COMMUNITY_FUND_RESERVE_ADDRESS =
   (process.env.COMMUNITY_FUND_RESERVE_ADDRESS || "").trim();
-
-// Required fee in tokens. A confirmed transfer must carry amount >= this.
 const SUBMISSION_FEE = Number(process.env.SUBMISSION_FEE) || 1000;
-
-// How long an unpaid submission stays in `awaiting_payment` before it is swept
-// to `expired` (the UI stops polling). A real late payment is still credited.
 const SUBMISSION_TTL_HOURS = Number(process.env.SUBMISSION_TTL_HOURS) || 24;
+
+// ── NODER NFT TERMINAL config ──────────────────────────────────────────────────
+const NFT_TREASURY_ADDRESS = (process.env.NFT_TREASURY_ADDRESS || "").trim();
+const MINT_FEE = Number(process.env.MINT_FEE) || 50;
+const POINTS_STARTING_BALANCE = 1000;  // default starting points for new users
 
 const EXPLORER_PROD_HOST = "testnet-explorer.usernodelabs.org";
 const EXPLORER_PROD_BASE = "/api";
@@ -84,83 +93,119 @@ const EXPLORER_UPSTREAM = LOCAL_DEV ? EXPLORER_LOCAL_HOST : EXPLORER_PROD_HOST;
 const EXPLORER_UPSTREAM_BASE = LOCAL_DEV ? EXPLORER_LOCAL_BASE : EXPLORER_PROD_BASE;
 const EXPLORER_PROXY_PREFIX = "/explorer-api/";
 
-function send(res, statusCode, headers, body) {
-  res.writeHead(statusCode, headers);
-  res.end(body);
-}
-
 const EXPLORER_USE_HTTP = (() => {
   const host = EXPLORER_UPSTREAM.replace(/:\d+$/, "");
   return host === "localhost" || host === "127.0.0.1" || /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(host);
 })();
 
-function proxyExplorer(req, res, subPath) {
-  const upstreamPath = EXPLORER_UPSTREAM_BASE + "/" + subPath;
-  const chunks = [];
-  req.on("data", (c) => chunks.push(c));
-  req.on("end", () => {
-    const bodyBuf = chunks.length ? Buffer.concat(chunks) : null;
-    const transport = EXPLORER_USE_HTTP ? http : https;
-    const [hostname, portStr] = EXPLORER_UPSTREAM.split(":");
-    const port = portStr ? Number(portStr) : (EXPLORER_USE_HTTP ? 80 : 443);
-    const upReq = transport.request(
-      {
-        hostname,
-        port,
-        path: upstreamPath,
-        method: req.method,
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-          ...(bodyBuf ? { "content-length": bodyBuf.length } : {}),
-        },
-      },
-      (upRes) => {
-        const rChunks = [];
-        upRes.on("data", (c) => rChunks.push(c));
-        upRes.on("end", () => {
-          const body = Buffer.concat(rChunks);
-          res.writeHead(upRes.statusCode, {
-            "content-type": upRes.headers["content-type"] || "application/json",
-            "access-control-allow-origin": "*",
-          });
-          res.end(body);
-        });
-      }
-    );
-    upReq.on("error", (err) => {
-      send(res, 502, { "content-type": "text/plain" }, `Explorer proxy error: ${err.message}`);
-    });
-    if (bodyBuf) upReq.write(bodyBuf);
-    upReq.end();
-  });
+// ── Database initialization ──────────────────────────────────────────────────
+async function initializeDatabase() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_points (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(255) UNIQUE NOT NULL,
+        username VARCHAR(255),
+        points_balance BIGINT NOT NULL DEFAULT ${POINTS_STARTING_BALANCE},
+        last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log("[db] user_points table initialized");
+  } catch (err) {
+    console.error("[db] failed to initialize database:", err.message);
+    process.exit(1);
+  }
 }
 
-// ── Stats poller ─────────────────────────────────────────────────────────────
-// Background chain poller: caches raw transactions per app pubkey and derives
-// stats. Clients fetch GET /api/stats or GET /api/transactions?pubkey=... 
-// instead of each independently paginating the explorer.
+// Get or create user points record (ensures user exists with starting balance).
+async function getOrCreateUserPoints(userId, username) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO user_points (user_id, username, points_balance, last_updated)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET username = $2, last_updated = NOW()
+       RETURNING points_balance;`,
+      [userId, username || null, POINTS_STARTING_BALANCE]
+    );
+    return result.rows[0]?.points_balance || POINTS_STARTING_BALANCE;
+  } catch (err) {
+    console.error("[db] getOrCreateUserPoints error:", err.message);
+    throw err;
+  }
+}
 
-const statsCache = {};    // { [pubkey]: { users, txns } }
-const txCache = {};       // { [pubkey]: Transaction[] }
-const seenTxIds = {};     // { [pubkey]: Set }
-const lastHeight = {};    // { [pubkey]: number } — for from_height incremental
-let statsChainId = null;
+// Deduct points from a user's balance (transaction-style: only deduct if sufficient balance).
+async function deductUserPoints(userId, amount) {
+  try {
+    const result = await pool.query(
+      `UPDATE user_points SET points_balance = points_balance - $2, last_updated = NOW()
+       WHERE user_id = $1 AND points_balance >= $2
+       RETURNING points_balance;`,
+      [userId, amount]
+    );
+    if (result.rows.length === 0) {
+      return { ok: false, reason: "insufficient_balance" };
+    }
+    return { ok: true, newBalance: result.rows[0].points_balance };
+  } catch (err) {
+    console.error("[db] deductUserPoints error:", err.message);
+    throw err;
+  }
+}
 
-// Global usernames address — polled the same way as dapp pubkeys so we can
-// derive `username` / `has_set_username` per wallet for /user_activity.
-const USERNAMES_PUBKEY =
-  process.env.USERNAMES_PUBKEY ||
-  "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az";
+// ── Express app setup ────────────────────────────────────────────────────────
+const app = express();
+app.use(express.json({ limit: "64kb" }));
 
-// ── Submissions store ─────────────────────────────────────────────────────────
-// File-backed (submissions.json) so the app stays zero-dependency / stdlib-only,
-// mirroring dapps.json as the file source of truth. Loaded into memory on boot,
-// flushed atomically (temp file + rename) on every mutation.
+// ── Auth middleware ─────────────────────────────────────────────────────────
+// The platform injects JWT via ?token=... on iframe load; frontend forwards it
+// via x-usernode-token header. Both token and header are optional for public routes.
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/dapps.json",
+  "/nft-terminal",
+  "/nft-terminal/",
+  "/api/stats",
+  "/api/transactions",
+  "/user_activity",
+  "/api/submit-config",
+  "/screenshots",
+  "/health",
+]);
 
-let submissions = [];                 // array of submission records
-const consumedTxIds = new Set();      // tx_id -> already credited to a submission
+const PUBLIC_PREFIXES = [
+  "/explorer-api/",
+  "/api/submissions",  // submission polling is public
+];
 
+app.use((req, res, next) => {
+  // Extract JWT from query (?token=...) or header (x-usernode-token).
+  const token = req.query.token || req.headers["x-usernode-token"];
+
+  if (token && JWT_SECRET) {
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      console.warn("[auth] token verification failed:", err.message);
+    }
+  }
+
+  // Deny non-GET requests and all /api/* routes by default (unless public).
+  const isPublic = PUBLIC_PATHS.has(req.path) ||
+                   PUBLIC_PREFIXES.some((p) => req.path.startsWith(p));
+
+  if (!isPublic && (req.method !== "GET" || req.path.startsWith("/api/"))) {
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+  }
+
+  next();
+});
+
+// ── Submission store (file-backed, same as before) ───────────────────────────
+let submissions = [];
+const consumedTxIds = new Set();
 const SUBMIT_MEMO_APP = "dapp-homepage";
 const SUBMIT_MEMO_TYPE = "submit";
 
@@ -184,7 +229,6 @@ function loadSubmissions() {
     console.warn(`[submit] could not read submissions.json: ${e.message}`);
     submissions = [];
   }
-  // Re-seed the consumed-tx set so a restart can't double-credit a payment.
   consumedTxIds.clear();
   for (const s of submissions) {
     if (s && s.payment_tx_hash) consumedTxIds.add(s.payment_tx_hash);
@@ -203,8 +247,6 @@ function findSubmission(id) {
   return submissions.find((s) => s && s.id === id) || null;
 }
 
-// A submission is a live duplicate-blocker while it is still awaiting payment or
-// already published. Expired records do not block a fresh attempt.
 function isLiveSubmission(s) {
   return s && (s.status === "awaiting_payment" || s.status === "published");
 }
@@ -213,8 +255,6 @@ function submitMemoString(id) {
   return JSON.stringify({ app: SUBMIT_MEMO_APP, type: SUBMIT_MEMO_TYPE, sid: id });
 }
 
-// Public-safe view returned to the submitter — a global, per-submission status
-// view with no user data beyond what the submitter already supplied.
 function publicSubmissionView(s) {
   return {
     id: s.id,
@@ -230,6 +270,7 @@ function publicSubmissionView(s) {
   };
 }
 
+// ── HTTP helpers ──────────────────────────────────────────────────────────
 function httpJson(method, urlStr, body) {
   return new Promise((resolve, reject) => {
     const url = new URL(urlStr);
@@ -263,6 +304,58 @@ function explorerBaseUrl() {
   const proto = EXPLORER_USE_HTTP ? "http" : "https";
   return `${proto}://${EXPLORER_UPSTREAM}${EXPLORER_UPSTREAM_BASE}`;
 }
+
+function proxyExplorer(req, res, subPath) {
+  const upstreamPath = EXPLORER_UPSTREAM_BASE + "/" + subPath;
+  const chunks = [];
+  req.on("data", (c) => chunks.push(c));
+  req.on("end", () => {
+    const bodyBuf = chunks.length ? Buffer.concat(chunks) : null;
+    const transport = EXPLORER_USE_HTTP ? http : https;
+    const [hostname, portStr] = EXPLORER_UPSTREAM.split(":");
+    const port = portStr ? Number(portStr) : (EXPLORER_USE_HTTP ? 80 : 443);
+    const upReq = transport.request(
+      {
+        hostname,
+        port,
+        path: upstreamPath,
+        method: req.method,
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          ...(bodyBuf ? { "content-length": bodyBuf.length } : {}),
+        },
+      },
+      (upRes) => {
+        const rChunks = [];
+        upRes.on("data", (c) => rChunks.push(c));
+        upRes.on("end", () => {
+          const body = Buffer.concat(rChunks);
+          res.status(upRes.statusCode).set({
+            "content-type": upRes.headers["content-type"] || "application/json",
+            "access-control-allow-origin": "*",
+          }).end(body);
+        });
+      }
+    );
+    upReq.on("error", (err) => {
+      res.status(502).set("content-type", "text/plain").end(`Explorer proxy error: ${err.message}`);
+    });
+    if (bodyBuf) upReq.write(bodyBuf);
+    upReq.end();
+  });
+}
+
+// ── Stats poller ────────────────────────────────────────────────────────────
+const statsCache = {};
+const txCache = {};
+const seenTxIds = {};
+const lastHeight = {};
+let statsChainId = null;
+
+const USERNAMES_PUBKEY =
+  process.env.USERNAMES_PUBKEY ||
+  "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az";
 
 async function discoverStatsChainId() {
   try {
@@ -334,13 +427,11 @@ async function pollPubkey(pubkey) {
       console.log(`[stats] ${pubkey.slice(0, 16)}…: ${newTxs.length} new tx(s), ${txCache[pubkey].length} total`);
     }
 
-    // Bound seenTxIds
     if (seenTxIds[pubkey].size > SEEN_CAP) {
       const arr = Array.from(seenTxIds[pubkey]);
       seenTxIds[pubkey] = new Set(arr.slice(arr.length - SEEN_CAP));
     }
 
-    // Derive stats
     const senders = new Set();
     for (const tx of txCache[pubkey]) {
       const sender = tx.source || tx.from_pubkey || tx.from;
@@ -384,18 +475,13 @@ async function pollAllStats() {
     await pollPubkey(pk);
   }
 
-  // Credit confirmed submission payments and age out unpaid submissions.
   reconcileSubmissionPayments();
   expireStaleSubmissions();
 }
 
-// ── /user_activity derivation ────────────────────────────────────────────────
-// Walk the per-dapp txCaches plus the usernames txCache and roll them up
-// into a per-wallet view. Computed on demand so it's always live.
-
 function deriveUsernamesByWallet() {
-  const out = new Map();        // wallet -> latest username
-  const latestKey = new Map();  // wallet -> latest ordering key (ts or block)
+  const out = new Map();
+  const latestKey = new Map();
   const txs = txCache[USERNAMES_PUBKEY] || [];
   for (const tx of txs) {
     const sender = tx.source || tx.from_pubkey || tx.from;
@@ -421,7 +507,6 @@ function buildUserActivity() {
   const dappByPubkey = new Map(dapps.map((d) => [d.pubkey, d]));
   const usernames = deriveUsernamesByWallet();
 
-  // wallet -> { byDapp: Map<dappPk, count>, total: number }
   const wallets = new Map();
   function ensure(wallet) {
     let w = wallets.get(wallet);
@@ -434,14 +519,13 @@ function buildUserActivity() {
     for (const tx of txs) {
       const sender = tx.source || tx.from_pubkey || tx.from;
       if (!sender) continue;
-      if (sender === dapp.pubkey) continue; // skip self-sends (e.g. consolidation)
+      if (sender === dapp.pubkey) continue;
       const w = ensure(sender);
       w.total += 1;
       w.byDapp.set(dapp.pubkey, (w.byDapp.get(dapp.pubkey) || 0) + 1);
     }
   }
 
-  // Include any wallet that set a username, even if it never sent to a dapp.
   for (const wallet of usernames.keys()) ensure(wallet);
 
   const out = {};
@@ -467,13 +551,6 @@ function buildUserActivity() {
   return out;
 }
 
-// ── Submission payment reconciliation + auto-publish ──────────────────────────
-// Runs each poll tick after the Reserve address has been polled. Scans the
-// Reserve's inbound transfers for confirmed payments whose memo `sid` matches a
-// submission still awaiting payment (or expired), appends the dapp to dapps.json,
-// and marks the record `published`. Confirmation IS publication — no validator.
-// Trusts only confirmed chain state — never a client claim of payment.
-
 function reconcileSubmissionPayments() {
   if (!COMMUNITY_FUND_RESERVE_ADDRESS) return;
   const txs = txCache[COMMUNITY_FUND_RESERVE_ADDRESS] || [];
@@ -496,13 +573,8 @@ function reconcileSubmissionPayments() {
 
     const sub = findSubmission(memo.sid);
     if (!sub) continue;
-    // Credit a real confirmed payment even if the form already gave up (expired).
     if (sub.status !== "awaiting_payment" && sub.status !== "expired") continue;
 
-    // Publish: append to dapps.json unless the dapp is already listed (race /
-    // manual add — idempotent skip). If the write fails (e.g. dapps.json not
-    // writable), leave the record unpublished and the tx unconsumed so the next
-    // tick retries — the fee is already burned regardless.
     try {
       if (!listingHas(sub.dapp.url, sub.dapp.pubkey)) {
         appendDappToListing(sub.dapp);
@@ -525,8 +597,6 @@ function reconcileSubmissionPayments() {
   if (dirty) saveSubmissions();
 }
 
-// Sweep `awaiting_payment` records past their TTL to `expired` so the form stops
-// polling. A genuine late payment can still re-credit an expired record.
 function expireStaleSubmissions() {
   const now = Date.now();
   let dirty = false;
@@ -539,8 +609,6 @@ function expireStaleSubmissions() {
   if (dirty) saveSubmissions();
 }
 
-// Append a published submission's dapp entry into dapps.json so the homepage
-// shows it and the poller tracks its pubkey on the next tick. Atomic write.
 function appendDappToListing(dapp) {
   const raw = fs.readFileSync(DAPPS_PATH, "utf8");
   const data = JSON.parse(raw);
@@ -549,11 +617,9 @@ function appendDappToListing(dapp) {
   atomicWriteJson(DAPPS_PATH, data);
 }
 
-// True if a url/pubkey is already present in the live listing.
 function listingHas(url, pubkey) {
-  const dapps = loadDapps(); // {name, pubkey}
+  const dapps = loadDapps();
   if (pubkey && dapps.some((d) => d.pubkey === pubkey)) return true;
-  // loadDapps drops url; re-read raw for a url check.
   try {
     const data = JSON.parse(fs.readFileSync(DAPPS_PATH, "utf8"));
     const apps = data.apps || data.items || [];
@@ -563,54 +629,100 @@ function listingHas(url, pubkey) {
   }
 }
 
-// Start background polling
+// Start poller on boot
 loadSubmissions();
-(async function startStatsPoller() {
-  await pollAllStats();
-  setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
-})();
+initializeDatabase().then(() => {
+  (async function startStatsPoller() {
+    await pollAllStats();
+    setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
+  })();
+});
 
-// ── HTTP helpers for the submit/review API ───────────────────────────────────
+// ── Express routes ──────────────────────────────────────────────────────────
 
-function sendJson(res, statusCode, obj) {
-  return send(res, statusCode, {
-    "content-type": "application/json",
-    "cache-control": "no-store",
-    "access-control-allow-origin": "*",
-  }, JSON.stringify(obj));
-}
+// Explorer proxy
+app.all(EXPLORER_PROXY_PREFIX + "*", (req, res) => {
+  const subPath = req.path.slice(EXPLORER_PROXY_PREFIX.length);
+  proxyExplorer(req, res, subPath);
+});
 
-function readJsonBody(req, limitBytes, cb) {
-  const chunks = [];
-  let size = 0;
-  let aborted = false;
-  req.on("data", (c) => {
-    if (aborted) return;
-    size += c.length;
-    if (size > limitBytes) {
-      aborted = true;
-      cb(new Error("body too large"), null);
-      req.destroy();
+// Stats
+app.get("/api/stats", (req, res) => {
+  res.set("access-control-allow-origin", "*");
+  res.json(statsCache);
+});
+
+// User activity
+app.get("/user_activity", (req, res) => {
+  res.set("access-control-allow-origin", "*");
+  const minimal = req.query.minimal === "1";
+  let activity = buildUserActivity();
+  if (minimal) {
+    const trimmed = {};
+    for (const [key, val] of Object.entries(activity)) {
+      trimmed[key] = {
+        wallet_address: val.wallet_address,
+        has_set_username: val.has_set_username,
+        total_dapp_transactions: val.total_dapp_transactions,
+      };
+    }
+    activity = trimmed;
+  }
+  res.json(activity);
+});
+
+// Transactions lookup
+app.get("/api/transactions", (req, res) => {
+  res.set("access-control-allow-origin", "*");
+  const pubkey = (req.query.pubkey || "").trim();
+  if (!pubkey) {
+    return res.status(400).json({ error: "pubkey query param required" });
+  }
+  const items = txCache[pubkey] || [];
+  res.json({ items });
+});
+
+// Submit config
+app.get("/api/submit-config", (req, res) => {
+  res.json({
+    enabled: !!COMMUNITY_FUND_RESERVE_ADDRESS,
+    fee: SUBMISSION_FEE,
+    reserve_address: COMMUNITY_FUND_RESERVE_ADDRESS || null,
+  });
+});
+
+// NFT config (now with authenticated points balance)
+app.get("/api/nft-config", async (req, res) => {
+  const config = {
+    enabled: !!NFT_TREASURY_ADDRESS,
+    mintFee: MINT_FEE,
+    treasuryAddress: NFT_TREASURY_ADDRESS || null,
+  };
+
+  // If user is authenticated, include their points balance.
+  if (req.user) {
+    try {
+      const balance = await getOrCreateUserPoints(req.user.id, req.user.username);
+      config.pointsBalance = balance;
+    } catch (err) {
+      console.error("[nft-config] failed to fetch user points:", err.message);
+      res.status(500).json({ error: "Failed to fetch user points" });
       return;
     }
-    chunks.push(c);
-  });
-  req.on("end", () => {
-    if (aborted) return;
-    const text = Buffer.concat(chunks).toString("utf8").trim();
-    if (!text) return cb(null, {});
-    try { cb(null, JSON.parse(text)); }
-    catch (e) { cb(new Error("invalid JSON body"), null); }
-  });
-  req.on("error", (e) => { if (!aborted) cb(e, null); });
-}
+  }
 
-const TX_PREFIX = "ut1";
+  res.json(config);
+});
 
-// Validate + normalize an incoming dapp submission. Returns { ok, dapp } or
-// { ok:false, error }.
-function validateSubmissionInput(body) {
-  if (!body || typeof body !== "object") return { ok: false, error: "Missing submission body." };
+// Create submission
+app.post("/api/submissions", (req, res) => {
+  if (!COMMUNITY_FUND_RESERVE_ADDRESS) {
+    return res.status(503).json({
+      error: "Submissions are not currently open (no Reserve address configured).",
+    });
+  }
+
+  const body = req.body;
   const str = (v) => (typeof v === "string" ? v.trim() : "");
   const name = str(body.name);
   const description = str(body.description);
@@ -620,298 +732,226 @@ function validateSubmissionInput(body) {
   const category = str(body.category);
   const logo = str(body.logo);
 
-  if (!name) return { ok: false, error: "Name is required." };
-  if (name.length > 80) return { ok: false, error: "Name is too long (max 80 chars)." };
-  if (!url) return { ok: false, error: "URL is required." };
+  if (!name) return res.status(400).json({ error: "Name is required." });
+  if (name.length > 80) return res.status(400).json({ error: "Name is too long (max 80 chars)." });
+  if (!url) return res.status(400).json({ error: "URL is required." });
+
   let parsed;
-  try { parsed = new URL(url); } catch (_) { return { ok: false, error: "URL is not valid." }; }
-  if (parsed.protocol !== "https:") return { ok: false, error: "URL must start with https://" };
-  if (!pubkey) return { ok: false, error: "Dapp pubkey (ut1…) is required." };
-  if (!pubkey.startsWith(TX_PREFIX)) return { ok: false, error: "Pubkey must be a Usernode address (starts with ut1)." };
-  if (description.length > 280) return { ok: false, error: "Description is too long (max 280 chars)." };
-  if (logo && logo.length > 8000) return { ok: false, error: "Logo SVG is too large." };
+  try { parsed = new URL(url); } catch (_) {
+    return res.status(400).json({ error: "URL is not valid." });
+  }
+  if (parsed.protocol !== "https:") {
+    return res.status(400).json({ error: "URL must start with https://" });
+  }
+
+  if (!pubkey) return res.status(400).json({ error: "Dapp pubkey (ut1…) is required." });
+  if (!pubkey.startsWith("ut1")) {
+    return res.status(400).json({ error: "Pubkey must be a Usernode address (starts with ut1)." });
+  }
+  if (description.length > 280) {
+    return res.status(400).json({ error: "Description is too long (max 280 chars)." });
+  }
+  if (logo && logo.length > 8000) {
+    return res.status(400).json({ error: "Logo SVG is too large." });
+  }
 
   const dapp = { name, description, author: author || "unknown", url, pubkey };
   if (category) dapp.category = category;
   if (logo) dapp.logo = logo;
-  return { ok: true, dapp };
-}
 
-// ── HTTP server ──────────────────────────────────────────────────────────────
-
-const server = http.createServer((req, res) => {
-  const pathname = (() => {
-    try {
-      return new URL(req.url || "/", `http://${req.headers.host || "localhost"}`)
-        .pathname;
-    } catch (_) {
-      return req.url || "/";
-    }
-  })();
-
-  if (pathname.startsWith(EXPLORER_PROXY_PREFIX)) {
-    const subPath = pathname.slice(EXPLORER_PROXY_PREFIX.length);
-    return proxyExplorer(req, res, subPath);
+  if (listingHas(url, pubkey)) {
+    return res.status(409).json({ error: "A dapp with this URL or pubkey is already listed." });
   }
 
-  if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
-    const body = JSON.stringify(statsCache);
-    if (req.method === "HEAD") {
-      res.writeHead(200, {
-        "content-type": "application/json",
-        "content-length": Buffer.byteLength(body),
-        "cache-control": "no-store",
-      });
-      return res.end();
-    }
-    return send(res, 200, {
-      "content-type": "application/json",
-      "cache-control": "no-store",
-      "access-control-allow-origin": "*",
-    }, body);
+  const dupe = submissions.find(
+    (s) => isLiveSubmission(s) && s.dapp &&
+      (s.dapp.url === url || s.dapp.pubkey === pubkey)
+  );
+  if (dupe) {
+    return res.status(409).json({ error: "A submission for this URL or pubkey is already in progress." });
   }
 
-  if (pathname === "/user_activity" && (req.method === "GET" || req.method === "HEAD")) {
-    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    const minimal = urlObj.searchParams.get("minimal") === "1";
-    let activity = buildUserActivity();
-    if (minimal) {
-      const trimmed = {};
-      for (const [key, val] of Object.entries(activity)) {
-        trimmed[key] = {
-          wallet_address: val.wallet_address,
-          has_set_username: val.has_set_username,
-          total_dapp_transactions: val.total_dapp_transactions,
-        };
-      }
-      activity = trimmed;
-    }
-    const body = JSON.stringify(activity);
-    if (req.method === "HEAD") {
-      res.writeHead(200, {
-        "content-type": "application/json",
-        "content-length": Buffer.byteLength(body),
-        "cache-control": "no-store",
-      });
-      return res.end();
-    }
-    return send(res, 200, {
-      "content-type": "application/json",
-      "cache-control": "no-store",
-      "access-control-allow-origin": "*",
-    }, body);
-  }
+  const now = Date.now();
+  const id = crypto.randomUUID();
+  const record = {
+    id,
+    status: "awaiting_payment",
+    dapp,
+    payer: null,
+    payment_tx_hash: null,
+    paid_amount: null,
+    fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS,
+    created_at: now,
+    expires_at: now + SUBMISSION_TTL_HOURS * 3600 * 1000,
+    published_at: null,
+  };
+  submissions.push(record);
+  saveSubmissions();
 
-  if (pathname === "/api/transactions" && (req.method === "GET" || req.method === "HEAD")) {
-    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    const pubkey = (urlObj.searchParams.get("pubkey") || "").trim();
-    if (!pubkey) {
-      return send(res, 400, { "content-type": "application/json" }, JSON.stringify({ error: "pubkey query param required" }));
-    }
-    const items = txCache[pubkey] || [];
-    const body = JSON.stringify({ items });
-    if (req.method === "HEAD") {
-      res.writeHead(200, {
-        "content-type": "application/json",
-        "content-length": Buffer.byteLength(body),
-        "cache-control": "no-store",
-      });
-      return res.end();
-    }
-    return send(res, 200, {
-      "content-type": "application/json",
-      "cache-control": "no-store",
-      "access-control-allow-origin": "*",
-    }, body);
-  }
-
-  // ── Submit-a-dapp API ──────────────────────────────────────────────────────
-
-  // Public config the form needs to render (fee amount, whether submissions are
-  // open). Never exposes the validator token.
-  if (pathname === "/api/submit-config" && req.method === "GET") {
-    return sendJson(res, 200, {
-      enabled: !!COMMUNITY_FUND_RESERVE_ADDRESS,
-      fee: SUBMISSION_FEE,
-      reserve_address: COMMUNITY_FUND_RESERVE_ADDRESS || null,
-    });
-  }
-
-  // Create a submission → returns on-chain payment instructions.
-  if (pathname === "/api/submissions" && req.method === "POST") {
-    if (!COMMUNITY_FUND_RESERVE_ADDRESS) {
-      return sendJson(res, 503, { error: "Submissions are not currently open (no Reserve address configured)." });
-    }
-    return readJsonBody(req, 64 * 1024, (err, body) => {
-      if (err) return sendJson(res, 400, { error: err.message });
-      const v = validateSubmissionInput(body);
-      if (!v.ok) return sendJson(res, 400, { error: v.error });
-
-      // Pre-payment duplicate gate — block before the user spends tokens.
-      if (listingHas(v.dapp.url, v.dapp.pubkey)) {
-        return sendJson(res, 409, { error: "A dapp with this URL or pubkey is already listed." });
-      }
-      const dupe = submissions.find(
-        (s) => isLiveSubmission(s) && s.dapp &&
-          (s.dapp.url === v.dapp.url || s.dapp.pubkey === v.dapp.pubkey)
-      );
-      if (dupe) {
-        return sendJson(res, 409, { error: "A submission for this URL or pubkey is already in progress." });
-      }
-
-      const now = Date.now();
-      const id = crypto.randomUUID();
-      const record = {
-        id,
-        status: "awaiting_payment",
-        dapp: v.dapp,
-        payer: null,
-        payment_tx_hash: null,
-        paid_amount: null,
-        fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS,
-        created_at: now,
-        expires_at: now + SUBMISSION_TTL_HOURS * 3600 * 1000,
-        published_at: null,
-      };
-      submissions.push(record);
-      saveSubmissions();
-      return sendJson(res, 201, {
-        id,
-        pay_to: COMMUNITY_FUND_RESERVE_ADDRESS,
-        amount: SUBMISSION_FEE,
-        memo: submitMemoString(id),
-        status: record.status,
-        expires_at: record.expires_at,
-      });
-    });
-  }
-
-  // Per-submission status poll (public). /api/submissions/:id
-  if (pathname.startsWith("/api/submissions/") && req.method === "GET") {
-    const id = decodeURIComponent(pathname.slice("/api/submissions/".length));
-    const sub = findSubmission(id);
-    if (!sub) return sendJson(res, 404, { error: "Submission not found." });
-    return sendJson(res, 200, publicSubmissionView(sub));
-  }
-
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    return send(res, 405, { "content-type": "text/plain" }, "Method Not Allowed");
-  }
-
-  // Static screenshot assets committed under public/screenshots/. Served here
-  // (before the index.html catch-all) so image requests resolve to real files
-  // instead of falling through to the SPA shell. A 404 lets the preview
-  // modal's per-image onerror handler hide thumbnails whose file isn't present.
-  if (pathname.startsWith("/screenshots/")) {
-    let rel;
-    try {
-      rel = decodeURIComponent(pathname.slice("/screenshots/".length));
-    } catch (_) {
-      return send(res, 400, { "content-type": "text/plain" }, "Bad Request");
-    }
-    // Resolve and confirm the target stays within SCREENSHOTS_DIR (no traversal).
-    const filePath = path.resolve(SCREENSHOTS_DIR, rel);
-    const rootWithSep = SCREENSHOTS_DIR + path.sep;
-    if (filePath !== SCREENSHOTS_DIR && !filePath.startsWith(rootWithSep)) {
-      return send(res, 403, { "content-type": "text/plain" }, "Forbidden");
-    }
-    const ext = path.extname(filePath).toLowerCase();
-    const ctype = STATIC_CONTENT_TYPES[ext];
-    if (!ctype) {
-      return send(res, 404, { "content-type": "text/plain" }, "Not Found");
-    }
-    return fs.stat(filePath, (err, stat) => {
-      if (err || !stat.isFile()) {
-        return send(res, 404, { "content-type": "text/plain" }, "Not Found");
-      }
-      const headers = {
-        "content-type": ctype,
-        "content-length": stat.size,
-        "cache-control": "public, max-age=300",
-        "access-control-allow-origin": "*",
-      };
-      if (req.method === "HEAD") {
-        res.writeHead(200, headers);
-        return res.end();
-      }
-      res.writeHead(200, headers);
-      fs.createReadStream(filePath)
-        .on("error", () => {
-          if (!res.headersSent) {
-            send(res, 500, { "content-type": "text/plain" }, "Read error");
-          } else {
-            res.destroy();
-          }
-        })
-        .pipe(res);
-    });
-  }
-
-  if (pathname === "/dapps.json") {
-    return fs.readFile(DAPPS_PATH, (err, buf) => {
-      if (err) {
-        return send(
-          res,
-          500,
-          { "content-type": "text/plain" },
-          `Failed to read dapps.json: ${err.message}\n`
-        );
-      }
-
-      if (req.method === "HEAD") {
-        res.writeHead(200, {
-          "content-type": "application/json; charset=utf-8",
-          "content-length": buf.length,
-          "cache-control": "no-store",
-        });
-        return res.end();
-      }
-
-      return send(
-        res,
-        200,
-        {
-          "content-type": "application/json; charset=utf-8",
-          "cache-control": "no-store",
-        },
-        buf
-      );
-    });
-  }
-
-  fs.readFile(INDEX_PATH, (err, buf) => {
-    if (err) {
-      return send(
-        res,
-        500,
-        { "content-type": "text/plain" },
-        `Failed to read index.html: ${err.message}\n`
-      );
-    }
-
-    if (req.method === "HEAD") {
-      res.writeHead(200, {
-        "content-type": "text/html; charset=utf-8",
-        "content-length": buf.length,
-        "cache-control": "no-store",
-      });
-      return res.end();
-    }
-
-    return send(
-      res,
-      200,
-      {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store",
-      },
-      buf
-    );
+  res.status(201).json({
+    id,
+    pay_to: COMMUNITY_FUND_RESERVE_ADDRESS,
+    amount: SUBMISSION_FEE,
+    memo: submitMemoString(id),
+    status: record.status,
+    expires_at: record.expires_at,
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
+// Get submission status
+app.get("/api/submissions/:id", (req, res) => {
+  const id = decodeURIComponent(req.params.id);
+  const sub = findSubmission(id);
+  if (!sub) return res.status(404).json({ error: "Submission not found." });
+  res.json(publicSubmissionView(sub));
+});
+
+// Mint NFTs (requires auth, deducts points)
+app.post("/api/mint", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  if (!NFT_TREASURY_ADDRESS) {
+    return res.status(503).json({ error: "Minting is not currently available." });
+  }
+
+  const { quantity } = req.body;
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+    return res.status(400).json({ error: "Invalid quantity (must be 1-100)" });
+  }
+
+  const totalCost = quantity * MINT_FEE;
+
+  try {
+    // Deduct points — will fail if insufficient balance.
+    const deduct = await deductUserPoints(req.user.id, totalCost);
+    if (!deduct.ok) {
+      return res.status(400).json({
+        error: "Insufficient points",
+        reason: deduct.reason,
+      });
+    }
+
+    // Allocate NFT IDs (1-100, session-only, deterministic within this tx).
+    const nftIds = [];
+    for (let i = 0; i < quantity; i++) {
+      nftIds.push(Math.floor(Math.random() * 100) + 1);
+    }
+
+    res.json({
+      ok: true,
+      nftIds,
+      newBalance: deduct.newBalance,
+    });
+  } catch (err) {
+    console.error("[mint] error:", err.message);
+    res.status(500).json({ error: "Mint failed" });
+  }
+});
+
+// Dapps listing
+app.get("/dapps.json", (req, res) => {
+  fs.readFile(DAPPS_PATH, (err, buf) => {
+    if (err) {
+      return res.status(500).set("content-type", "text/plain").end(
+        `Failed to read dapps.json: ${err.message}\n`
+      );
+    }
+    res.set("content-type", "application/json; charset=utf-8");
+    res.end(buf);
+  });
+});
+
+// NFT Terminal
+app.get(["/nft-terminal", "/nft-terminal/"], (req, res) => {
+  fs.readFile(NFT_TERMINAL_PATH, (err, buf) => {
+    if (err) {
+      const missing = err.code === "ENOENT";
+      console.error(
+        `[/nft-terminal] failed to read ${NFT_TERMINAL_PATH}: ${err.code || ""} ${err.message}`
+      );
+      return res.status(missing ? 404 : 500).set("content-type", "text/plain").end(
+        missing
+          ? "NODER NFT TERMINAL is unavailable: page file not found on the server.\n"
+          : `Failed to read nft-terminal.html: ${err.message}\n`
+      );
+    }
+    res.set("content-type", "text/html; charset=utf-8");
+    res.end(buf);
+  });
+});
+
+// Screenshots
+app.get("/screenshots/*", (req, res) => {
+  let rel;
+  try {
+    rel = decodeURIComponent(req.path.slice("/screenshots/".length));
+  } catch (_) {
+    return res.status(400).set("content-type", "text/plain").end("Bad Request");
+  }
+
+  const filePath = path.resolve(SCREENSHOTS_DIR, rel);
+  const rootWithSep = SCREENSHOTS_DIR + path.sep;
+  if (filePath !== SCREENSHOTS_DIR && !filePath.startsWith(rootWithSep)) {
+    return res.status(403).set("content-type", "text/plain").end("Forbidden");
+  }
+
+  const ext = path.extname(filePath).toLowerCase();
+  const ctype = STATIC_CONTENT_TYPES[ext];
+  if (!ctype) {
+    return res.status(404).set("content-type", "text/plain").end("Not Found");
+  }
+
+  fs.stat(filePath, (err, stat) => {
+    if (err || !stat.isFile()) {
+      return res.status(404).set("content-type", "text/plain").end("Not Found");
+    }
+    res.set({
+      "content-type": ctype,
+      "content-length": stat.size,
+      "cache-control": "public, max-age=300",
+      "access-control-allow-origin": "*",
+    });
+    fs.createReadStream(filePath)
+      .on("error", () => {
+        if (!res.headersSent) {
+          res.status(500).set("content-type", "text/plain").end("Read error");
+        } else {
+          res.destroy();
+        }
+      })
+      .pipe(res);
+  });
+});
+
+// Index (homepage)
+app.get(["/", "/index.html"], (req, res) => {
+  fs.readFile(INDEX_PATH, (err, buf) => {
+    if (err) {
+      return res.status(500).set("content-type", "text/plain").end(
+        `Failed to read index.html: ${err.message}\n`
+      );
+    }
+    res.set("content-type", "text/html; charset=utf-8");
+    res.end(buf);
+  });
+});
+
+// Health check
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+// 404 fallback
+app.all("*", (req, res) => {
+  res.status(404).set("content-type", "text/plain").end("Not Found");
+});
+
+// ── Start server ────────────────────────────────────────────────────────────
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Serving ${INDEX_PATH}`);
+  console.log(`NFT Terminal: ${NFT_TERMINAL_PATH}`);
   console.log(`Dapps config: ${DAPPS_PATH}${LOCAL_DEV ? " (local-dev)" : ""}`);
   console.log(`Explorer proxy: ${EXPLORER_USE_HTTP ? "http" : "https"}://${EXPLORER_UPSTREAM}${EXPLORER_UPSTREAM_BASE}`);
   console.log(`Stats poller: every ${STATS_POLL_INTERVAL_MS / 1000}s → GET /api/stats, GET /api/transactions?pubkey=..., GET /user_activity`);
