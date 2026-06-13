@@ -1,0 +1,37 @@
+{
+  "name": "Noder NFT",
+  "secrets": [
+    {
+      "key": "TREASURY_ADDRESS",
+      "description": "Usernode address (ut1…) that receives all mint fees. Must be provisioned before deploy.",
+      "required": true,
+      "private": false,
+      "default": "",
+      "staging_default": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az"
+    },
+    {
+      "key": "MINT_PRICE",
+      "description": "Cost in native testnet coins to mint one NFT.",
+      "required": false,
+      "private": false,
+      "default": "100",
+      "staging_default": "10"
+    },
+    {
+      "key": "MAX_SUPPLY",
+      "description": "Maximum number of NFTs that can ever be minted.",
+      "required": false,
+      "private": false,
+      "default": "1000",
+      "staging_default": "1000"
+    },
+    {
+      "key": "MINT_TTL_HOURS",
+      "description": "Hours a pending (unpaid) mint stays active before expiry. Late payments are still credited.",
+      "required": false,
+      "private": false,
+      "default": "24",
+      "staging_default": "24"
+    }
+  ]
+}
