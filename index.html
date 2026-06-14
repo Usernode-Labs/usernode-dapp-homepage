@@ -984,6 +984,27 @@
         .submitBtn { padding: 0 9px; }
       }
 
+      .limitsBtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 9px;
+        border: 1px solid var(--border);
+        background: var(--accent);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .limitsBtn svg { width: 15px; height: 15px; }
+      .limitsBtn:hover { filter: brightness(1.06); }
+      @media (max-width: 420px) {
+        .limitsBtnLabel { display: none; }
+        .limitsBtn { padding: 0 9px; }
+      }
+
       .modalOverlay {
         position: fixed;
         inset: 0;
@@ -1138,6 +1159,10 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               <span class="submitBtnLabel">Submit</span>
             </button>
+            <button class="limitsBtn" id="openLimitsBtn" type="button" title="Set spending and gas limits" aria-label="Set limits">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M12 3v18M3 7h18M3 17h18"/></svg>
+              <span class="limitsBtnLabel">Limits</span>
+            </button>
             <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
               <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -1277,6 +1302,52 @@
         <div id="submitStepDone" hidden>
           <div id="doneBody"></div>
           <div class="modalActions"><button class="btnPrimary" id="doneClose" type="button">Done</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Limits modal -->
+    <div class="modalOverlay" id="limitsModal" hidden role="dialog" aria-modal="true" aria-label="Set spending and gas limits">
+      <div class="modalCard">
+        <div class="modalHead">
+          <div class="modalTitle">Transaction Limits</div>
+          <button class="modalClose" id="limitsClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <p class="modalNote">Set global spending caps before launching any dApp. Your wallet enforces these limits at tx time.</p>
+
+        <label class="fieldLabel" for="limitsEnable">
+          <input type="checkbox" id="limitsEnable" /> Enable spending & gas limits
+        </label>
+
+        <label class="fieldLabel" for="limitsSpending">Spending cap (tokens)</label>
+        <input class="fieldInput" type="number" id="limitsSpending" placeholder="e.g., 5000" min="0" />
+
+        <label class="fieldLabel" for="limitsGas">Gas fee cap (units)</label>
+        <input class="fieldInput" type="number" id="limitsGas" placeholder="e.g., 100" min="0" />
+
+        <div class="modalError" id="limitsError" hidden></div>
+        <div class="modalActions">
+          <button class="btnGhost" id="limitsCancel" type="button">Cancel</button>
+          <button class="btnPrimary" id="limitsSave" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Launch warning overlay -->
+    <div id="launchLimitsWarning" class="previewOverlay" hidden role="dialog" aria-modal="true" aria-label="Spending limit warning">
+      <div class="previewPanel" style="max-width: 380px;">
+        <div class="previewHeader" style="border-bottom: 2px solid #ef4444;">
+          <div class="previewHeadText">
+            <div style="font-size: 16px; font-weight: 700; color: #ef4444;">⚠️ Limit Warning</div>
+          </div>
+          <button class="previewClose" id="warningClose" type="button" aria-label="Cancel">&times;</button>
+        </div>
+        <div class="previewBody" style="gap: 0; padding: 14px 16px;">
+          <div id="warningMessage" style="font-size: 14px; line-height: 1.5; color: var(--fg);"></div>
+        </div>
+        <div class="previewFooter">
+          <button class="btnGhost" id="warningCancel" type="button">Cancel</button>
+          <button class="btnPrimary" id="warningContinue" type="button">Continue anyway</button>
         </div>
       </div>
     </div>
@@ -1577,7 +1648,7 @@
             if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
               e.preventDefault();
               e.stopPropagation();
-              launchDapp(dapp);
+              checkLimitsAndLaunch(dapp);
             }
           });
 
@@ -1921,8 +1992,95 @@
         });
       }
 
+      const LIMITS_KEY = "dapphome:limits";
+
+      function loadLimits() {
+        try {
+          const raw = localStorage.getItem(LIMITS_KEY);
+          if (!raw) return { enabled: false, spending_cap: null, gas_cap: null };
+          const parsed = JSON.parse(raw);
+          return {
+            enabled: !!parsed.enabled,
+            spending_cap: typeof parsed.spending_cap === 'number' ? parsed.spending_cap : null,
+            gas_cap: typeof parsed.gas_cap === 'number' ? parsed.gas_cap : null,
+          };
+        } catch (e) {
+          return { enabled: false, spending_cap: null, gas_cap: null };
+        }
+      }
+
+      function saveLimits(limits) {
+        try {
+          localStorage.setItem(LIMITS_KEY, JSON.stringify(limits));
+        } catch (e) {
+          console.warn("Could not save limits:", e);
+        }
+      }
+
       function launchDapp(dapp) {
         if (dapp && dapp.url) window.open(dapp.url, "_blank", "noopener");
+      }
+
+      function checkLimitsAndLaunch(dapp) {
+        const limits = loadLimits();
+
+        // If limits are disabled, launch immediately
+        if (!limits.enabled) {
+          launchDapp(dapp);
+          return;
+        }
+
+        // Collect warnings
+        const warnings = [];
+        if (limits.spending_cap != null && dapp.estimated_typical_spend != null) {
+          if (dapp.estimated_typical_spend > limits.spending_cap) {
+            warnings.push(`This dApp typically sends ${dapp.estimated_typical_spend} tokens. Your spending limit is ${limits.spending_cap}.`);
+          }
+        }
+        if (limits.gas_cap != null && dapp.estimated_typical_gas != null) {
+          if (dapp.estimated_typical_gas > limits.gas_cap) {
+            warnings.push(`Gas fees may reach ${dapp.estimated_typical_gas} units. Your gas limit is ${limits.gas_cap}.`);
+          }
+        }
+
+        // No warnings → launch immediately
+        if (warnings.length === 0) {
+          launchDapp(dapp);
+          return;
+        }
+
+        // Show warning modal
+        showLaunchLimitWarning(dapp, warnings);
+      }
+
+      function showLaunchLimitWarning(dapp, warnings) {
+        const warningOverlay = document.getElementById('launchLimitsWarning');
+        const warningMessage = document.getElementById('warningMessage');
+        const warningCancel = document.getElementById('warningCancel');
+        const warningContinue = document.getElementById('warningContinue');
+        const warningClose = document.getElementById('warningClose');
+
+        warningMessage.innerHTML = warnings.map(w => `<p>${w}</p>`).join('');
+
+        const onContinue = () => {
+          warningOverlay.hidden = true;
+          warningCancel.removeEventListener('click', onCancel);
+          warningContinue.removeEventListener('click', onContinue);
+          warningClose.removeEventListener('click', onCancel);
+          launchDapp(dapp);
+        };
+
+        const onCancel = () => {
+          warningOverlay.hidden = true;
+          warningCancel.removeEventListener('click', onCancel);
+          warningContinue.removeEventListener('click', onContinue);
+          warningClose.removeEventListener('click', onCancel);
+        };
+
+        warningCancel.addEventListener('click', onCancel);
+        warningContinue.addEventListener('click', onContinue);
+        warningClose.addEventListener('click', onCancel);
+        warningOverlay.hidden = false;
       }
 
       // Format an ISO-ish date string into a friendly "Last updated" value.
@@ -2158,7 +2316,7 @@
         toggleDesc();
       });
       previewLaunchBtn.addEventListener("click", () => {
-        launchDapp(previewCurrentDapp);
+        checkLimitsAndLaunch(previewCurrentDapp);
       });
       previewOverlay.addEventListener("click", (e) => {
         if (e.target === previewOverlay) closePreview();
@@ -2323,8 +2481,8 @@
             const dapp = li && li.__dapp;
             if (dapp) {
               if (downTarget.closest(".launchBtn")) {
-                // Tapped the Launch button → open the hosted dapp.
-                launchDapp(dapp);
+                // Tapped the Launch button → check limits and open the hosted dapp.
+                checkLimitsAndLaunch(dapp);
                 showLaunchOverlay(dapp.name || "");
               } else {
                 // Tapped anywhere else on the card → open the preview.
@@ -2537,6 +2695,68 @@
             setStep("done");
           }
         }
+      })();
+
+      // ── Limits settings modal ──────────────────────────────────────────────
+      (function limitsFlow() {
+        const limitsModal = document.getElementById('limitsModal');
+        const openLimitsBtn = document.getElementById('openLimitsBtn');
+        const limitsClose = document.getElementById('limitsClose');
+        const limitsEnable = document.getElementById('limitsEnable');
+        const limitsSpending = document.getElementById('limitsSpending');
+        const limitsGas = document.getElementById('limitsGas');
+        const limitsSave = document.getElementById('limitsSave');
+        const limitsCancel = document.getElementById('limitsCancel');
+        const limitsError = document.getElementById('limitsError');
+
+        if (!limitsModal || !openLimitsBtn) return;
+
+        let currentLimits = loadLimits();
+
+        function openLimitsModal() {
+          limitsEnable.checked = currentLimits.enabled;
+          limitsSpending.value = currentLimits.spending_cap || '';
+          limitsGas.value = currentLimits.gas_cap || '';
+          limitsError.hidden = true;
+          limitsModal.hidden = false;
+        }
+
+        function closeLimitsModal() {
+          limitsModal.hidden = true;
+        }
+
+        openLimitsBtn.addEventListener('click', openLimitsModal);
+        limitsClose.addEventListener('click', closeLimitsModal);
+        limitsCancel.addEventListener('click', closeLimitsModal);
+        limitsModal.addEventListener('click', (e) => {
+          if (e.target === limitsModal) closeLimitsModal();
+        });
+
+        limitsSave.addEventListener('click', () => {
+          const spending = limitsSpending.value.trim();
+          const gas = limitsGas.value.trim();
+
+          // Validate: both must be non-negative numbers or empty
+          if (spending && (isNaN(spending) || Number(spending) < 0)) {
+            limitsError.textContent = 'Spending cap must be a positive number.';
+            limitsError.hidden = false;
+            return;
+          }
+          if (gas && (isNaN(gas) || Number(gas) < 0)) {
+            limitsError.textContent = 'Gas cap must be a positive number.';
+            limitsError.hidden = false;
+            return;
+          }
+
+          // Save (even if user cleared the fields)
+          currentLimits = {
+            enabled: limitsEnable.checked,
+            spending_cap: spending ? Number(spending) : null,
+            gas_cap: gas ? Number(gas) : null,
+          };
+          saveLimits(currentLimits);
+          closeLimitsModal();
+        });
       })();
 
     </script>
