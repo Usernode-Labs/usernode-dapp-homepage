@@ -1065,6 +1065,55 @@
       .statusExpired { background: rgba(148, 163, 184, 0.14); color: var(--muted); }
       .statusExpired .dot { background: var(--muted); }
       @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── Search input ─────────────────────────────────────────────────────── */
+      .searchWrap {
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .searchWrap[hidden] {
+        display: none;
+      }
+      .searchBtn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+      }
+      .searchBtn:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .searchBtn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+      .searchInput {
+        appearance: none;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--fg);
+        font-size: 14px;
+        padding: 6px 10px;
+        font-family: inherit;
+        width: 180px;
+      }
+      .searchInput:focus {
+        outline: 2px solid var(--accent);
+        border-color: transparent;
+      }
+      .searchInput::placeholder {
+        color: var(--muted);
+      }
     </style>
   </head>
   <body>
@@ -1085,6 +1134,12 @@
             <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               <span class="submitBtnLabel">Submit</span>
+            </button>
+            <div class="searchWrap" id="searchWrap" hidden>
+              <input class="searchInput" id="searchInput" type="text" placeholder="Search dapps..." aria-label="Filter dapps by name" />
+            </div>
+            <button class="searchBtn" id="searchBtn" type="button" aria-label="Search dapps" title="Search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             </button>
             <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
               <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -1261,6 +1316,7 @@
       let allApps = [];
       let statsMap = {};
       let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
+      let currentSearch = "";
 
       const SORT_LABELS = {
         popular: "Popular",
@@ -1386,6 +1442,24 @@
           }
         });
         return sorted;
+      }
+
+      function applySearchFilter() {
+        const normalized = currentSearch.trim().toLowerCase();
+        const lis = list.querySelectorAll("li");
+        let visibleCount = 0;
+        lis.forEach((li) => {
+          if (li.textContent.includes("(")) return; // skip empty state rows
+          const dapp = li.__dapp;
+          if (!dapp) return;
+          const name = (dapp.name || "").toLowerCase();
+          const matches = normalized === "" || name.includes(normalized);
+          li.hidden = !matches;
+          if (matches) visibleCount++;
+        });
+        if (visibleCount === 0 && normalized !== "") {
+          addRow("(no dapps found)");
+        }
       }
 
       function renderDapps(dapps) {
@@ -1526,6 +1600,8 @@
           li.__dapp = dapp;
           list.appendChild(li);
         }
+
+        applySearchFilter();
       }
 
       async function loadDappsJson() {
@@ -1560,6 +1636,9 @@
 
       sortBtn.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (!sortMenu.classList.contains("open") && !searchWrap.hidden) {
+          closeSearch();
+        }
         sortMenu.classList.toggle("open");
       });
 
@@ -1578,6 +1657,52 @@
       });
 
       updateSortUI();
+
+      // ── Search ────────────────────────────────────────────────────────────
+      const searchWrap = document.getElementById("searchWrap");
+      const searchBtn = document.getElementById("searchBtn");
+      const searchInput = document.getElementById("searchInput");
+
+      function closeSearch() {
+        currentSearch = "";
+        searchInput.value = "";
+        searchWrap.hidden = true;
+        applySearchFilter();
+        searchBtn.focus();
+      }
+
+      function openSearch() {
+        searchWrap.hidden = false;
+        sortMenu.classList.remove("open");
+        searchInput.focus();
+      }
+
+      searchBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (searchWrap.hidden) {
+          openSearch();
+        } else {
+          closeSearch();
+        }
+      });
+
+      searchInput.addEventListener("input", (e) => {
+        currentSearch = e.target.value;
+        applySearchFilter();
+      });
+
+      searchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeSearch();
+        }
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!searchWrap.hidden && !searchWrap.contains(e.target) && e.target !== searchBtn) {
+          closeSearch();
+        }
+      });
 
       // ── Launch overlay ──────────────────────────────────────────────────────
       const _launchOverlay = document.getElementById("launchOverlay");
@@ -1844,7 +1969,10 @@
       }
 
       function launchDapp(dapp) {
-        if (dapp && dapp.url) window.open(dapp.url, "_blank", "noopener");
+        if (dapp && dapp.url) {
+          if (!searchWrap.hidden) closeSearch();
+          window.open(dapp.url, "_blank", "noopener");
+        }
       }
 
       // Format an ISO-ish date string into a friendly "Last updated" value.
@@ -1944,6 +2072,7 @@
 
       function openPreview(dapp, originEl) {
         if (!dapp) return;
+        if (!searchWrap.hidden) closeSearch();
         previewCurrentDapp = dapp;
         // Return focus to the card's link on close (the <li> itself isn't
         // focusable; the inner .dappLink anchor is).
