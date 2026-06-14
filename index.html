@@ -224,15 +224,7 @@
       .headerButtonRow {
         display: flex;
         align-items: center;
-        gap: 8px;
-        flex: 0 0 auto;
-      }
-      .searchBarRow {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 12px 18px;
-        border-top: 1px solid var(--border);
+        gap: 4px;
         flex: 0 0 auto;
       }
       .themeBtn {
@@ -278,14 +270,12 @@
         border: 1px solid var(--border);
         border-radius: 8px;
         color: var(--muted);
-        font-size: 13px;
-        padding: 6px 10px;
+        padding: 6px;
         cursor: pointer;
         display: flex;
         align-items: center;
-        gap: 5px;
-        white-space: nowrap;
-        font-family: inherit;
+        justify-content: center;
+        flex: 0 0 auto;
       }
       .sortBtn:hover {
         color: var(--fg);
@@ -972,25 +962,23 @@
 
       /* ── Submit-a-dapp button + modal ─────────────────────────────────────── */
       .submitBtn {
-        display: inline-flex;
+        display: flex;
         align-items: center;
-        gap: 6px;
-        height: 34px;
-        padding: 0 12px;
-        border-radius: 9px;
+        justify-content: center;
+        padding: 6px;
+        border-radius: 8px;
         border: 1px solid var(--border);
         background: var(--accent);
         color: #fff;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
+        appearance: none;
+        flex: 0 0 auto;
       }
-      .submitBtn svg { width: 15px; height: 15px; }
+      .submitBtn svg { width: 16px; height: 16px; }
+      .submitBtnLabel { display: none; }
       .submitBtn:hover { filter: brightness(1.06); }
-      @media (max-width: 420px) {
-        .submitBtnLabel { display: none; }
-        .submitBtn { padding: 0 9px; }
-      }
 
       .modalOverlay {
         position: fixed;
@@ -1150,13 +1138,9 @@
               <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
             </button>
-            </div>
-          </div>
-          <div class="searchBarRow">
             <div class="sortWrap">
               <button class="sortBtn" id="sortBtn" aria-label="Sort" title="Sort">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
-                <span id="sortLabel">Popular</span>
               </button>
               <div class="sortMenu" id="sortMenu" role="menu">
                 <button class="sortOpt" data-sort="popular" role="menuitemradio" aria-label="Popular" title="Popular">
@@ -1172,6 +1156,7 @@
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l3 3 3-3M6 20V4"/><path d="M13 6h7M13 12h5M13 18h3"/></svg>
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>
