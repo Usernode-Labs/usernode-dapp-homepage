@@ -260,6 +260,73 @@
       html.dark .themeBtn .iconMoon {
         display: none;
       }
+      .incognitoBtn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        position: relative;
+      }
+      .incognitoBtn:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .incognitoBtn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+      .incognitoBadge {
+        display: none;
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 10px;
+        height: 10px;
+        background: var(--accent);
+        border-radius: 50%;
+        border: 2px solid var(--card);
+      }
+      .incognitoBtn.active .incognitoBadge {
+        display: block;
+      }
+      .incognitoBtn.active {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .privacyBtn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+      }
+      .privacyBtn:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .privacyBtn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+      .privacyWrap {
+        position: relative;
+        flex: 0 0 auto;
+      }
       .sortWrap {
         position: relative;
         flex: 0 0 auto;
@@ -304,6 +371,68 @@
       .sortMenu.open {
         display: flex;
         flex-direction: column;
+      }
+      .privacyMenu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+        z-index: 100;
+        padding: 12px;
+        gap: 8px;
+        flex-direction: column;
+        min-width: 200px;
+      }
+      .privacyMenu.open {
+        display: flex;
+      }
+      .privacyMenuLabel {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .privacyMenuOptions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .privacyOption {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        background: transparent;
+        border: none;
+        color: var(--fg);
+        font-family: inherit;
+        font-size: 13px;
+        text-align: left;
+      }
+      .privacyOption:hover {
+        background: var(--border);
+      }
+      .privacyOption input[type="radio"] {
+        cursor: pointer;
+      }
+      .privacyCheckbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .privacyCheckbox input[type="checkbox"] {
+        cursor: pointer;
       }
       .sortOpt {
         display: flex;
@@ -1142,6 +1271,23 @@
               <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
             </button>
+            <button class="incognitoBtn" id="incognitoBtn" type="button" aria-label="Incognito mode" title="Incognito Mode — browsing history not saved">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <div class="incognitoBadge"></div>
+            </button>
+            <div class="privacyWrap" style="position: relative; flex: 0 0 auto;">
+              <button class="privacyBtn" id="privacyBtn" type="button" aria-label="Privacy options" title="Privacy options">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2m0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8"/></svg>
+              </button>
+              <div class="privacyMenu" id="privacyMenu" role="dialog" aria-label="Privacy options" style="position: absolute; top: calc(100% + 4px); right: 0;">
+                <div class="privacyMenuLabel">Privacy RPC Endpoint</div>
+                <div class="privacyMenuOptions" id="privacyOptions"></div>
+                <label class="privacyCheckbox" id="rememberRpcLabel" style="display: none;">
+                  <input type="checkbox" id="rememberRpcCheckbox" />
+                  <span>Remember across sessions</span>
+                </label>
+              </div>
+            </div>
             <div class="sortWrap">
               <button class="sortBtn" id="sortBtn" aria-label="Sort" title="Sort">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
@@ -1288,6 +1434,8 @@
     <script>
       const SORT_KEY = "dapphome:sort";
       const THEME_KEY = "dapphome:theme";
+      const INCOGNITO_KEY = "dapphome:incognito";
+      const RPC_KEY = "dapphome:rpc-endpoint";
       const PERSON_WEIGHT = 20;
       const CATEGORY_COLORS = {
         Game:    '#10b981',
@@ -1296,10 +1444,27 @@
         Social:  '#f43f5e',
       };
 
+      const RPC_ENDPOINTS = {
+        default: { label: "Usernode Public", url: null },
+        infura: { label: "Infura", url: "https://mainnet.infura.io/v3/" },
+        alchemy: { label: "Alchemy", url: "https://eth-mainnet.alchemy.com/v2/" },
+        privacy: { label: "Privacy Relay", url: "https://privacy-relay.example.org/" },
+      };
+
       const list = document.getElementById("dappList");
       const sortBtn = document.getElementById("sortBtn");
       const sortMenu = document.getElementById("sortMenu");
       const themeBtn = document.getElementById("themeBtn");
+      const incognitoBtn = document.getElementById("incognitoBtn");
+      const privacyBtn = document.getElementById("privacyBtn");
+      const privacyMenu = document.getElementById("privacyMenu");
+      const privacyOptions = document.getElementById("privacyOptions");
+      const rememberRpcLabel = document.getElementById("rememberRpcLabel");
+      const rememberRpcCheckbox = document.getElementById("rememberRpcCheckbox");
+
+      let isIncognito = false;
+      let currentRpcEndpoint = "default";
+      let sessionBrowsingHistory = [];
 
       // Theme toggle. The initial class is applied pre-paint in <head>; here we
       // just flip it and persist the explicit choice to localStorage.
@@ -1326,6 +1491,80 @@
           applyTheme(next);
         });
       }
+
+      // ── Incognito Mode & Privacy RPC Endpoint ────────────────────────────
+      function initIncognitoMode() {
+        isIncognito = localStorage.getItem(INCOGNITO_KEY) === "true";
+        currentRpcEndpoint = isIncognito ? "default" : (localStorage.getItem(RPC_KEY) || "default");
+        updateIncognitoUI();
+        initPrivacyMenu();
+      }
+
+      function updateIncognitoUI() {
+        if (isIncognito) {
+          incognitoBtn.classList.add("active");
+          incognitoBtn.setAttribute("aria-pressed", "true");
+          rememberRpcLabel.style.display = "none";
+        } else {
+          incognitoBtn.classList.remove("active");
+          incognitoBtn.setAttribute("aria-pressed", "false");
+          rememberRpcLabel.style.display = "flex";
+        }
+      }
+
+      function initPrivacyMenu() {
+        privacyOptions.innerHTML = "";
+        for (const [key, config] of Object.entries(RPC_ENDPOINTS)) {
+          const label = document.createElement("label");
+          label.className = "privacyOption";
+          const input = document.createElement("input");
+          input.type = "radio";
+          input.name = "rpc-endpoint";
+          input.value = key;
+          input.checked = currentRpcEndpoint === key;
+          label.appendChild(input);
+          const text = document.createElement("span");
+          text.textContent = config.label;
+          label.appendChild(text);
+          label.addEventListener("click", () => {
+            currentRpcEndpoint = key;
+            if (!isIncognito && rememberRpcCheckbox.checked) {
+              localStorage.setItem(RPC_KEY, key);
+            }
+            initPrivacyMenu();
+          });
+          privacyOptions.appendChild(label);
+        }
+      }
+
+      if (incognitoBtn) {
+        incognitoBtn.addEventListener("click", () => {
+          isIncognito = !isIncognito;
+          localStorage.setItem(INCOGNITO_KEY, isIncognito ? "true" : "false");
+          if (isIncognito) {
+            sessionBrowsingHistory = [];
+            currentRpcEndpoint = "default";
+          } else {
+            currentRpcEndpoint = localStorage.getItem(RPC_KEY) || "default";
+          }
+          updateIncognitoUI();
+          initPrivacyMenu();
+        });
+      }
+
+      if (privacyBtn) {
+        privacyBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          privacyMenu.classList.toggle("open");
+        });
+      }
+
+      document.addEventListener("click", () => {
+        privacyMenu.classList.remove("open");
+        sortMenu.classList.remove("open");
+      });
+
+      initIncognitoMode();
 
       let allApps = [];
       let statsMap = {};
@@ -1646,10 +1885,12 @@
         updateSortUI();
         renderDapps(allApps);
         sortMenu.classList.remove("open");
+        privacyMenu.classList.remove("open");
       });
 
       document.addEventListener("click", () => {
         sortMenu.classList.remove("open");
+        privacyMenu.classList.remove("open");
       });
 
       updateSortUI();
@@ -1678,7 +1919,9 @@
         _overlayTimers = [];
 
         if (_launchDappName) _launchDappName.textContent = dappName || "";
-        if (_launchMsg) _launchMsg.textContent = "Launching...";
+        let baseMsg = "Launching...";
+        if (isIncognito) baseMsg += " (Incognito — not recording)";
+        if (_launchMsg) _launchMsg.textContent = baseMsg;
 
         _launchOverlay.classList.remove("is-hiding");
         _launchOverlay.hidden = false;
@@ -1922,7 +2165,16 @@
       }
 
       function launchDapp(dapp) {
-        if (dapp && dapp.url) window.open(dapp.url, "_blank", "noopener");
+        if (dapp && dapp.url) {
+          if (!isIncognito && dapp.pubkey) {
+            sessionBrowsingHistory.push({
+              pubkey: dapp.pubkey,
+              name: dapp.name,
+              timestamp: Date.now(),
+            });
+          }
+          window.open(dapp.url, "_blank", "noopener");
+        }
       }
 
       // Format an ISO-ish date string into a friendly "Last updated" value.
