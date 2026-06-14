@@ -1,0 +1,32 @@
+[
+  {
+    "id": "c1",
+    "dapp_pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
+    "user_id": "user_alice",
+    "username": "alice_123",
+    "text": "This market is super interesting! Great interface.",
+    "created_at": 1718300000000,
+    "edited_at": 1718300100000,
+    "edited_count": 1
+  },
+  {
+    "id": "c2",
+    "dapp_pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
+    "user_id": "user_bob",
+    "username": "bob_xyz",
+    "text": "Just tried it, very smooth UX.",
+    "created_at": 1718300200000,
+    "edited_at": null,
+    "edited_count": 0
+  },
+  {
+    "id": "c3",
+    "dapp_pubkey": "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu",
+    "user_id": "user_charlie",
+    "username": "charlie_dev",
+    "text": "The physics engine is really smooth. Love the collaborative aspect!",
+    "created_at": 1718301000000,
+    "edited_at": null,
+    "edited_count": 0
+  }
+]

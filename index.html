@@ -849,6 +849,187 @@
         height: 14px;
         opacity: 0.7;
       }
+      .previewCommentsReactions {
+        padding: 16px;
+        border-top: 1px solid var(--border);
+        max-height: 300px;
+        overflow-y: auto;
+        background: var(--bg);
+      }
+      .reactionsSection {
+        margin-bottom: 16px;
+      }
+      .reactionsHeader,
+      .commentsHeader {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .reactionsList {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .reactionBtn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: var(--card);
+        border-radius: 6px;
+        padding: 6px 10px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.15s ease;
+      }
+      .reactionBtn:hover {
+        border-color: var(--accent);
+        background: var(--bg);
+      }
+      .reactionBtn.active {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: white;
+      }
+      .commentsSection {
+        margin-top: 16px;
+      }
+      .commentsInputArea {
+        margin-bottom: 12px;
+      }
+      .commentsInput {
+        width: 100%;
+        appearance: none;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-family: inherit;
+        background: var(--card);
+        color: var(--fg);
+        resize: none;
+        max-height: 80px;
+      }
+      .commentsInput:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+      }
+      .commentsInputBtn {
+        appearance: none;
+        border: none;
+        background: var(--accent);
+        color: white;
+        border-radius: 4px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 4px;
+        transition: filter 0.15s ease;
+      }
+      .commentsInputBtn:hover {
+        filter: brightness(1.1);
+      }
+      .commentsList {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .commentItem {
+        background: var(--card);
+        border: 1px solid var(--card-item-border);
+        border-radius: 6px;
+        padding: 10px;
+        font-size: 12px;
+      }
+      .commentMeta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+      .commentAuthor {
+        font-weight: 600;
+        color: var(--fg);
+      }
+      .commentTime {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .commentText {
+        color: var(--fg);
+        word-wrap: break-word;
+        white-space: pre-wrap;
+        margin-bottom: 6px;
+      }
+      .commentActions {
+        display: flex;
+        gap: 6px;
+        font-size: 11px;
+      }
+      .commentActionBtn {
+        appearance: none;
+        border: none;
+        background: none;
+        color: var(--muted);
+        cursor: pointer;
+        padding: 0;
+        text-decoration: underline;
+      }
+      .commentActionBtn:hover {
+        color: var(--fg);
+      }
+      .commentEditForm {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .commentEditInput {
+        width: 100%;
+        appearance: none;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 6px 8px;
+        font-size: 12px;
+        font-family: inherit;
+        background: var(--card);
+        color: var(--fg);
+        resize: none;
+      }
+      .commentEditInput:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .commentEditActions {
+        display: flex;
+        gap: 6px;
+      }
+      .commentEditBtn {
+        appearance: none;
+        border: none;
+        border-radius: 3px;
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: filter 0.15s ease;
+      }
+      .commentEditBtn.save {
+        background: var(--accent);
+        color: white;
+      }
+      .commentEditBtn.save:hover {
+        filter: brightness(1.1);
+      }
+      .commentEditBtn.cancel {
+        background: var(--border);
+        color: var(--muted);
+      }
+      .commentEditBtn.cancel:hover {
+        background: var(--card-item-border);
+      }
       .previewFooter {
         padding: 12px 16px 16px;
         border-top: 1px solid var(--border);
@@ -1220,6 +1401,17 @@
             >Read more</button>
           </div>
           <div class="previewMeta" id="previewMeta"></div>
+          <div class="previewCommentsReactions" id="previewCommentsReactions" hidden>
+            <div class="reactionsSection">
+              <div class="reactionsHeader">Reactions</div>
+              <div class="reactionsList" id="reactionsList"></div>
+            </div>
+            <div class="commentsSection">
+              <div class="commentsHeader">Comments</div>
+              <div class="commentsInputArea" id="commentsInputArea"></div>
+              <div class="commentsList" id="commentsList"></div>
+            </div>
+          </div>
         </div>
         <div class="previewFooter">
           <button class="previewLaunch" id="previewLaunch" type="button">Launch</button>
@@ -1584,16 +1776,60 @@
           descRow.appendChild(desc);
           descRow.appendChild(launchBtn);
 
+          // Comments and reactions stats row
+          const crStatsRow = document.createElement("div");
+          crStatsRow.className = "crStatsRow";
+          crStatsRow.style.cssText = "font-size:12px;color:var(--muted);margin-top:6px;display:flex;gap:12px";
+          crStatsRow.__dapp = dapp;
+
           body.appendChild(nameRow);
           body.appendChild(author);
           if (tagRow) body.appendChild(tagRow);
           body.appendChild(descRow);
+          body.appendChild(crStatsRow);
 
           link.appendChild(logo);
           link.appendChild(body);
           li.appendChild(link);
           li.__dapp = dapp;
           list.appendChild(li);
+
+          // Load reaction and comment counts asynchronously
+          (async () => {
+            try {
+              const [reactResp, commResp] = await Promise.all([
+                fetch(`/api/reactions?dapp_pubkey=${encodeURIComponent(dapp.pubkey)}`),
+                fetch(`/api/comments?dapp_pubkey=${encodeURIComponent(dapp.pubkey)}`)
+              ]);
+              const reactData = await reactResp.json();
+              const commData = await commResp.json();
+
+              const reactions = reactData.reactions || [];
+              const comments = commData.comments || [];
+              const by_emoji = reactData.by_emoji || {};
+
+              crStatsRow.textContent = "";
+
+              if (Object.keys(by_emoji).length > 0) {
+                const topEmojis = Object.entries(by_emoji)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 1);
+                for (const [emoji, count] of topEmojis) {
+                  const span = document.createElement("span");
+                  span.textContent = emoji + " " + count;
+                  crStatsRow.appendChild(span);
+                }
+              }
+
+              if (comments.length > 0) {
+                const span = document.createElement("span");
+                span.textContent = "💬 " + comments.length;
+                crStatsRow.appendChild(span);
+              }
+            } catch (e) {
+              // Silently fail - stats optional
+            }
+          })();
         }
       }
 
@@ -2090,6 +2326,246 @@
         );
       }
 
+      async function loadAndRenderCommentsReactions(dapp) {
+        const previewCR = document.getElementById("previewCommentsReactions");
+        if (!previewCR || !dapp || !dapp.pubkey) return;
+
+        try {
+          // Fetch reactions and comments
+          const reactionsResp = await fetch(`/api/reactions?dapp_pubkey=${encodeURIComponent(dapp.pubkey)}`);
+          const reactionsData = await reactionsResp.json();
+          const reactions = reactionsData.reactions || [];
+          const by_emoji = reactionsData.by_emoji || {};
+
+          const commentsResp = await fetch(`/api/comments?dapp_pubkey=${encodeURIComponent(dapp.pubkey)}`);
+          const commentsData = await commentsResp.json();
+          const comments = commentsData.comments || [];
+
+          // Render reactions
+          const reactionsList = document.getElementById("reactionsList");
+          reactionsList.textContent = "";
+
+          const ALLOWED_EMOJI = ["👍", "❤️", "😂", "🚀", "✨"];
+          const currentUser = null; // Would be set if auth token available
+
+          for (const emoji of ALLOWED_EMOJI) {
+            const count = by_emoji[emoji] || 0;
+            const btn = document.createElement("button");
+            btn.className = "reactionBtn";
+            btn.textContent = `${emoji} ${count}`;
+            btn.type = "button";
+            btn.title = `React with ${emoji}`;
+            btn.onclick = async () => {
+              if (!currentUser) {
+                alert("Sign in to react");
+                return;
+              }
+              try {
+                const resp = await fetch("/api/reactions", {
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json",
+                    "x-usernode-token": currentUser.token,
+                  },
+                  body: JSON.stringify({ dapp_pubkey: dapp.pubkey, emoji }),
+                });
+                if (resp.ok) {
+                  loadAndRenderCommentsReactions(dapp);
+                } else {
+                  alert("Failed to react");
+                }
+              } catch (e) {
+                alert("Error: " + e.message);
+              }
+            };
+            reactionsList.appendChild(btn);
+          }
+
+          // Render comments
+          const commentsList = document.getElementById("commentsList");
+          const commentsInputArea = document.getElementById("commentsInputArea");
+          commentsList.textContent = "";
+          commentsInputArea.textContent = "";
+
+          // Add comment input
+          if (currentUser) {
+            const form = document.createElement("div");
+            form.className = "commentForm";
+            const textarea = document.createElement("textarea");
+            textarea.className = "commentsInput";
+            textarea.placeholder = "Add a comment…";
+            textarea.rows = 2;
+            const submitBtn = document.createElement("button");
+            submitBtn.className = "commentsInputBtn";
+            submitBtn.textContent = "Comment";
+            submitBtn.type = "button";
+            submitBtn.onclick = async () => {
+              const text = textarea.value.trim();
+              if (!text) return;
+              try {
+                const resp = await fetch("/api/comments", {
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json",
+                    "x-usernode-token": currentUser.token,
+                  },
+                  body: JSON.stringify({ dapp_pubkey: dapp.pubkey, text }),
+                });
+                if (resp.ok) {
+                  textarea.value = "";
+                  loadAndRenderCommentsReactions(dapp);
+                } else {
+                  alert("Failed to post comment");
+                }
+              } catch (e) {
+                alert("Error: " + e.message);
+              }
+            };
+            form.appendChild(textarea);
+            form.appendChild(submitBtn);
+            commentsInputArea.appendChild(form);
+          } else {
+            const prompt = document.createElement("div");
+            prompt.textContent = "Sign in to comment";
+            prompt.style.fontSize = "12px";
+            prompt.style.color = "var(--muted)";
+            commentsInputArea.appendChild(prompt);
+          }
+
+          // Render comment list
+          for (const comment of comments) {
+            const item = document.createElement("div");
+            item.className = "commentItem";
+
+            const meta = document.createElement("div");
+            meta.className = "commentMeta";
+            const author = document.createElement("span");
+            author.className = "commentAuthor";
+            author.textContent = comment.username || "unknown";
+            const time = document.createElement("span");
+            time.className = "commentTime";
+            const ago = formatTimeAgo(comment.created_at);
+            time.textContent = ago + (comment.edited_at ? " (edited)" : "");
+            meta.appendChild(author);
+            meta.appendChild(time);
+
+            const text = document.createElement("div");
+            text.className = "commentText";
+            text.textContent = comment.text;
+
+            const actions = document.createElement("div");
+            actions.className = "commentActions";
+
+            if (currentUser && currentUser.id === comment.user_id) {
+              const editBtn = document.createElement("button");
+              editBtn.className = "commentActionBtn";
+              editBtn.textContent = "Edit";
+              editBtn.type = "button";
+              editBtn.onclick = () => {
+                text.style.display = "none";
+                actions.style.display = "none";
+                const form = document.createElement("div");
+                form.className = "commentEditForm";
+                const input = document.createElement("textarea");
+                input.className = "commentEditInput";
+                input.value = comment.text;
+                input.rows = 2;
+                const btnGroup = document.createElement("div");
+                btnGroup.className = "commentEditActions";
+                const saveBtn = document.createElement("button");
+                saveBtn.className = "commentEditBtn save";
+                saveBtn.textContent = "Save";
+                saveBtn.type = "button";
+                saveBtn.onclick = async () => {
+                  const newText = input.value.trim();
+                  if (!newText) return;
+                  try {
+                    const resp = await fetch(`/api/comments/${comment.id}`, {
+                      method: "PUT",
+                      headers: {
+                        "content-type": "application/json",
+                        "x-usernode-token": currentUser.token,
+                      },
+                      body: JSON.stringify({ text: newText }),
+                    });
+                    if (resp.ok) {
+                      loadAndRenderCommentsReactions(dapp);
+                    } else {
+                      alert("Failed to save comment");
+                    }
+                  } catch (e) {
+                    alert("Error: " + e.message);
+                  }
+                };
+                const cancelBtn = document.createElement("button");
+                cancelBtn.className = "commentEditBtn cancel";
+                cancelBtn.textContent = "Cancel";
+                cancelBtn.type = "button";
+                cancelBtn.onclick = () => {
+                  text.style.display = "";
+                  actions.style.display = "";
+                  form.remove();
+                };
+                btnGroup.appendChild(saveBtn);
+                btnGroup.appendChild(cancelBtn);
+                form.appendChild(input);
+                form.appendChild(btnGroup);
+                item.insertBefore(form, actions.nextSibling);
+              };
+              actions.appendChild(editBtn);
+
+              const deleteBtn = document.createElement("button");
+              deleteBtn.className = "commentActionBtn";
+              deleteBtn.textContent = "Delete";
+              deleteBtn.type = "button";
+              deleteBtn.onclick = async () => {
+                if (!confirm("Delete this comment?")) return;
+                try {
+                  const resp = await fetch(`/api/comments/${comment.id}`, {
+                    method: "DELETE",
+                    headers: {
+                      "x-usernode-token": currentUser.token,
+                    },
+                  });
+                  if (resp.ok) {
+                    loadAndRenderCommentsReactions(dapp);
+                  } else {
+                    alert("Failed to delete comment");
+                  }
+                } catch (e) {
+                  alert("Error: " + e.message);
+                }
+              };
+              actions.appendChild(deleteBtn);
+            }
+
+            item.appendChild(meta);
+            item.appendChild(text);
+            item.appendChild(actions);
+            commentsList.appendChild(item);
+          }
+
+          previewCR.hidden = false;
+        } catch (e) {
+          console.error("Error loading comments/reactions:", e);
+        }
+      }
+
+      function formatTimeAgo(timestamp) {
+        const now = Date.now();
+        const diff = now - timestamp;
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (seconds < 60) return "just now";
+        if (minutes < 60) return minutes + "m ago";
+        if (hours < 24) return hours + "h ago";
+        if (days < 7) return days + "d ago";
+        return new Date(timestamp).toLocaleDateString();
+      }
+
       function openPreview(dapp, originEl) {
         if (!dapp) return;
         previewCurrentDapp = dapp;
@@ -2122,6 +2598,9 @@
         } else {
           clearStaggerReveal(revealEls);
         }
+
+        // Load comments and reactions
+        loadAndRenderCommentsReactions(dapp);
 
         previewOverlay.classList.add("open");
         previewOverlay.setAttribute("aria-hidden", "false");

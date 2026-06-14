@@ -1,0 +1,44 @@
+[
+  {
+    "id": "r1",
+    "dapp_pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
+    "user_id": "user_alice",
+    "emoji": "👍",
+    "created_at": 1718300050000
+  },
+  {
+    "id": "r2",
+    "dapp_pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
+    "user_id": "user_bob",
+    "emoji": "👍",
+    "created_at": 1718300060000
+  },
+  {
+    "id": "r3",
+    "dapp_pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
+    "user_id": "user_charlie",
+    "emoji": "❤️",
+    "created_at": 1718300070000
+  },
+  {
+    "id": "r4",
+    "dapp_pubkey": "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
+    "user_id": "user_dave",
+    "emoji": "🚀",
+    "created_at": 1718300080000
+  },
+  {
+    "id": "r5",
+    "dapp_pubkey": "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu",
+    "user_id": "user_alice",
+    "emoji": "😂",
+    "created_at": 1718301050000
+  },
+  {
+    "id": "r6",
+    "dapp_pubkey": "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu",
+    "user_id": "user_charlie",
+    "emoji": "✨",
+    "created_at": 1718301060000
+  }
+]

@@ -203,6 +203,89 @@ function findSubmission(id) {
   return submissions.find((s) => s && s.id === id) || null;
 }
 
+// ── Comments & Reactions store ──────────────────────────────────────────────────
+// File-backed (comments.json, reactions.json) for zero-dependency pattern.
+// Loaded into memory on boot, flushed atomically on mutation.
+
+let comments = [];                   // array of comment records
+let reactions = [];                  // array of reaction records
+
+const COMMENTS_PATH = process.env.COMMENTS_JSON_PATH
+  ? path.resolve(process.env.COMMENTS_JSON_PATH)
+  : path.join(__dirname, "comments.json");
+
+const REACTIONS_PATH = process.env.REACTIONS_JSON_PATH
+  ? path.resolve(process.env.REACTIONS_JSON_PATH)
+  : path.join(__dirname, "reactions.json");
+
+const ALLOWED_EMOJI = ["👍", "❤️", "😂", "🚀", "✨"];
+
+function loadComments() {
+  try {
+    if (!fs.existsSync(COMMENTS_PATH)) {
+      comments = [];
+      // Load staging data if available
+      if (LOCAL_DEV) {
+        const stagingPath = path.join(__dirname, "comments.staging.json");
+        if (fs.existsSync(stagingPath)) {
+          const raw = fs.readFileSync(stagingPath, "utf8");
+          const data = JSON.parse(raw);
+          comments = Array.isArray(data) ? data : [];
+          console.log(`[comments] loaded ${comments.length} staging comments`);
+        }
+      }
+      return;
+    }
+    const raw = fs.readFileSync(COMMENTS_PATH, "utf8");
+    const data = JSON.parse(raw);
+    comments = Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.warn(`[comments] could not read comments.json: ${e.message}`);
+    comments = [];
+  }
+}
+
+function loadReactions() {
+  try {
+    if (!fs.existsSync(REACTIONS_PATH)) {
+      reactions = [];
+      // Load staging data if available
+      if (LOCAL_DEV) {
+        const stagingPath = path.join(__dirname, "reactions.staging.json");
+        if (fs.existsSync(stagingPath)) {
+          const raw = fs.readFileSync(stagingPath, "utf8");
+          const data = JSON.parse(raw);
+          reactions = Array.isArray(data) ? data : [];
+          console.log(`[reactions] loaded ${reactions.length} staging reactions`);
+        }
+      }
+      return;
+    }
+    const raw = fs.readFileSync(REACTIONS_PATH, "utf8");
+    const data = JSON.parse(raw);
+    reactions = Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.warn(`[reactions] could not read reactions.json: ${e.message}`);
+    reactions = [];
+  }
+}
+
+function saveComments() {
+  try {
+    atomicWriteJson(COMMENTS_PATH, comments);
+  } catch (e) {
+    console.warn(`[comments] could not write comments.json: ${e.message}`);
+  }
+}
+
+function saveReactions() {
+  try {
+    atomicWriteJson(REACTIONS_PATH, reactions);
+  } catch (e) {
+    console.warn(`[reactions] could not write reactions.json: ${e.message}`);
+  }
+}
+
 // A submission is a live duplicate-blocker while it is still awaiting payment or
 // already published. Expired records do not block a fresh attempt.
 function isLiveSubmission(s) {
@@ -565,6 +648,8 @@ function listingHas(url, pubkey) {
 
 // Start background polling
 loadSubmissions();
+loadComments();
+loadReactions();
 (async function startStatsPoller() {
   await pollAllStats();
   setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
@@ -635,6 +720,42 @@ function validateSubmissionInput(body) {
   if (category) dapp.category = category;
   if (logo) dapp.logo = logo;
   return { ok: true, dapp };
+}
+
+// Verify JWT token (simplified, no external crypto lib needed for basic validation)
+function verifyToken(token) {
+  if (!token || !process.env.JWT_SECRET) return null;
+  try {
+    // Simple JWT verification: split token, verify signature using crypto.createHmac
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+
+    const header = JSON.parse(Buffer.from(parts[0], "base64").toString());
+    const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+    const signature = parts[2];
+
+    // Verify signature
+    const hmac = crypto.createHmac("sha256", process.env.JWT_SECRET);
+    const computed = hmac.update(`${parts[0]}.${parts[1]}`).digest("base64").replace(/=/g, "");
+    const received = signature.replace(/=/g, "");
+
+    if (computed !== received) return null;
+    return payload;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Check if a dapp exists by pubkey
+function dappExists(pubkey) {
+  try {
+    const raw = fs.readFileSync(DAPPS_PATH, "utf8");
+    const data = JSON.parse(raw);
+    const apps = Array.isArray(data.apps) ? data.apps : [];
+    return apps.some(app => app && app.pubkey === pubkey);
+  } catch (_) {
+    return false;
+  }
 }
 
 // ── HTTP server ──────────────────────────────────────────────────────────────
@@ -792,6 +913,197 @@ const server = http.createServer((req, res) => {
     const sub = findSubmission(id);
     if (!sub) return sendJson(res, 404, { error: "Submission not found." });
     return sendJson(res, 200, publicSubmissionView(sub));
+  }
+
+  // ── Comments & Reactions API ────────────────────────────────────────────────
+  // These endpoints need auth for writes but are public for reads.
+
+  // POST /api/comments — Create a comment (requires auth)
+  if (pathname === "/api/comments" && req.method === "POST") {
+    const token = req.headers["x-usernode-token"];
+    const user = token ? verifyToken(token) : null;
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+
+    return readJsonBody(req, 8 * 1024, (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+
+      const dapp_pubkey = (body && typeof body.dapp_pubkey === "string") ? body.dapp_pubkey.trim() : "";
+      const text = (body && typeof body.text === "string") ? body.text.trim() : "";
+
+      if (!dapp_pubkey) return sendJson(res, 400, { error: "dapp_pubkey is required" });
+      if (!text || text.length < 1 || text.length > 500) {
+        return sendJson(res, 400, { error: "Comment text must be 1-500 characters" });
+      }
+      if (!dappExists(dapp_pubkey)) {
+        return sendJson(res, 400, { error: "Dapp not found" });
+      }
+
+      const now = Date.now();
+      const record = {
+        id: crypto.randomUUID(),
+        dapp_pubkey,
+        user_id: user.id || user.sub || "",
+        username: user.username || "unknown",
+        text,
+        created_at: now,
+        edited_at: null,
+        edited_count: 0,
+      };
+      comments.push(record);
+      saveComments();
+      return sendJson(res, 201, record);
+    });
+  }
+
+  // GET /api/comments?dapp_pubkey=... — Fetch comments (public)
+  if (pathname === "/api/comments" && req.method === "GET") {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const dapp_pubkey = urlObj.searchParams.get("dapp_pubkey") || "";
+
+    const dappComments = comments
+      .filter(c => c && c.dapp_pubkey === dapp_pubkey)
+      .sort((a, b) => b.created_at - a.created_at);
+
+    return sendJson(res, 200, { comments: dappComments, count: dappComments.length });
+  }
+
+  // PUT /api/comments/:id — Edit a comment (requires auth, owns it)
+  if (pathname.startsWith("/api/comments/") && req.method === "PUT") {
+    const token = req.headers["x-usernode-token"];
+    const user = token ? verifyToken(token) : null;
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+
+    const id = decodeURIComponent(pathname.slice("/api/comments/".length));
+    const comment = comments.find(c => c && c.id === id);
+    if (!comment) return sendJson(res, 404, { error: "Comment not found" });
+
+    const userId = user.id || user.sub || "";
+    if (comment.user_id !== userId) {
+      return sendJson(res, 403, { error: "You can only edit your own comments" });
+    }
+
+    return readJsonBody(req, 8 * 1024, (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+
+      const text = (body && typeof body.text === "string") ? body.text.trim() : "";
+      if (!text || text.length < 1 || text.length > 500) {
+        return sendJson(res, 400, { error: "Comment text must be 1-500 characters" });
+      }
+
+      comment.text = text;
+      comment.edited_at = Date.now();
+      comment.edited_count = (comment.edited_count || 0) + 1;
+      saveComments();
+      return sendJson(res, 200, comment);
+    });
+  }
+
+  // DELETE /api/comments/:id — Delete a comment (requires auth, owns it)
+  if (pathname.startsWith("/api/comments/") && req.method === "DELETE") {
+    const token = req.headers["x-usernode-token"];
+    const user = token ? verifyToken(token) : null;
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+
+    const id = decodeURIComponent(pathname.slice("/api/comments/".length));
+    const idx = comments.findIndex(c => c && c.id === id);
+    if (idx === -1) return sendJson(res, 404, { error: "Comment not found" });
+
+    const comment = comments[idx];
+    const userId = user.id || user.sub || "";
+    if (comment.user_id !== userId) {
+      return sendJson(res, 403, { error: "You can only delete your own comments" });
+    }
+
+    comments.splice(idx, 1);
+    saveComments();
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // POST /api/reactions — Add a reaction (requires auth, idempotent)
+  if (pathname === "/api/reactions" && req.method === "POST") {
+    const token = req.headers["x-usernode-token"];
+    const user = token ? verifyToken(token) : null;
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+
+    return readJsonBody(req, 1024, (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+
+      const dapp_pubkey = (body && typeof body.dapp_pubkey === "string") ? body.dapp_pubkey.trim() : "";
+      const emoji = (body && typeof body.emoji === "string") ? body.emoji.trim() : "";
+
+      if (!dapp_pubkey) return sendJson(res, 400, { error: "dapp_pubkey is required" });
+      if (!emoji || !ALLOWED_EMOJI.includes(emoji)) {
+        return sendJson(res, 400, { error: `emoji must be one of: ${ALLOWED_EMOJI.join(" ")}` });
+      }
+      if (!dappExists(dapp_pubkey)) {
+        return sendJson(res, 400, { error: "Dapp not found" });
+      }
+
+      const userId = user.id || user.sub || "";
+      const existing = reactions.find(r =>
+        r && r.dapp_pubkey === dapp_pubkey && r.user_id === userId && r.emoji === emoji
+      );
+
+      if (existing) {
+        return sendJson(res, 200, existing);
+      }
+
+      // Remove any existing reaction by this user on this dapp
+      const oldIdx = reactions.findIndex(r =>
+        r && r.dapp_pubkey === dapp_pubkey && r.user_id === userId
+      );
+      if (oldIdx !== -1) {
+        reactions.splice(oldIdx, 1);
+      }
+
+      const now = Date.now();
+      const record = {
+        id: crypto.randomUUID(),
+        dapp_pubkey,
+        user_id: userId,
+        emoji,
+        created_at: now,
+      };
+      reactions.push(record);
+      saveReactions();
+      return sendJson(res, 201, record);
+    });
+  }
+
+  // GET /api/reactions?dapp_pubkey=... — Fetch reactions (public)
+  if (pathname === "/api/reactions" && req.method === "GET") {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const dapp_pubkey = urlObj.searchParams.get("dapp_pubkey") || "";
+
+    const dappReactions = reactions.filter(r => r && r.dapp_pubkey === dapp_pubkey);
+
+    const by_emoji = {};
+    for (const reaction of dappReactions) {
+      by_emoji[reaction.emoji] = (by_emoji[reaction.emoji] || 0) + 1;
+    }
+
+    return sendJson(res, 200, { reactions: dappReactions, by_emoji, count: dappReactions.length });
+  }
+
+  // DELETE /api/reactions/:id — Delete a reaction (requires auth, owns it)
+  if (pathname.startsWith("/api/reactions/") && req.method === "DELETE") {
+    const token = req.headers["x-usernode-token"];
+    const user = token ? verifyToken(token) : null;
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+
+    const id = decodeURIComponent(pathname.slice("/api/reactions/".length));
+    const idx = reactions.findIndex(r => r && r.id === id);
+    if (idx === -1) return sendJson(res, 404, { error: "Reaction not found" });
+
+    const reaction = reactions[idx];
+    const userId = user.id || user.sub || "";
+    if (reaction.user_id !== userId) {
+      return sendJson(res, 403, { error: "You can only delete your own reactions" });
+    }
+
+    reactions.splice(idx, 1);
+    saveReactions();
+    return sendJson(res, 200, { ok: true });
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {

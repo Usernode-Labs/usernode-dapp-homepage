@@ -3,3 +3,5 @@ node_modules/
 .DS_Store
 dapps.local.json
 submissions.json
+comments.json
+reactions.json
