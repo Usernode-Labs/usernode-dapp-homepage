@@ -271,13 +271,14 @@
         border-radius: 8px;
         color: var(--muted);
         font-size: 13px;
-        padding: 6px 10px;
+        padding: 6px;
         cursor: pointer;
         display: flex;
         align-items: center;
         gap: 5px;
         white-space: nowrap;
         font-family: inherit;
+        justify-content: center;
       }
       .sortBtn:hover {
         color: var(--fg);
@@ -287,6 +288,9 @@
         width: 14px;
         height: 14px;
         flex-shrink: 0;
+      }
+      #sortLabel {
+        display: none;
       }
       .sortMenu {
         display: none;
@@ -968,7 +972,7 @@
         align-items: center;
         gap: 6px;
         height: 34px;
-        padding: 0 12px;
+        padding: 0 9px;
         border-radius: 9px;
         border: 1px solid var(--border);
         background: var(--accent);
@@ -977,12 +981,9 @@
         font-weight: 600;
         cursor: pointer;
       }
+      .submitBtnLabel { display: none; }
       .submitBtn svg { width: 15px; height: 15px; }
       .submitBtn:hover { filter: brightness(1.06); }
-      @media (max-width: 420px) {
-        .submitBtnLabel { display: none; }
-        .submitBtn { padding: 0 9px; }
-      }
 
       .modalOverlay {
         position: fixed;
