@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Quick - Handheld Console</title>
+    <script>
+    // usernode-dev-console@1
+    (function () {
+      if (window.__usernodeDevConsole) return;
+      window.__usernodeDevConsole = true;
+      var S = '__usernodeDevConsole';
+      function serialize(v, depth) {
+        depth = depth || 0;
+        try {
+          if (v === undefined) return 'undefined';
+          if (v === null) return 'null';
+          if (typeof v === 'string') return v;
+          if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+          if (typeof v === 'function') return '[Function ' + (v.name || 'anonymous') + ']';
+          if (v instanceof Error) return (v.stack || (v.name + ': ' + v.message));
+          if (depth > 3) return '[…]';
+          var seen = new WeakSet();
+          return JSON.stringify(v, function (k, val) {
+            if (typeof val === 'object' && val !== null) {
+              if (seen.has(val)) return '[Circular]';
+              seen.add(val);
+            }
+            if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
+            if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+            return val;
+          });
+        } catch (e) { try { return String(v); } catch (_) { return '[unserializable]'; } }
+      }
+      function post(level, args, meta) {
+        try {
+          var payload = {
+            sentinel: S,
+            level: level,
+            args: Array.prototype.slice.call(args).map(function (a) { return serialize(a); }),
+            ts: Date.now(),
+            url: location.href,
+          };
+          if (meta) for (var k in meta) payload[k] = meta[k];
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(payload, '*');
+          }
+        } catch (_) {}
+      }
+      ['log','info','warn','error','debug'].forEach(function (level) {
+        var orig = console[level] ? console[level].bind(console) : function () {};
+        console[level] = function () { post(level, arguments); orig.apply(null, arguments); };
+      });
+      window.addEventListener('error', function (e) {
+        var msg = (e.error && (e.error.stack || e.error.message)) || e.message || 'Error';
+        post('error', [msg], { source: e.filename || '', line: e.lineno || 0, col: e.colno || 0, kind: 'error' });
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        var msg = (r && (r.stack || r.message)) || String(r);
+        post('error', [msg], { kind: 'unhandledrejection' });
+      });
+      try { post('info', ['[dev-console ready]'], { kind: 'ready' }); } catch (_) {}
+    })();
+    </script>
+    <style>
+      :root {
+        --bg: #1a1f2e;
+        --fg: #e7edf7;
+        --muted: #a8b3c7;
+        --bezel: #2d3142;
+        --screen-bg: #0d3b39;
+        --accent: #6ea8fe;
+        --button-a: #d4634a;
+        --button-b: #e8d944;
+        --button-c: #5c96d9;
+        --button-d: #48a867;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        height: 100dvh;
+      }
+      header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        background: var(--bezel);
+      }
+      .backLink {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--accent);
+        text-decoration: none;
+        font-size: 13px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        transition: background 0.2s;
+      }
+      .backLink:hover {
+        background: rgba(110,168,254,0.1);
+      }
+      .title {
+        flex: 1;
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+      }
+      main {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 16px;
+        min-height: 0;
+      }
+      .console-frame {
+        display: flex;
+        flex-direction: column;
+        background: var(--bezel);
+        border-radius: 20px;
+        padding: 20px;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+        max-width: 340px;
+        width: 100%;
+        gap: 16px;
+      }
+      .screen-container {
+        position: relative;
+        background: var(--screen-bg);
+        border-radius: 8px;
+        padding: 8px;
+        box-shadow: inset 0 2px 6px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.2);
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        image-rendering: pixelated;
+        background: var(--screen-bg);
+        border-radius: 4px;
+      }
+      .controls-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .dpad {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: center;
+      }
+      .dpad-row {
+        display: flex;
+        gap: 4px;
+      }
+      .dpad-btn {
+        width: 40px;
+        height: 40px;
+        background: #3a4555;
+        border: 2px solid #2d3142;
+        border-radius: 4px;
+        color: var(--fg);
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        transition: all 0.1s;
+        font-size: 16px;
+      }
+      .dpad-btn:hover, .dpad-btn.active {
+        background: rgba(255,255,255,0.1);
+        border-color: var(--accent);
+      }
+      .dpad-btn:active {
+        transform: scale(0.95);
+      }
+      .dpad-btn.invisible {
+        opacity: 0;
+      }
+      .buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-end;
+      }
+      .button-pair {
+        display: flex;
+        gap: 8px;
+      }
+      .game-btn {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 2px solid rgba(0,0,0,0.3);
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        transition: all 0.1s;
+        font-size: 20px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.2);
+      }
+      .game-btn:hover, .game-btn.active {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.2);
+      }
+      .game-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.2);
+      }
+      .btn-a { background: var(--button-a); }
+      .btn-b { background: var(--button-b); color: #000; }
+      .btn-x { background: var(--button-c); }
+      .btn-y { background: var(--button-d); }
+      .score-display {
+        background: rgba(0,0,0,0.3);
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        text-align: center;
+        color: var(--muted);
+      }
+      .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      .modal.hidden {
+        display: none;
+      }
+      .modal-content {
+        background: var(--bezel);
+        border-radius: 12px;
+        padding: 24px;
+        text-align: center;
+        max-width: 320px;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      }
+      .modal-content h2 {
+        margin: 0 0 12px 0;
+        font-size: 24px;
+        color: var(--fg);
+      }
+      .modal-content p {
+        margin: 0 0 16px 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .modal-buttons {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+      }
+      .modal-btn {
+        padding: 8px 16px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: white;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .modal-btn:hover {
+        filter: brightness(1.1);
+      }
+      .modal-btn.secondary {
+        background: transparent;
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="backLink" href="/">← Back</a>
+      <h1 class="title">Quick</h1>
+    </header>
+    <main>
+      <div class="console-frame">
+        <div class="screen-container">
+          <canvas id="gameCanvas" width="160" height="144"></canvas>
+        </div>
+        <div class="score-display">
+          Score: <span id="score">0</span> | Best: <span id="bestScore">0</span>
+        </div>
+        <div class="controls-row">
+          <div class="dpad">
+            <button class="dpad-btn invisible"></button>
+            <div class="dpad-row">
+              <button class="dpad-btn" id="dpadLeft">◀</button>
+              <button class="dpad-btn invisible"></button>
+              <button class="dpad-btn" id="dpadRight">▶</button>
+            </div>
+            <button class="dpad-btn invisible"></button>
+          </div>
+          <div class="buttons">
+            <div class="button-pair">
+              <button class="game-btn btn-y" id="btnY" title="Y">Y</button>
+              <button class="game-btn btn-x" id="btnX" title="X">X</button>
+            </div>
+            <div class="button-pair">
+              <button class="game-btn btn-b" id="btnB" title="B">B</button>
+              <button class="game-btn btn-a" id="btnA" title="A">A</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <div class="modal hidden" id="titleModal">
+      <div class="modal-content">
+        <h2>Quick</h2>
+        <p>Catch the falling blocks!</p>
+        <p style="font-size: 12px; color: var(--muted);">← → to move | A to start</p>
+        <div class="modal-buttons">
+          <button class="modal-btn" id="startBtn">Start Game</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal hidden" id="gameOverModal">
+      <div class="modal-content">
+        <h2>Game Over</h2>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <p id="bestMsg" style="font-size: 12px; color: var(--accent); margin-bottom: 16px;"></p>
+        <div class="modal-buttons">
+          <button class="modal-btn" id="restartBtn">Play Again</button>
+          <button class="modal-btn secondary" id="menuBtn">Menu</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const SCALE = 2;
+      const WIDTH = 160;
+      const HEIGHT = 144;
+      canvas.style.width = (WIDTH * SCALE) + 'px';
+      canvas.style.height = (HEIGHT * SCALE) + 'px';
+
+      const COLORS = ['#d4634a', '#e8d944', '#5c96d9'];
+      const BLOCK_SIZE = 8;
+      const CATCHER_WIDTH = 16;
+      const CATCHER_HEIGHT = 8;
+
+      let gameState = 'title';
+      let score = 0;
+      let bestScore = localStorage.getItem('quick:bestScore') || 0;
+      let catcherX = (WIDTH - CATCHER_WIDTH) / 2;
+      let blocks = [];
+      let lives = 3;
+      let gameTime = 0;
+      let blockSpawnRate = 0.02;
+      let blockSpeed = 0.8;
+
+      const keys = {};
+
+      document.getElementById('startBtn').addEventListener('click', startGame);
+      document.getElementById('restartBtn').addEventListener('click', startGame);
+      document.getElementById('menuBtn').addEventListener('click', () => {
+        gameState = 'title';
+        score = 0;
+        lives = 3;
+        blocks = [];
+        showModal('titleModal');
+      });
+
+      document.getElementById('dpadLeft').addEventListener('mousedown', () => {
+        keys.left = true;
+        document.getElementById('dpadLeft').classList.add('active');
+      });
+      document.getElementById('dpadLeft').addEventListener('mouseup', () => {
+        keys.left = false;
+        document.getElementById('dpadLeft').classList.remove('active');
+      });
+      document.getElementById('dpadRight').addEventListener('mousedown', () => {
+        keys.right = true;
+        document.getElementById('dpadRight').classList.add('active');
+      });
+      document.getElementById('dpadRight').addEventListener('mouseup', () => {
+        keys.right = false;
+        document.getElementById('dpadRight').classList.remove('active');
+      });
+      document.getElementById('btnA').addEventListener('mousedown', () => {
+        document.getElementById('btnA').classList.add('active');
+        if (gameState === 'title') startGame();
+      });
+      document.getElementById('btnA').addEventListener('mouseup', () => {
+        document.getElementById('btnA').classList.remove('active');
+      });
+      document.getElementById('btnB').addEventListener('mousedown', () => {
+        document.getElementById('btnB').classList.add('active');
+      });
+      document.getElementById('btnB').addEventListener('mouseup', () => {
+        document.getElementById('btnB').classList.remove('active');
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') { keys.left = true; e.preventDefault(); }
+        if (e.key === 'ArrowRight') { keys.right = true; e.preventDefault(); }
+        if (e.key === 'z' || e.key === 'Z') {
+          document.getElementById('btnA').classList.add('active');
+          if (gameState === 'title') startGame();
+        }
+        if (e.key === 'x' || e.key === 'X') {
+          document.getElementById('btnB').classList.add('active');
+        }
+      });
+      window.addEventListener('keyup', (e) => {
+        if (e.key === 'ArrowLeft') keys.left = false;
+        if (e.key === 'ArrowRight') keys.right = false;
+        if (e.key === 'z' || e.key === 'Z') {
+          document.getElementById('btnA').classList.remove('active');
+        }
+        if (e.key === 'x' || e.key === 'X') {
+          document.getElementById('btnB').classList.remove('active');
+        }
+      });
+
+      function showModal(id) {
+        document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+      }
+
+      function hideModals() {
+        document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+      }
+
+      function startGame() {
+        gameState = 'playing';
+        score = 0;
+        lives = 3;
+        blocks = [];
+        gameTime = 0;
+        catcherX = (WIDTH - CATCHER_WIDTH) / 2;
+        blockSpawnRate = 0.02;
+        blockSpeed = 0.8;
+        hideModals();
+        updateUI();
+      }
+
+      function updateUI() {
+        document.getElementById('score').textContent = score;
+        document.getElementById('bestScore').textContent = bestScore;
+      }
+
+      function drawGame() {
+        ctx.fillStyle = '#0d3b39';
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+        ctx.fillStyle = '#48a867';
+        ctx.fillRect(catcherX, HEIGHT - CATCHER_HEIGHT - 2, CATCHER_WIDTH, CATCHER_HEIGHT);
+
+        blocks.forEach((block, i) => {
+          ctx.fillStyle = block.color;
+          ctx.fillRect(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
+
+          block.y += blockSpeed;
+
+          if (block.y > HEIGHT - CATCHER_HEIGHT - 2 &&
+              block.y < HEIGHT &&
+              block.x + BLOCK_SIZE > catcherX &&
+              block.x < catcherX + CATCHER_WIDTH) {
+            score += 10;
+            blocks.splice(i, 1);
+            updateUI();
+          } else if (block.y > HEIGHT) {
+            lives--;
+            blocks.splice(i, 1);
+            if (lives <= 0) {
+              endGame();
+            }
+          }
+        });
+
+        if (Math.random() < blockSpawnRate) {
+          blocks.push({
+            x: Math.random() * (WIDTH - BLOCK_SIZE),
+            y: 0,
+            color: COLORS[Math.floor(Math.random() * COLORS.length)]
+          });
+        }
+
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.font = '6px monospace';
+        ctx.fillText('Lives:' + lives, 2, HEIGHT - 4);
+      }
+
+      function endGame() {
+        gameState = 'over';
+        if (score > parseInt(bestScore)) {
+          bestScore = score;
+          localStorage.setItem('quick:bestScore', bestScore);
+        }
+        document.getElementById('finalScore').textContent = score;
+        const msg = score > parseInt(bestScore) - 10 ? 'New Best!' : '';
+        document.getElementById('bestMsg').textContent = msg;
+        showModal('gameOverModal');
+      }
+
+      function update() {
+        if (gameState === 'playing') {
+          if (keys.left && catcherX > 0) catcherX -= 2;
+          if (keys.right && catcherX < WIDTH - CATCHER_WIDTH) catcherX += 2;
+
+          gameTime++;
+          if (gameTime % 300 === 0 && blockSpawnRate < 0.08) blockSpawnRate += 0.005;
+          if (gameTime % 600 === 0 && blockSpeed < 2) blockSpeed += 0.1;
+        }
+      }
+
+      function gameLoop() {
+        update();
+        drawGame();
+        requestAnimationFrame(gameLoop);
+      }
+
+      updateUI();
+      showModal('titleModal');
+      gameLoop();
+    </script>
+  </body>
+</html>

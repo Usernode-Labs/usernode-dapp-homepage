@@ -189,6 +189,39 @@
           "body": "Your creation persists between visits — or reset for a clean slate."
         }
       ]
+    },
+    {
+      "name": "Quick",
+      "description": "Catch falling blocks in this retro handheld console game with 90s pixel-art style.",
+      "longDescription": "Quick is a nostalgic handheld gaming experience inspired by classic Game Boy and Digimon-era handhelds. Move your catcher left and right to catch falling colored blocks before they hit the ground. The game accelerates as you score, testing your reflexes in an authentically retro pixel-art environment with warm plastic console aesthetics.",
+      "author": "Usernode Community",
+      "url": "/quick",
+      "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='8' fill='#2d3142'/><rect x='4' y='4' width='32' height='20' rx='2' fill='#0d3b39'/><circle cx='10' cy='32' r='2' fill='#a8b3c7'/><circle cx='14' cy='32' r='2' fill='#a8b3c7'/><circle cx='30' cy='28' r='2.5' fill='#d4634a'/><circle cx='30' cy='34' r='2.5' fill='#e8d944'/><circle cx='36' cy='28' r='2.5' fill='#5c96d9'/><circle cx='36' cy='34' r='2.5' fill='#48a867'/></svg>",
+      "category": "Game",
+      "version": "1.0.0",
+      "updated": "2026-06-15",
+      "highlights": [
+        {
+          "icon": "🎮",
+          "title": "Classic handheld gameplay",
+          "body": "Move left and right to catch falling blocks — simple but addictive."
+        },
+        {
+          "icon": "🕹️",
+          "title": "Retro console aesthetics",
+          "body": "Play on an authentic 90s-inspired handheld device with plastic bezel and buttons."
+        },
+        {
+          "icon": "🎨",
+          "title": "Pixel-art visuals",
+          "body": "Enjoy crisp, low-resolution graphics that capture the charm of classic handhelds."
+        },
+        {
+          "icon": "⚡",
+          "title": "Quick to learn, hard to master",
+          "body": "Progressive difficulty keeps the challenge fresh as your score climbs."
+        }
+      ]
     }
   ]
 }

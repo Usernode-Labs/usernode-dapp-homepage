@@ -44,6 +44,7 @@ const INDEX_PATH = path.join(__dirname, "index.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
 const MINECRAFT_PATH = path.join(PUBLIC_DIR, "minecraft.html");
+const QUICK_PATH = path.join(PUBLIC_DIR, "quick.html");
 
 // Static content-type lookup for screenshot assets served from public/.
 const STATIC_CONTENT_TYPES = {
@@ -1078,6 +1079,29 @@ const server = http.createServer((req, res) => {
           500,
           { "content-type": "text/plain" },
           `Failed to read minecraft.html: ${err.message}\n`
+        );
+      }
+      const headers = {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      };
+      if (req.method === "HEAD") {
+        res.writeHead(200, { ...headers, "content-length": buf.length });
+        return res.end();
+      }
+      return send(res, 200, headers, buf);
+    });
+  }
+
+  // Quick — 90s handheld game console experience.
+  if (pathname === "/quick" || pathname === "/quick.html") {
+    return fs.readFile(QUICK_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read quick.html: ${err.message}\n`
         );
       }
       const headers = {
