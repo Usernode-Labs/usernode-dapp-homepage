@@ -95,9 +95,37 @@ const EXPLORER_USE_HTTP = (() => {
 })();
 
 // ── Peer Discovery Poller ───────────────────────────────────────────────────────
+// Quick dApp: real-time peer discovery for the Usernode blockchain network.
+//
+// The peer poller runs as part of the main stats polling loop every STATS_POLL_INTERVAL_MS
+// (30 seconds). On each tick:
+//   1. Discovers the active chain_id from the explorer (shared with stats poller)
+//   2. Queries explorer or NODE_RPC_URL for active peers on that chain
+//   3. Caches peer data in memory (up to PEERS_MAX_CACHE entries, default 5000)
+//   4. Clears cache on chain reset to avoid stale cross-chain data
+//   5. Exposes the cached peer list via GET /api/peers (public endpoint)
+//
+// Client-side peers view (added to index.html):
+//   - New "Peers" tab alongside "Dapps" to switch views
+//   - Live peer list with status indicators (synced/lagging/offline)
+//   - Sorting by: status, block height, last seen, peer ID
+//   - Background polling (10s when visible, 30s when hidden)
+//   - Automatic stale marking after 3 minutes without heartbeat
+//
+// Staging support:
+//   - peers.local.json provides 5 mock peers for testing (when --local-dev)
+//   - /api/peers endpoint is public (no auth required)
+//   - Configuration via /api/peers/config endpoint
+//
+// Environment variables:
+//   - NODE_RPC_URL: fallback RPC for peer data if explorer unavailable
+//   - PEERS_POLL_INTERVAL_MS: (unused; controlled by main stats poller)
+//   - PEERS_MAX_CACHE: max peers to hold in memory (default 5000)
+//   - PEERS_STALE_THRESHOLD_MS: time until peer marked offline (default 180000ms)
+//   - PEERS_JSON_PATH: override path to peers.json warm-start cache
+
 // Background poller for blockchain network peers. Fetches peer data from the
-// explorer or RPC endpoint every PEERS_POLL_INTERVAL_MS, caches in memory,
-// and exposes via /api/peers.
+// explorer or RPC endpoint and caches in memory, exposes via /api/peers.
 
 const PEERS_PATH = (() => {
   if (process.env.PEERS_JSON_PATH) return path.resolve(process.env.PEERS_JSON_PATH);
