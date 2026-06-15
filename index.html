@@ -342,6 +342,65 @@
         flex: 1;
       }
 
+      .searchWrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--border);
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .searchInput {
+        flex: 1 1 auto;
+        min-width: 0;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 9px 11px;
+        padding-right: 32px;
+      }
+      .searchInput:focus {
+        outline: 2px solid var(--accent);
+        border-color: transparent;
+      }
+      .searchInput::placeholder {
+        color: var(--muted);
+        opacity: 0.7;
+      }
+      .searchClearBtn {
+        appearance: none;
+        position: absolute;
+        right: 18px;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 4px;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        flex: 0 0 auto;
+      }
+      .searchClearBtn:hover {
+        color: var(--fg);
+        background: var(--border);
+      }
+      .noResults {
+        padding: 12px 12px;
+        color: var(--muted);
+        font-size: 13px;
+        text-align: center;
+      }
+
       .themeBtn {
         appearance: none;
         background: transparent;
@@ -1240,10 +1299,37 @@
                       <span>Alphabetical</span>
                     </button>
                   </div>
+                  <div class="hamMenuSection category">
+                    <div class="hamMenuLabel">Category</div>
+                    <button class="hamMenuOption" data-category="all" role="menuitemradio" aria-label="All categories" title="All categories">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 21 6 21 17 3 17 3 8"/><path d="M3 8v-2a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2"/><rect x="7" y="13" width="4" height="4"/><rect x="16" y="13" width="4" height="4"/></svg>
+                      <span>All categories</span>
+                    </button>
+                    <button class="hamMenuOption" data-category="Game" role="menuitemradio" aria-label="Game" title="Game">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="12" rx="2"/><polyline points="13 11 15 9 18 12"/><polyline points="11 11 9 9 6 12"/></svg>
+                      <span>Game</span>
+                    </button>
+                    <button class="hamMenuOption" data-category="Market" role="menuitemradio" aria-label="Market" title="Market">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 7 12 3 16 7 12 11 8 7"/><polyline points="8 7 4 11 8 15 12 11 8 7"/><polyline points="12 11 16 7 20 11 16 15 12 11"/><polyline points="12 11 12 21"/></svg>
+                      <span>Market</span>
+                    </button>
+                    <button class="hamMenuOption" data-category="Utility" role="menuitemradio" aria-label="Utility" title="Utility">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9h12M6 9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2M6 9v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9"/><path d="M10 14h4v4h-4z"/></svg>
+                      <span>Utility</span>
+                    </button>
+                    <button class="hamMenuOption" data-category="Social" role="menuitemradio" aria-label="Social" title="Social">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      <span>Social</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+        <div class="searchWrap">
+          <input class="searchInput" id="dappSearch" type="text" placeholder="Search dapps by name or description…" autocomplete="off" />
+          <button class="searchClearBtn" id="searchClear" type="button" aria-label="Clear search" title="Clear search" hidden>×</button>
         </div>
         <ul id="dappList"></ul>
       </div>
@@ -1434,6 +1520,8 @@
       let allApps = [];
       let statsMap = {};
       let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
+      let currentSearch = "";
+      let currentCategoryFilter = null;
 
       // --- Pins / auth ---
       // The platform shell injects the session JWT as ?token=… on iframe load.
@@ -1578,6 +1666,25 @@
           }
         });
         return sorted;
+      }
+
+      function filterAndSortDapps(dapps) {
+        let filtered = dapps.slice();
+
+        if (currentSearch.length > 0) {
+          const query = currentSearch.toLowerCase();
+          filtered = filtered.filter((dapp) => {
+            const name = (dapp.name || "").toLowerCase();
+            const description = (dapp.description || "").toLowerCase();
+            return name.includes(query) || description.includes(query);
+          });
+        }
+
+        if (currentCategoryFilter) {
+          filtered = filtered.filter((dapp) => dapp.category === currentCategoryFilter);
+        }
+
+        return sortApps(filtered);
       }
 
       function starIcon(filled) {
@@ -1748,7 +1855,11 @@
         clearList();
 
         if (!Array.isArray(dapps) || dapps.length === 0) {
-          addRow("(no dapps configured)");
+          if (currentSearch.length > 0 || currentCategoryFilter) {
+            addRow("No dapps match your search");
+          } else {
+            addRow("(no dapps configured)");
+          }
           return;
         }
 
@@ -1776,7 +1887,7 @@
         // Optimistic update.
         if (willPin) pinnedSet.add(pubkey);
         else pinnedSet.delete(pubkey);
-        renderDapps(allApps);
+        renderDapps(filterAndSortDapps(allApps));
 
         try {
           let resp;
@@ -1798,7 +1909,7 @@
           // Revert on failure.
           if (willPin) pinnedSet.delete(pubkey);
           else pinnedSet.add(pubkey);
-          renderDapps(allApps);
+          renderDapps(filterAndSortDapps(allApps));
         }
       }
 
@@ -1813,7 +1924,7 @@
           const data = await resp.json();
           pinnedSet = new Set(Array.isArray(data.pins) ? data.pins : []);
           signedIn = true;
-          renderDapps(allApps);
+          renderDapps(filterAndSortDapps(allApps));
         } catch (e) {
           console.warn("Could not load pins:", e);
         }
@@ -1835,7 +1946,7 @@
           for (const [pk, s] of Object.entries(data)) {
             statsMap[pk] = s;
           }
-          renderDapps(allApps);
+          renderDapps(filterAndSortDapps(allApps));
         } catch (e) {
           console.warn("Could not load stats:", e);
         }
@@ -1851,17 +1962,69 @@
         });
       }
 
+
+      updateSortUI();
+
+      // ── Search and category filter ──────────────────────────────────────────
+      const searchInput = document.getElementById("dappSearch");
+      const searchClearBtn = document.getElementById("searchClear");
+
+      function updateSearchUI() {
+        if (searchClearBtn) {
+          searchClearBtn.hidden = currentSearch.length === 0;
+        }
+      }
+
+      function updateCategoryUI() {
+        hamMenuDropdown.querySelectorAll(".hamMenuOption[data-category]").forEach((btn) => {
+          const isActive =
+            (currentCategoryFilter === null && btn.dataset.category === "all") ||
+            (currentCategoryFilter === btn.dataset.category);
+          btn.classList.toggle("active", isActive);
+          btn.setAttribute("aria-checked", isActive ? "true" : "false");
+        });
+      }
+
+      if (searchInput) {
+        searchInput.addEventListener("input", (e) => {
+          currentSearch = e.target.value.trim().toLowerCase();
+          updateSearchUI();
+          renderDapps(filterAndSortDapps(allApps));
+        });
+      }
+
+      if (searchClearBtn) {
+        searchClearBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          currentSearch = "";
+          if (searchInput) searchInput.value = "";
+          updateSearchUI();
+          renderDapps(filterAndSortDapps(allApps));
+        });
+      }
+
       hamMenuDropdown.addEventListener("click", (e) => {
-        const opt = e.target.closest(".hamMenuOption[data-sort]");
-        if (!opt) return;
-        currentSort = opt.dataset.sort;
+        const catOpt = e.target.closest(".hamMenuOption[data-category]");
+        if (catOpt) {
+          const category = catOpt.dataset.category;
+          currentCategoryFilter = category === "all" ? null : category;
+          updateCategoryUI();
+          renderDapps(filterAndSortDapps(allApps));
+          closeHamMenu();
+          return;
+        }
+
+        const sortOpt = e.target.closest(".hamMenuOption[data-sort]");
+        if (!sortOpt) return;
+        currentSort = sortOpt.dataset.sort;
         localStorage.setItem(SORT_KEY, currentSort);
         updateSortUI();
-        renderDapps(allApps);
+        renderDapps(filterAndSortDapps(allApps));
         closeHamMenu();
       });
 
-      updateSortUI();
+      updateSearchUI();
+      updateCategoryUI();
 
       // ── Launch overlay ──────────────────────────────────────────────────────
       const _launchOverlay = document.getElementById("launchOverlay");
@@ -1918,7 +2081,7 @@
         try {
           const json = await loadDappsJson();
           allApps = Array.isArray(json) ? json : json.apps || json.items || [];
-          renderDapps(allApps);
+          renderDapps(filterAndSortDapps(allApps));
           loadAllStats(allApps);
           loadPins();
         } catch (e) {
