@@ -204,7 +204,7 @@
         flex: 0 0 auto;
       }
       /* On very narrow screens drop the wordmark (keep the icon) so the brand
-         never pushes the theme + sort controls off the header row. */
+         never pushes the hamburger menu off the header row. */
       @media (max-width: 420px) {
         .brandName {
           display: none;
@@ -227,22 +227,137 @@
         gap: 8px;
         flex: 0 0 auto;
       }
-      .themeBtn {
+      .submitBtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 9px;
+        border: 1px solid var(--border);
+        background: var(--accent);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .submitBtn svg { width: 15px; height: 15px; }
+      .submitBtn:hover { filter: brightness(1.06); }
+      @media (max-width: 420px) {
+        .submitBtnLabel { display: none; }
+        .submitBtn { padding: 0 9px; }
+      }
+
+      .hamMenuWrap {
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .hamBtn {
         appearance: none;
         background: transparent;
         border: 1px solid var(--border);
         border-radius: 8px;
         color: var(--muted);
-        padding: 6px;
+        padding: 6px 10px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
         flex: 0 0 auto;
+        width: 34px;
+        height: 34px;
+      }
+      .hamBtn:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .hamBtn svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+      .hamMenuDropdown {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+        z-index: 100;
+        padding: 8px 4px;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 180px;
+      }
+      .hamMenuDropdown.open {
+        display: flex;
+      }
+      .hamMenuSection {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .hamMenuSection.theme {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 8px;
+      }
+      .hamMenuLabel {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--muted);
+        padding: 6px 12px 4px;
+      }
+      .hamMenuOption {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        cursor: pointer;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 13px;
+        width: 100%;
+        text-align: left;
+      }
+      .hamMenuOption:hover {
+        background: var(--border);
+      }
+      .hamMenuOption.active {
+        color: var(--accent);
+        background: var(--border);
+      }
+      .hamMenuOption svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+      .hamMenuOption span {
+        flex: 1;
+      }
+
+      .themeBtn {
+        appearance: none;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        padding: 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
       }
       .themeBtn:hover {
         color: var(--fg);
-        border-color: var(--accent);
       }
       .themeBtn svg {
         width: 16px;
@@ -285,51 +400,6 @@
       .privacyPanelWrap {
         position: relative;
         flex: 0 0 auto;
-      }
-      .sortWrap {
-        position: relative;
-        flex: 0 0 auto;
-      }
-      .sortBtn {
-        appearance: none;
-        background: transparent;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        color: var(--muted);
-        font-size: 13px;
-        padding: 6px 10px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        white-space: nowrap;
-        font-family: inherit;
-      }
-      .sortBtn:hover {
-        color: var(--fg);
-        border-color: var(--accent);
-      }
-      .sortBtn svg {
-        width: 14px;
-        height: 14px;
-        flex-shrink: 0;
-      }
-      .sortMenu {
-        display: none;
-        position: absolute;
-        top: calc(100% + 4px);
-        right: 0;
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-        z-index: 100;
-        padding: 4px;
-        gap: 2px;
-      }
-      .sortMenu.open {
-        display: flex;
-        flex-direction: column;
       }
       .privacyPanel {
         display: none;
@@ -430,31 +500,6 @@
       .privacyCheckbox input[type="checkbox"] {
         cursor: pointer;
       }
-      .sortOpt {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 34px;
-        height: 34px;
-        padding: 0;
-        border: none;
-        background: transparent;
-        color: var(--fg);
-        cursor: pointer;
-        border-radius: 6px;
-        font-family: inherit;
-      }
-      .sortOpt svg {
-        width: 17px;
-        height: 17px;
-      }
-      .sortOpt:hover {
-        background: var(--border);
-      }
-      .sortOpt.active {
-        color: var(--accent);
-        background: var(--border);
-      }
       ul {
         list-style: none;
         padding: 12px 12px 14px;
@@ -469,6 +514,7 @@
         grid-auto-rows: max-content;
       }
       li {
+        position: relative;
         border: 1px solid var(--card-item-border);
         box-shadow: var(--card-item-shadow);
         border-radius: 12px;
@@ -580,6 +626,50 @@
         font-size: 12px;
         color: var(--muted);
         opacity: 0.5;
+      }
+      .starBtn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 5;
+        appearance: none;
+        background: transparent;
+        border: none;
+        padding: 4px;
+        margin: 0;
+        cursor: pointer;
+        color: var(--muted);
+        line-height: 0;
+        border-radius: 8px;
+        touch-action: none;
+      }
+      .starBtn:hover {
+        color: var(--accent);
+        background: var(--border);
+      }
+      .starBtn svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+      }
+      .starBtn.pinned {
+        color: var(--accent);
+      }
+      li.withStar .dappLink {
+        padding-right: 42px;
+      }
+      .sectionHeader {
+        border: none;
+        border-radius: 0;
+        overflow: visible;
+        padding: 6px 6px 2px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: transparent;
+        list-style: none;
       }
       .author {
         color: var(--muted);
@@ -1087,28 +1177,6 @@
         }
       }
 
-      /* ── Submit-a-dapp button + modal ─────────────────────────────────────── */
-      .submitBtn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        height: 34px;
-        padding: 0 12px;
-        border-radius: 9px;
-        border: 1px solid var(--border);
-        background: var(--accent);
-        color: #fff;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      .submitBtn svg { width: 15px; height: 15px; }
-      .submitBtn:hover { filter: brightness(1.06); }
-      @media (max-width: 420px) {
-        .submitBtnLabel { display: none; }
-        .submitBtn { padding: 0 9px; }
-      }
-
       .modalOverlay {
         position: fixed;
         inset: 0;
@@ -1259,54 +1327,66 @@
               </a>
             </div>
             <div class="headerActions">
-            <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              <span class="submitBtnLabel">Submit</span>
-            </button>
-            <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
-              <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-            </button>
-            <div class="privacyPanelWrap" style="position: relative; flex: 0 0 auto;">
-              <button class="privacyPanelBtn" id="privacyPanelBtn" type="button" aria-label="Privacy & Settings" title="Privacy settings and incognito mode">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+              <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span class="submitBtnLabel">Submit</span>
               </button>
-              <div class="privacyPanel" id="privacyPanel" role="dialog" aria-label="Privacy settings" style="position: absolute; top: calc(100% + 4px); right: 0;">
-                <div class="privacyPanelHeader">Privacy Settings</div>
-                <div class="privacyPanelDivider"></div>
-                <label class="privacyPanelToggle">
-                  <input type="checkbox" id="incognitoToggle" />
-                  <span>Incognito Mode</span>
-                </label>
-                <div style="font-size: 11px; color: var(--muted); padding: 0 12px 8px; line-height: 1.3;">Session-only browsing history</div>
-                <div class="privacyPanelDivider"></div>
-                <div class="privacyMenuLabel">Privacy RPC Endpoint</div>
-                <div class="privacyMenuOptions" id="privacyOptions"></div>
-                <label class="privacyCheckbox" id="rememberRpcLabel" style="display: none;">
-                  <input type="checkbox" id="rememberRpcCheckbox" />
-                  <span>Remember across sessions</span>
-                </label>
+              <div class="privacyPanelWrap">
+                <button class="privacyPanelBtn" id="privacyPanelBtn" type="button" aria-label="Privacy & Settings" title="Privacy settings and incognito mode">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                </button>
+                <div class="privacyPanel" id="privacyPanel" role="dialog" aria-label="Privacy settings" style="position: absolute; top: calc(100% + 4px); right: 0;">
+                  <div class="privacyPanelHeader">Privacy Settings</div>
+                  <div class="privacyPanelDivider"></div>
+                  <label class="privacyPanelToggle">
+                    <input type="checkbox" id="incognitoToggle" />
+                    <span>Incognito Mode</span>
+                  </label>
+                  <div style="font-size: 11px; color: var(--muted); padding: 0 12px 8px; line-height: 1.3;">Session-only browsing history</div>
+                  <div class="privacyPanelDivider"></div>
+                  <div class="privacyMenuLabel">Privacy RPC Endpoint</div>
+                  <div class="privacyMenuOptions" id="privacyOptions"></div>
+                  <label class="privacyCheckbox" id="rememberRpcLabel" style="display: none;">
+                    <input type="checkbox" id="rememberRpcCheckbox" />
+                    <span>Remember across sessions</span>
+                  </label>
+                </div>
               </div>
-            </div>
-            <div class="sortWrap">
-              <button class="sortBtn" id="sortBtn" aria-label="Sort" title="Sort">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
-              </button>
-              <div class="sortMenu" id="sortMenu" role="menu">
-                <button class="sortOpt" data-sort="popular" role="menuitemradio" aria-label="Popular" title="Popular">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+              <div class="hamMenuWrap">
+                <button class="hamBtn" id="hamBtn" type="button" aria-label="Menu" title="Menu">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
                 </button>
-                <button class="sortOpt" data-sort="users" role="menuitemradio" aria-label="Most users" title="Most users">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                </button>
-                <button class="sortOpt" data-sort="txns" role="menuitemradio" aria-label="Most transactions" title="Most transactions">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                </button>
-                <button class="sortOpt" data-sort="alpha" role="menuitemradio" aria-label="Alphabetical" title="Alphabetical">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l3 3 3-3M6 20V4"/><path d="M13 6h7M13 12h5M13 18h3"/></svg>
-                </button>
+                <div class="hamMenuDropdown" id="hamMenuDropdown" role="menu">
+                  <div class="hamMenuSection theme">
+                    <button class="hamMenuOption" id="themeMenuOption" type="button" role="menuitem">
+                      <button class="themeBtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Toggle theme">
+                        <svg class="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                        <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                      </button>
+                      <span id="themeLabel">Light</span>
+                    </button>
+                  </div>
+                  <div class="hamMenuSection sort">
+                    <div class="hamMenuLabel">Sort</div>
+                    <button class="hamMenuOption" data-sort="popular" role="menuitemradio" aria-label="Popular" title="Popular">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                      <span>Popular</span>
+                    </button>
+                    <button class="hamMenuOption" data-sort="users" role="menuitemradio" aria-label="Most users" title="Most users">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      <span>Most users</span>
+                    </button>
+                    <button class="hamMenuOption" data-sort="txns" role="menuitemradio" aria-label="Most transactions" title="Most transactions">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                      <span>Most transactions</span>
+                    </button>
+                    <button class="hamMenuOption" data-sort="alpha" role="menuitemradio" aria-label="Alphabetical" title="Alphabetical">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l3 3 3-3M6 20V4"/><path d="M13 6h7M13 12h5M13 18h3"/></svg>
+                      <span>Alphabetical</span>
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
             </div>
           </div>
         </div>
@@ -1452,9 +1532,10 @@
       };
 
       const list = document.getElementById("dappList");
-      const sortBtn = document.getElementById("sortBtn");
-      const sortMenu = document.getElementById("sortMenu");
+      const hamBtn = document.getElementById("hamBtn");
+      const hamMenuDropdown = document.getElementById("hamMenuDropdown");
       const themeBtn = document.getElementById("themeBtn");
+      const themeLabel = document.getElementById("themeLabel");
       const privacyPanelBtn = document.getElementById("privacyPanelBtn");
       const privacyPanel = document.getElementById("privacyPanel");
       const incognitoToggle = document.getElementById("incognitoToggle");
@@ -1466,24 +1547,46 @@
       let currentRpcEndpoint = "default";
       let sessionBrowsingHistory = [];
 
+      // Hamburger menu toggle
+      function closeHamMenu() {
+        hamMenuDropdown.classList.remove("open");
+      }
+
+      hamBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        hamMenuDropdown.classList.toggle("open");
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!hamMenuDropdown.contains(e.target) && e.target !== hamBtn) {
+          closeHamMenu();
+        }
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          closeHamMenu();
+        }
+      });
+
       // Theme toggle. The initial class is applied pre-paint in <head>; here we
       // just flip it and persist the explicit choice to localStorage.
       function applyTheme(theme) {
         document.documentElement.classList.toggle("dark", theme === "dark");
-        if (themeBtn) {
-          const isDark = theme === "dark";
-          themeBtn.setAttribute(
-            "aria-label",
-            isDark ? "Switch to light theme" : "Switch to dark theme"
-          );
-          themeBtn.setAttribute("title", themeBtn.getAttribute("aria-label"));
-        }
+        const isDark = theme === "dark";
+        themeLabel.textContent = isDark ? "Dark" : "Light";
+        themeBtn.setAttribute(
+          "aria-label",
+          isDark ? "Switch to light theme" : "Switch to dark theme"
+        );
+        themeBtn.setAttribute("title", themeBtn.getAttribute("aria-label"));
       }
       applyTheme(
         document.documentElement.classList.contains("dark") ? "dark" : "light"
       );
       if (themeBtn) {
-        themeBtn.addEventListener("click", () => {
+        themeBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
           const next = document.documentElement.classList.contains("dark")
             ? "light"
             : "dark";
@@ -1556,7 +1659,6 @@
 
       document.addEventListener("click", () => {
         privacyPanel.classList.remove("open");
-        sortMenu.classList.remove("open");
       });
 
       initPrivacyMode();
@@ -1564,6 +1666,25 @@
       let allApps = [];
       let statsMap = {};
       let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
+
+      // --- Pins / auth ---
+      // The platform shell injects the session JWT as ?token=… on iframe load.
+      // We forward it via the x-usernode-token header on /api/pins calls. With
+      // no token (page viewed outside the shell) we stay in signed-out mode and
+      // never render star controls.
+      const USERNODE_TOKEN = (() => {
+        try { return new URLSearchParams(location.search).get("token") || ""; }
+        catch (_) { return ""; }
+      })();
+      let signedIn = false;
+      let pinnedSet = new Set();
+
+      function pinHeaders(withJson) {
+        const h = {};
+        if (USERNODE_TOKEN) h["x-usernode-token"] = USERNODE_TOKEN;
+        if (withJson) h["content-type"] = "application/json";
+        return h;
+      }
 
       const SORT_LABELS = {
         popular: "Popular",
@@ -1691,6 +1812,169 @@
         return sorted;
       }
 
+      function starIcon(filled) {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", filled ? "currentColor" : "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "2");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        svg.innerHTML =
+          '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>';
+        return svg;
+      }
+
+      function buildDappLi(dapp) {
+        const li = document.createElement("li");
+
+        const link = document.createElement("a");
+        link.className = "dappLink";
+        link.href = dapp.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.setAttribute("aria-label", `Preview ${dapp.name || "dapp"}`);
+        link.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+            e.preventDefault();
+            openPreview(dapp, li);
+          }
+        });
+
+        const logo = makeLogo(dapp);
+
+        const body = document.createElement("div");
+        body.className = "dappBody";
+
+        const nameRow = document.createElement("div");
+        nameRow.className = "nameRow";
+
+        const nameGroup = document.createElement("div");
+        nameGroup.style.cssText = "display:flex;align-items:center;min-width:0;flex:1 1 auto";
+
+        const liveDot = document.createElement("span");
+        liveDot.className = "liveDot";
+        nameGroup.appendChild(liveDot);
+
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = dapp.name || "(unnamed)";
+        nameGroup.appendChild(name);
+
+        nameRow.appendChild(nameGroup);
+
+        if (dapp.pubkey) {
+          const s = statsMap[dapp.pubkey];
+          const statsEl = document.createElement("div");
+          statsEl.className = "stats";
+
+          if (s) {
+            const userStat = document.createElement("span");
+            userStat.className = "stat";
+            userStat.appendChild(personIcon());
+            userStat.appendChild(document.createTextNode(formatNum(s.users)));
+
+            const txStat = document.createElement("span");
+            txStat.className = "stat";
+            txStat.appendChild(txIcon());
+            txStat.appendChild(document.createTextNode(formatNum(s.txns)));
+
+            statsEl.appendChild(userStat);
+            statsEl.appendChild(txStat);
+          } else {
+            const loading = document.createElement("span");
+            loading.className = "statsLoading";
+            loading.textContent = "loading...";
+            statsEl.appendChild(loading);
+          }
+
+          nameRow.appendChild(statsEl);
+        }
+
+        const author = document.createElement("div");
+        author.className = "author";
+        author.textContent = `by ${dapp.author || "unknown"}`;
+
+        let tagRow = null;
+        if (dapp.category) {
+          tagRow = document.createElement("div");
+          tagRow.className = "tagRow";
+          const tag = document.createElement("span");
+          tag.className = "categoryTag";
+          tag.textContent = dapp.category;
+          const color = CATEGORY_COLORS[dapp.category];
+          if (color) {
+            tag.style.color = color;
+            tag.style.background = color + "33";
+            tag.style.border = "1px solid " + color + "66";
+          } else {
+            tag.style.color = "var(--muted)";
+            tag.style.border = "1px solid var(--border)";
+          }
+          tagRow.appendChild(tag);
+        }
+
+        const descRow = document.createElement("div");
+        descRow.className = "descRow";
+
+        const desc = document.createElement("span");
+        desc.className = "desc";
+        desc.textContent = dapp.description || "";
+
+        const launchBtn = document.createElement("span");
+        launchBtn.className = "launchBtn";
+        launchBtn.textContent = "Launch";
+        launchBtn.setAttribute("role", "button");
+        launchBtn.setAttribute("tabindex", "0");
+        launchBtn.setAttribute("aria-label", `Launch ${dapp.name || "dapp"}`);
+        launchBtn.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+            e.preventDefault();
+            e.stopPropagation();
+            launchDapp(dapp);
+          }
+        });
+
+        descRow.appendChild(desc);
+        descRow.appendChild(launchBtn);
+
+        body.appendChild(nameRow);
+        body.appendChild(author);
+        if (tagRow) body.appendChild(tagRow);
+        body.appendChild(descRow);
+
+        link.appendChild(logo);
+        link.appendChild(body);
+        li.appendChild(link);
+        li.__dapp = dapp;
+
+        // Star/pin control — only when signed in. Rendered as a SIBLING of the
+        // anchor (not inside it) and tagged so the list's pointer handler
+        // toggles the pin instead of opening the dapp. See attachRubberBand().
+        if (signedIn && dapp.pubkey) {
+          const pinned = pinnedSet.has(dapp.pubkey);
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "starBtn" + (pinned ? " pinned" : "");
+          btn.dataset.pubkey = dapp.pubkey;
+          const label = pinned ? "Unpin from top" : "Pin to top";
+          btn.setAttribute("aria-label", label);
+          btn.setAttribute("title", label);
+          btn.appendChild(starIcon(pinned));
+          li.appendChild(btn);
+          li.classList.add("withStar");
+        }
+
+        return li;
+      }
+
+      function sectionHeaderLi(text) {
+        const li = document.createElement("li");
+        li.className = "sectionHeader";
+        li.textContent = text;
+        return li;
+      }
+
       function renderDapps(dapps) {
         if (!list) return;
         clearList();
@@ -1702,132 +1986,68 @@
 
         const sorted = sortApps(dapps);
 
-        for (const dapp of sorted) {
-          const li = document.createElement("li");
+        // Signed-out (or no pins yet): flat list, identical to the original UI.
+        const pinned = signedIn
+          ? sorted.filter((d) => d.pubkey && pinnedSet.has(d.pubkey))
+          : [];
 
-          const link = document.createElement("a");
-          link.className = "dappLink";
-          link.href = dapp.url;
-          link.target = "_blank";
-          link.rel = "noopener";
-          // Left-tap / Enter on the card body opens the preview panel; the
-          // Launch button (below) is the only part that launches the dapp.
-          link.setAttribute("aria-label", `Preview ${dapp.name || "dapp"}`);
-          link.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-              e.preventDefault();
-              openPreview(dapp, li);
-            }
-          });
+        if (pinned.length > 0) {
+          const rest = sorted.filter((d) => !(d.pubkey && pinnedSet.has(d.pubkey)));
+          list.appendChild(sectionHeaderLi("Pinned"));
+          for (const dapp of pinned) list.appendChild(buildDappLi(dapp));
+          list.appendChild(sectionHeaderLi("All dapps"));
+          for (const dapp of rest) list.appendChild(buildDappLi(dapp));
+        } else {
+          for (const dapp of sorted) list.appendChild(buildDappLi(dapp));
+        }
+      }
 
-          const logo = makeLogo(dapp);
+      async function togglePin(pubkey) {
+        if (!signedIn || !pubkey) return;
+        const willPin = !pinnedSet.has(pubkey);
+        // Optimistic update.
+        if (willPin) pinnedSet.add(pubkey);
+        else pinnedSet.delete(pubkey);
+        renderDapps(allApps);
 
-          const body = document.createElement("div");
-          body.className = "dappBody";
-
-          const nameRow = document.createElement("div");
-          nameRow.className = "nameRow";
-
-          // Wrap dot + name together so space-between only separates them from stats
-          const nameGroup = document.createElement("div");
-          nameGroup.style.cssText = "display:flex;align-items:center;min-width:0;flex:1 1 auto";
-
-          const liveDot = document.createElement("span");
-          liveDot.className = "liveDot";
-          nameGroup.appendChild(liveDot);
-
-          const name = document.createElement("div");
-          name.className = "name";
-          name.textContent = dapp.name || "(unnamed)";
-          nameGroup.appendChild(name);
-
-          nameRow.appendChild(nameGroup);
-
-          if (dapp.pubkey) {
-            const s = statsMap[dapp.pubkey];
-            const statsEl = document.createElement("div");
-            statsEl.className = "stats";
-
-            if (s) {
-              const userStat = document.createElement("span");
-              userStat.className = "stat";
-              userStat.appendChild(personIcon());
-              userStat.appendChild(document.createTextNode(formatNum(s.users)));
-
-              const txStat = document.createElement("span");
-              txStat.className = "stat";
-              txStat.appendChild(txIcon());
-              txStat.appendChild(document.createTextNode(formatNum(s.txns)));
-
-              statsEl.appendChild(userStat);
-              statsEl.appendChild(txStat);
-            } else {
-              const loading = document.createElement("span");
-              loading.className = "statsLoading";
-              loading.textContent = "loading...";
-              statsEl.appendChild(loading);
-            }
-
-            nameRow.appendChild(statsEl);
+        try {
+          let resp;
+          if (willPin) {
+            resp = await fetch("/api/pins", {
+              method: "POST",
+              headers: pinHeaders(true),
+              body: JSON.stringify({ pubkey }),
+            });
+          } else {
+            resp = await fetch("/api/pins?pubkey=" + encodeURIComponent(pubkey), {
+              method: "DELETE",
+              headers: pinHeaders(false),
+            });
           }
+          if (!resp.ok) throw new Error("pin API " + resp.status);
+        } catch (e) {
+          console.warn("Could not save pin:", e);
+          // Revert on failure.
+          if (willPin) pinnedSet.delete(pubkey);
+          else pinnedSet.add(pubkey);
+          renderDapps(allApps);
+        }
+      }
 
-          const author = document.createElement("div");
-          author.className = "author";
-          author.textContent = `by ${dapp.author || "unknown"}`;
-
-          let tagRow = null;
-          if (dapp.category) {
-            tagRow = document.createElement("div");
-            tagRow.className = "tagRow";
-            const tag = document.createElement("span");
-            tag.className = "categoryTag";
-            tag.textContent = dapp.category;
-            const color = CATEGORY_COLORS[dapp.category];
-            if (color) {
-              tag.style.color = color;
-              tag.style.background = color + "33";
-              tag.style.border = "1px solid " + color + "66";
-            } else {
-              tag.style.color = "var(--muted)";
-              tag.style.border = "1px solid var(--border)";
-            }
-            tagRow.appendChild(tag);
-          }
-
-          const descRow = document.createElement("div");
-          descRow.className = "descRow";
-
-          const desc = document.createElement("span");
-          desc.className = "desc";
-          desc.textContent = dapp.description || "";
-
-          const launchBtn = document.createElement("span");
-          launchBtn.className = "launchBtn";
-          launchBtn.textContent = "Launch";
-          launchBtn.setAttribute("role", "button");
-          launchBtn.setAttribute("tabindex", "0");
-          launchBtn.setAttribute("aria-label", `Launch ${dapp.name || "dapp"}`);
-          launchBtn.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-              e.preventDefault();
-              e.stopPropagation();
-              launchDapp(dapp);
-            }
+      async function loadPins() {
+        if (!USERNODE_TOKEN) return; // signed out — keep star controls hidden
+        try {
+          const resp = await fetch("/api/pins", {
+            headers: pinHeaders(false),
+            cache: "no-store",
           });
-
-          descRow.appendChild(desc);
-          descRow.appendChild(launchBtn);
-
-          body.appendChild(nameRow);
-          body.appendChild(author);
-          if (tagRow) body.appendChild(tagRow);
-          body.appendChild(descRow);
-
-          link.appendChild(logo);
-          link.appendChild(body);
-          li.appendChild(link);
-          li.__dapp = dapp;
-          list.appendChild(li);
+          if (!resp.ok) return; // 401/503 → stay signed-out, list still renders
+          const data = await resp.json();
+          pinnedSet = new Set(Array.isArray(data.pins) ? data.pins : []);
+          signedIn = true;
+          renderDapps(allApps);
+        } catch (e) {
+          console.warn("Could not load pins:", e);
         }
       }
 
@@ -1853,38 +2073,24 @@
         }
       }
 
-      // --- Sort menu ---
+      // --- Sort menu (now in hamburger) ---
       function updateSortUI() {
         const label = SORT_LABELS[currentSort] || "Popular";
-        // Trigger shows only the icon; surface the active sort via the
-        // accessible name + hover tooltip instead of a visible text label.
-        sortBtn.setAttribute("aria-label", `Sort: ${label}`);
-        sortBtn.setAttribute("title", `Sort: ${label}`);
-        sortMenu.querySelectorAll(".sortOpt").forEach((btn) => {
+        hamMenuDropdown.querySelectorAll(".hamMenuOption[data-sort]").forEach((btn) => {
           const active = btn.dataset.sort === currentSort;
           btn.classList.toggle("active", active);
           btn.setAttribute("aria-checked", active ? "true" : "false");
         });
       }
 
-      sortBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        sortMenu.classList.toggle("open");
-      });
-
-      sortMenu.addEventListener("click", (e) => {
-        const opt = e.target.closest(".sortOpt");
+      hamMenuDropdown.addEventListener("click", (e) => {
+        const opt = e.target.closest(".hamMenuOption[data-sort]");
         if (!opt) return;
         currentSort = opt.dataset.sort;
         localStorage.setItem(SORT_KEY, currentSort);
         updateSortUI();
         renderDapps(allApps);
-        sortMenu.classList.remove("open");
-        privacyPanel.classList.remove("open");
-      });
-
-      document.addEventListener("click", () => {
-        sortMenu.classList.remove("open");
+        closeHamMenu();
         privacyPanel.classList.remove("open");
       });
 
@@ -1949,6 +2155,7 @@
           allApps = Array.isArray(json) ? json : json.apps || json.items || [];
           renderDapps(allApps);
           loadAllStats(allApps);
+          loadPins();
         } catch (e) {
           clearList();
           addRow(
@@ -2566,6 +2773,13 @@
           reset();
 
           if (!moved && downTarget) {
+            // Tap on the star/pin control toggles the pin and never navigates.
+            const star = downTarget.closest(".starBtn");
+            if (star) {
+              togglePin(star.dataset.pubkey);
+              downTarget = null;
+              return;
+            }
             const li = downTarget.closest("li");
             const dapp = li && li.__dapp;
             if (dapp) {
