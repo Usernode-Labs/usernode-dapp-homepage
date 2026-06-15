@@ -298,32 +298,37 @@
         border-radius: 10px;
         box-shadow: 0 8px 24px rgba(0,0,0,0.18);
         z-index: 100;
-        min-width: 180px;
         padding: 4px;
-        overflow: hidden;
+        gap: 2px;
       }
       .sortMenu.open {
-        display: block;
+        display: flex;
+        flex-direction: column;
       }
       .sortOpt {
-        display: block;
-        width: 100%;
-        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        padding: 0;
         border: none;
         background: transparent;
         color: var(--fg);
-        font-size: 13px;
-        text-align: left;
         cursor: pointer;
         border-radius: 6px;
         font-family: inherit;
+      }
+      .sortOpt svg {
+        width: 17px;
+        height: 17px;
       }
       .sortOpt:hover {
         background: var(--border);
       }
       .sortOpt.active {
         color: var(--accent);
-        font-weight: 600;
+        background: var(--border);
       }
       ul {
         list-style: none;
@@ -750,22 +755,27 @@
         }
       }
       .previewMeta {
+        /* Single two-column grid so every label shares one column edge and
+           all values align to a common left edge. Rows use display:contents
+           (below) so their label/value become direct grid items. The label
+           column auto-sizes to the widest label via max-content. */
         display: grid;
-        gap: 6px;
+        grid-template-columns: max-content 1fr;
+        align-items: baseline;
+        gap: 10px 14px;
         font-size: 13px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
       }
       .previewMetaRow {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
+        display: contents;
       }
       .previewMetaLabel {
         color: var(--muted);
-        flex: 0 0 auto;
-        min-width: 92px;
         font-size: 12px;
         text-transform: uppercase;
         letter-spacing: 0.4px;
+        white-space: nowrap;
       }
       .previewMetaVal {
         color: var(--fg);
@@ -779,11 +789,53 @@
       .previewMetaVal a:hover {
         text-decoration: underline;
       }
+      .previewDescBlock {
+        display: grid;
+        gap: 6px;
+      }
+      .previewSummary {
+        color: var(--fg);
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+      }
       .previewDesc {
         color: var(--fg);
         font-size: 14px;
         line-height: 1.55;
-        white-space: pre-wrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .previewDesc.clamped {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .previewDescToggle {
+        appearance: none;
+        background: transparent;
+        border: none;
+        padding: 2px 0;
+        min-height: 28px;
+        align-self: start;
+        justify-self: start;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--accent);
+        cursor: pointer;
+        line-height: 1.2;
+      }
+      .previewDescToggle:hover {
+        text-decoration: underline;
+      }
+      .previewDescToggle:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--accent);
+        border-radius: 4px;
       }
       .previewStats {
         display: flex;
@@ -1091,15 +1143,22 @@
               <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
             </button>
             <div class="sortWrap">
-              <button class="sortBtn" id="sortBtn">
+              <button class="sortBtn" id="sortBtn" aria-label="Sort" title="Sort">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
-                <span id="sortLabel">Popular</span>
               </button>
-              <div class="sortMenu" id="sortMenu">
-                <button class="sortOpt" data-sort="popular">Popular</button>
-                <button class="sortOpt" data-sort="users">Most users</button>
-                <button class="sortOpt" data-sort="txns">Most transactions</button>
-                <button class="sortOpt" data-sort="alpha">Alphabetical</button>
+              <div class="sortMenu" id="sortMenu" role="menu">
+                <button class="sortOpt" data-sort="popular" role="menuitemradio" aria-label="Popular" title="Popular">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                </button>
+                <button class="sortOpt" data-sort="users" role="menuitemradio" aria-label="Most users" title="Most users">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </button>
+                <button class="sortOpt" data-sort="txns" role="menuitemradio" aria-label="Most transactions" title="Most transactions">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                </button>
+                <button class="sortOpt" data-sort="alpha" role="menuitemradio" aria-label="Alphabetical" title="Alphabetical">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l3 3 3-3M6 20V4"/><path d="M13 6h7M13 12h5M13 18h3"/></svg>
+                </button>
               </div>
             </div>
             </div>
@@ -1148,8 +1207,19 @@
               aria-label="Choose feature highlight"
             ></div>
           </div>
+          <div class="previewDescBlock" id="previewDescBlock">
+            <div class="previewSummary" id="previewSummary" hidden></div>
+            <div class="previewDesc clamped" id="previewDesc"></div>
+            <button
+              class="previewDescToggle"
+              id="previewDescToggle"
+              type="button"
+              aria-expanded="false"
+              aria-controls="previewDesc"
+              hidden
+            >Read more</button>
+          </div>
           <div class="previewMeta" id="previewMeta"></div>
-          <div class="previewDesc" id="previewDesc"></div>
         </div>
         <div class="previewFooter">
           <button class="previewLaunch" id="previewLaunch" type="button">Launch</button>
@@ -1229,7 +1299,6 @@
       const list = document.getElementById("dappList");
       const sortBtn = document.getElementById("sortBtn");
       const sortMenu = document.getElementById("sortMenu");
-      const sortLabel = document.getElementById("sortLabel");
       const themeBtn = document.getElementById("themeBtn");
 
       // Theme toggle. The initial class is applied pre-paint in <head>; here we
@@ -1552,9 +1621,15 @@
 
       // --- Sort menu ---
       function updateSortUI() {
-        sortLabel.textContent = SORT_LABELS[currentSort] || "Popular";
+        const label = SORT_LABELS[currentSort] || "Popular";
+        // Trigger shows only the icon; surface the active sort via the
+        // accessible name + hover tooltip instead of a visible text label.
+        sortBtn.setAttribute("aria-label", `Sort: ${label}`);
+        sortBtn.setAttribute("title", `Sort: ${label}`);
         sortMenu.querySelectorAll(".sortOpt").forEach((btn) => {
-          btn.classList.toggle("active", btn.dataset.sort === currentSort);
+          const active = btn.dataset.sort === currentSort;
+          btn.classList.toggle("active", active);
+          btn.setAttribute("aria-checked", active ? "true" : "false");
         });
       }
 
@@ -1652,6 +1727,9 @@
       const previewTagRow = document.getElementById("previewTagRow");
       const previewMeta = document.getElementById("previewMeta");
       const previewDesc = document.getElementById("previewDesc");
+      const previewDescBlock = document.getElementById("previewDescBlock");
+      const previewSummary = document.getElementById("previewSummary");
+      const previewDescToggle = document.getElementById("previewDescToggle");
       const previewHeadText = document.querySelector(".previewHeadText");
       const previewShowcase = document.getElementById("previewShowcase");
       const showcaseViewport = document.getElementById("showcaseViewport");
@@ -1942,6 +2020,76 @@
         previewTagRow.appendChild(tag);
       }
 
+      // Populate the description block: an emphasized summary lead (short
+      // `description`) over the long body (`longDescription`), collapsed to a
+      // few lines. Plain text only — never inject untrusted strings as HTML.
+      // Fallbacks: only one field present → render it as the body with no
+      // duplicate lead; neither present → hide the whole block.
+      function buildPreviewDesc(dapp) {
+        const short = (dapp.description || "").trim();
+        const long = (dapp.longDescription || "").trim();
+
+        let summaryText = "";
+        let bodyText = "";
+        if (short && long) {
+          summaryText = short;
+          bodyText = long;
+        } else {
+          // Exactly one (or neither) present: use whichever exists as the body
+          // and skip the lead so we never echo the same string twice.
+          bodyText = long || short;
+        }
+
+        if (!summaryText && !bodyText) {
+          previewDescBlock.hidden = true;
+          previewSummary.hidden = true;
+          previewSummary.textContent = "";
+          previewDesc.textContent = "";
+          return;
+        }
+        previewDescBlock.hidden = false;
+
+        if (summaryText) {
+          previewSummary.textContent = summaryText;
+          previewSummary.hidden = false;
+        } else {
+          previewSummary.textContent = "";
+          previewSummary.hidden = true;
+        }
+
+        previewDesc.textContent = bodyText;
+
+        // Always reset to the collapsed state for each dapp; refreshDescToggle()
+        // decides whether the toggle is actually needed once the panel is shown.
+        previewDesc.classList.add("clamped");
+        previewDescToggle.hidden = true;
+        previewDescToggle.textContent = "Read more";
+        previewDescToggle.setAttribute("aria-expanded", "false");
+      }
+
+      // Show the Read more/less toggle only when the clamped body overflows the
+      // collapsed (3-line) height. Must be called while the panel is visible.
+      function refreshDescToggle() {
+        if (previewDescBlock.hidden) return;
+        previewDesc.classList.add("clamped");
+        previewDescToggle.textContent = "Read more";
+        previewDescToggle.setAttribute("aria-expanded", "false");
+        // Force layout, then compare against the clamped box height (+epsilon).
+        void previewDesc.offsetHeight;
+        const overflows =
+          previewDesc.scrollHeight > previewDesc.clientHeight + 2;
+        previewDescToggle.hidden = !overflows;
+      }
+
+      function toggleDesc() {
+        const collapsed = previewDesc.classList.toggle("clamped");
+        previewDescToggle.textContent = collapsed ? "Read more" : "Read less";
+        previewDescToggle.setAttribute(
+          "aria-expanded",
+          collapsed ? "false" : "true"
+        );
+      }
+
       function openPreview(dapp, originEl) {
         if (!dapp) return;
         previewCurrentDapp = dapp;
@@ -1962,14 +2110,13 @@
         buildPreviewTag(dapp);
         buildPreviewMeta(dapp);
 
-        // Plain text only — never inject untrusted strings as HTML.
-        previewDesc.textContent = dapp.longDescription || dapp.description || "";
+        buildPreviewDesc(dapp);
 
         // Feature showcase (resets to step 0). When the dapp has no authored
         // highlights, fall back to a staggered entrance reveal of the standard
         // preview elements so the panel always animates gracefully.
         buildShowcase(dapp);
-        const revealEls = [previewLogo, previewHeadText, previewMeta, previewDesc];
+        const revealEls = [previewLogo, previewHeadText, previewDescBlock, previewMeta];
         if (previewShowcase.hidden) {
           applyStaggerReveal(revealEls);
         } else {
@@ -1979,6 +2126,12 @@
         previewOverlay.classList.add("open");
         previewOverlay.setAttribute("aria-hidden", "false");
         document.body.style.overflow = "hidden";
+
+        // Overflow detection must run after the panel is displayed (a
+        // display:none ancestor reports 0 for scroll/clientHeight). The
+        // description starts collapsed; only surface the toggle when the
+        // clamped body actually overflows three lines.
+        refreshDescToggle();
 
         previewCloseBtn.focus();
       }
@@ -2000,6 +2153,10 @@
       }
 
       previewCloseBtn.addEventListener("click", closePreview);
+      previewDescToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleDesc();
+      });
       previewLaunchBtn.addEventListener("click", () => {
         launchDapp(previewCurrentDapp);
       });
