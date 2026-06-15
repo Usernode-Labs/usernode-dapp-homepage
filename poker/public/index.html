@@ -332,17 +332,17 @@
       } catch (e) { $('buyinErr').textContent = e.message; }
     };
 
-    // Bridge initializes asynchronously after bridge.js loads (it exchanges a
-    // message with the parent frame). Poll until it appears or we time out.
+    // bridge.js exposes window.sendTransaction(pubkey, amount, memo) as a
+    // direct global — NOT as window.usernode.sendTransaction. The bridge
+    // also needs a postMessage handshake with the parent frame before
+    // window.usernode.isNative flips; poll until it's ready.
     async function waitForBridge(ms = 5000) {
       const deadline = Date.now() + ms;
       while (Date.now() < deadline) {
-        const b = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge]
-          .find((x) => x && typeof x.sendTransaction === 'function');
-        if (b) return b;
+        if (typeof window.sendTransaction === 'function') return true;
         await new Promise((r) => setTimeout(r, 150));
       }
-      return null;
+      return false;
     }
 
     $('payWithWallet').onclick = async () => {
@@ -351,9 +351,9 @@
       btn.disabled = true;
       btn.textContent = 'Connecting…';
       try {
-        const b = await waitForBridge(5000);
-        if (!b) { $('payErr').textContent = 'Wallet bridge unavailable — pay manually using the details above.'; return; }
-        await b.sendTransaction({ to: BUYIN.pay.pay_to, recipient: BUYIN.pay.pay_to, destination: BUYIN.pay.pay_to, amount: BUYIN.pay.amount, value: BUYIN.pay.amount, memo: BUYIN.pay.memo });
+        const ready = await waitForBridge(5000);
+        if (!ready) { $('payErr').textContent = 'Wallet bridge unavailable — pay manually using the details above.'; return; }
+        await window.sendTransaction(BUYIN.pay.pay_to, BUYIN.pay.amount, BUYIN.pay.memo);
         $('payStatus').innerHTML = '<span class="text-amber-300">Payment requested — waiting for confirmation…</span>';
       } catch (e) { $('payErr').textContent = e.message || String(e); }
       finally { btn.disabled = false; btn.textContent = 'Pay with wallet'; }
