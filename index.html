@@ -1242,8 +1242,9 @@
         border: 1px solid var(--border);
         border-right: none;
         width: 100%;
-        max-width: 380px;
-        height: 100%;
+        max-width: 340px;
+        height: auto;
+        max-height: 90vh;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -1288,23 +1289,36 @@
         flex: 1 1 auto;
         min-height: 0;
         display: grid;
-        gap: 16px;
+        gap: 12px;
       }
-      .profileSection {
+      /* User identity section: avatar + username + edit */
+      .profileUserSection {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .profileAvatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 18px;
+        font-weight: 700;
+        color: #ffffff;
+      }
+      .profileUsernameSection {
         display: grid;
-        gap: 8px;
-      }
-      .profileLabel {
-        font-size: 12px;
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-        font-weight: 600;
+        gap: 6px;
+        flex: 1;
       }
       .profileUsername {
         font-size: 16px;
-        font-weight: 600;
+        font-weight: 700;
         color: var(--fg);
+        word-break: break-word;
       }
       .profileEditBtn {
         appearance: none;
@@ -1316,23 +1330,40 @@
         font-weight: 600;
         cursor: pointer;
         text-align: left;
-        margin-top: 6px;
       }
       .profileEditBtn:hover {
         text-decoration: underline;
       }
-      .profileStat {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        font-size: 13px;
+      /* Stats cards grid */
+      .profileStatsGrid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+      }
+      @media (max-width: 360px) {
+        .profileStatsGrid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      .profileStatCard {
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        padding: 10px;
+        text-align: center;
+        background: var(--bg);
       }
       .profileStatLabel {
+        font-size: 11px;
         color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        font-weight: 600;
+        margin-bottom: 4px;
       }
       .profileStatValue {
+        font-size: 18px;
+        font-weight: 700;
         color: var(--fg);
-        font-weight: 600;
       }
       .profileEditForm {
         display: grid;
@@ -1478,23 +1509,25 @@
         </div>
         <div class="profilePanelBody">
           <div id="profileViewMode">
-            <div class="profileSection">
-              <div class="profileLabel">Username</div>
-              <div class="profileUsername" id="profileUsername"></div>
-              <button class="profileEditBtn" id="profileEditBtn" type="button">Edit profile</button>
-            </div>
-            <div class="profileSection">
-              <div class="profileLabel">Account Created</div>
-              <div id="profileAccountAge" style="font-size: 13px; color: var(--fg);"></div>
-            </div>
-            <div class="profileSection">
-              <div class="profileStat">
-                <span class="profileStatLabel">Total Transactions</span>
-                <span class="profileStatValue" id="profileTotalTxs">—</span>
+            <div class="profileUserSection">
+              <div class="profileAvatar" id="profileAvatar"></div>
+              <div class="profileUsernameSection">
+                <div class="profileUsername" id="profileUsername"></div>
+                <button class="profileEditBtn" id="profileEditBtn" type="button">Edit profile</button>
               </div>
-              <div class="profileStat">
-                <span class="profileStatLabel">Dapps Used</span>
-                <span class="profileStatValue" id="profileDappsUsed">—</span>
+            </div>
+            <div class="profileStatsGrid">
+              <div class="profileStatCard">
+                <div class="profileStatLabel">Account Age</div>
+                <div class="profileStatValue" id="profileAccountAge">—</div>
+              </div>
+              <div class="profileStatCard">
+                <div class="profileStatLabel">Transactions</div>
+                <div class="profileStatValue" id="profileTotalTxs">—</div>
+              </div>
+              <div class="profileStatCard">
+                <div class="profileStatLabel">Dapps</div>
+                <div class="profileStatValue" id="profileDappsUsed">—</div>
               </div>
             </div>
           </div>
@@ -2159,10 +2192,18 @@
 
       function renderProfile() {
         if (!currentProfile) return;
-        profileUsername.textContent = currentProfile.username || "(no username)";
+        const username = currentProfile.username || "(no username)";
+        profileUsername.textContent = username;
         profileAccountAge.textContent = formatAccountAge(currentProfile.account_age_ms);
         profileTotalTxs.textContent = currentProfile.total_transactions || 0;
         profileDappsUsed.textContent = currentProfile.dapps_used || 0;
+
+        // Generate avatar with initials and color
+        const initials = (username.slice(0, 2) || "?").toUpperCase();
+        const hue = hashString(username || "") % 360;
+        const bgColor = `hsl(${hue}, 55%, 45%)`;
+        profileAvatar.textContent = initials;
+        profileAvatar.style.background = bgColor;
       }
 
       function toggleProfileEditForm() {
