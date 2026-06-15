@@ -94,6 +94,29 @@ const EXPLORER_USE_HTTP = (() => {
   return host === "localhost" || host === "127.0.0.1" || /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(host);
 })();
 
+// ── Peer Discovery Poller ───────────────────────────────────────────────────────
+// Background poller for blockchain network peers. Fetches peer data from the
+// explorer or RPC endpoint every PEERS_POLL_INTERVAL_MS, caches in memory,
+// and exposes via /api/peers.
+
+const PEERS_PATH = (() => {
+  if (process.env.PEERS_JSON_PATH) return path.resolve(process.env.PEERS_JSON_PATH);
+  if (LOCAL_DEV) {
+    const localPath = path.join(__dirname, "peers.local.json");
+    if (fs.existsSync(localPath)) return localPath;
+  }
+  return path.join(__dirname, "peers.json");
+})();
+
+const PEERS_POLL_INTERVAL_MS = Number(process.env.PEERS_POLL_INTERVAL_MS) || 10000;
+const PEERS_MAX_CACHE = Number(process.env.PEERS_MAX_CACHE) || 5000;
+const PEERS_STALE_THRESHOLD_MS = Number(process.env.PEERS_STALE_THRESHOLD_MS) || 180000;
+const NODE_RPC_URL = process.env.NODE_RPC_URL || "";
+
+let peerCache = [];
+let peerCacheUpdatedAt = Date.now();
+let peerChainId = null;
+
 function proxyExplorer(req, res, subPath) {
   const upstreamPath = EXPLORER_UPSTREAM_BASE + "/" + subPath;
   const chunks = [];
@@ -372,6 +395,127 @@ function loadPubkeys() {
 
 const STATS_POLL_INTERVAL_MS = 30000;
 
+async function loadPeersFromDisk() {
+  try {
+    if (!fs.existsSync(PEERS_PATH)) {
+      peerCache = [];
+      return;
+    }
+    const raw = fs.readFileSync(PEERS_PATH, "utf8");
+    const data = JSON.parse(raw);
+    peerCache = (data && Array.isArray(data.peers)) ? data.peers : [];
+    peerCacheUpdatedAt = (data && data.fetched_at_ms) || Date.now();
+  } catch (e) {
+    console.warn(`[peers] could not read peers from disk: ${e.message}`);
+    peerCache = [];
+  }
+}
+
+function savePeersToDisk() {
+  try {
+    atomicWriteJson(PEERS_PATH, { peers: peerCache, fetched_at_ms: peerCacheUpdatedAt });
+  } catch (e) {
+    console.warn(`[peers] could not write peers to disk: ${e.message}`);
+  }
+}
+
+async function pollPeers() {
+  if (!statsChainId) return;
+
+  // On chain reset, clear the peer cache.
+  if (peerChainId && peerChainId !== statsChainId) {
+    console.log(`[peers] chain_id changed: ${peerChainId} -> ${statsChainId} — clearing peer cache`);
+    peerCache = [];
+  }
+  peerChainId = statsChainId;
+
+  try {
+    let peersData = null;
+
+    // Try explorer first
+    try {
+      const explorerUrl = `${explorerBaseUrl()}/${statsChainId}/peers`;
+      peersData = await httpJson("GET", explorerUrl, null);
+    } catch (e) {
+      console.log(`[peers] explorer query failed: ${e.message}`);
+    }
+
+    // Fall back to NODE_RPC_URL if explorer fails
+    if (!peersData && NODE_RPC_URL) {
+      try {
+        const rpcUrl = `${NODE_RPC_URL}/net_peers`;
+        const rpcResp = await httpJson("GET", rpcUrl, null);
+        peersData = rpcResp;
+      } catch (e) {
+        console.log(`[peers] RPC query failed: ${e.message}`);
+      }
+    }
+
+    if (!peersData || !Array.isArray(peersData.peers)) {
+      console.warn("[peers] no peer data received");
+      return;
+    }
+
+    const now = Date.now();
+    const seenIds = new Set(peerCache.map((p) => p.id));
+    let newCount = 0;
+
+    for (const p of peersData.peers) {
+      const peerId = p.id || p.node_id || p.peer_id;
+      if (!peerId) continue;
+
+      const endpoint = p.endpoint || `${p.remote_ip || p.ip}:${p.remote_port || p.port}`;
+      const blockHeight = p.block_height || p.height;
+      const status = deriveStatus(blockHeight, peerCache.length > 0 ? Math.max(...peerCache.map((x) => x.block_height || 0)) : blockHeight);
+
+      if (!seenIds.has(peerId)) {
+        peerCache.push({
+          id: peerId,
+          endpoint,
+          status,
+          block_height: blockHeight,
+          last_seen_ms: now,
+          uptime_seconds: p.uptime_seconds || 0,
+          version: p.version || null,
+        });
+        newCount++;
+        seenIds.add(peerId);
+      } else {
+        // Update existing peer
+        const existing = peerCache.find((x) => x.id === peerId);
+        if (existing) {
+          existing.last_seen_ms = now;
+          existing.status = status;
+          existing.block_height = blockHeight;
+          existing.endpoint = endpoint;
+          if (p.uptime_seconds !== undefined) existing.uptime_seconds = p.uptime_seconds;
+          if (p.version) existing.version = p.version;
+        }
+      }
+    }
+
+    // Enforce the cache size limit
+    if (peerCache.length > PEERS_MAX_CACHE) {
+      peerCache = peerCache.slice(-PEERS_MAX_CACHE);
+    }
+
+    peerCacheUpdatedAt = now;
+    if (newCount > 0) {
+      console.log(`[peers] ${peersData.peers.length} peers, ${newCount} new, ${peerCache.length} cached`);
+    }
+  } catch (e) {
+    console.warn(`[peers] poll error: ${e.message}`);
+  }
+}
+
+function deriveStatus(blockHeight, tipBlockHeight) {
+  if (!blockHeight) return "offline";
+  const lag = tipBlockHeight - blockHeight;
+  if (lag <= 1) return "synced";
+  if (lag <= 5) return "lagging";
+  return "offline";
+}
+
 async function pollAllStats() {
   await discoverStatsChainId();
   if (!statsChainId) return;
@@ -383,6 +527,9 @@ async function pollAllStats() {
   for (const pk of all) {
     await pollPubkey(pk);
   }
+
+  // Poll peers as part of the main stats loop
+  await pollPeers();
 
   // Credit confirmed submission payments and age out unpaid submissions.
   reconcileSubmissionPayments();
@@ -565,6 +712,7 @@ function listingHas(url, pubkey) {
 
 // Start background polling
 loadSubmissions();
+loadPeersFromDisk();
 (async function startStatsPoller() {
   await pollAllStats();
   setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
@@ -792,6 +940,38 @@ const server = http.createServer((req, res) => {
     const sub = findSubmission(id);
     if (!sub) return sendJson(res, 404, { error: "Submission not found." });
     return sendJson(res, 200, publicSubmissionView(sub));
+  }
+
+  // ── Peer Discovery API ─────────────────────────────────────────────────────
+
+  // Public peer list endpoint
+  if (pathname === "/api/peers" && req.method === "GET") {
+    const now = Date.now();
+    const peers = peerCache.map((p) => ({
+      ...p,
+      stale: now - p.last_seen_ms > PEERS_STALE_THRESHOLD_MS,
+    }));
+    return sendJson(res, 200, {
+      peers,
+      fetched_at_ms: peerCacheUpdatedAt,
+      count: peers.length,
+    });
+  }
+
+  // Public peer config endpoint
+  if (pathname === "/api/peers/config" && req.method === "GET") {
+    return sendJson(res, 200, {
+      poll_interval_ms: PEERS_POLL_INTERVAL_MS,
+      max_peers_displayed: 50,
+      stale_threshold_ms: PEERS_STALE_THRESHOLD_MS,
+      explorer_upstream: EXPLORER_UPSTREAM,
+    });
+  }
+
+  // Optional heartbeat endpoint for analytics (public)
+  if (pathname === "/api/peers/heartbeat" && req.method === "POST") {
+    // Currently a no-op; could be used for client-side analytics in the future
+    return sendJson(res, 200, { ok: true });
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {

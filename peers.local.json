@@ -1,0 +1,50 @@
+{
+  "peers": [
+    {
+      "id": "peer_staging_1",
+      "endpoint": "127.0.0.1:30333",
+      "status": "synced",
+      "block_height": 1000,
+      "last_seen_ms": 1718453410000,
+      "uptime_seconds": 3600,
+      "version": "v1.0.0"
+    },
+    {
+      "id": "peer_staging_2",
+      "endpoint": "127.0.0.1:30334",
+      "status": "lagging",
+      "block_height": 995,
+      "last_seen_ms": 1718453390000,
+      "uptime_seconds": 1800,
+      "version": "v1.0.0"
+    },
+    {
+      "id": "peer_staging_3",
+      "endpoint": "127.0.0.1:30335",
+      "status": "offline",
+      "block_height": 980,
+      "last_seen_ms": 1718452010000,
+      "uptime_seconds": 0,
+      "version": "v0.9.8"
+    },
+    {
+      "id": "peer_staging_4",
+      "endpoint": "192.168.1.100:30333",
+      "status": "synced",
+      "block_height": 1000,
+      "last_seen_ms": 1718453405000,
+      "uptime_seconds": 7200,
+      "version": "v1.0.0"
+    },
+    {
+      "id": "peer_staging_5",
+      "endpoint": "192.168.1.101:30333",
+      "status": "synced",
+      "block_height": 999,
+      "last_seen_ms": 1718453400000,
+      "uptime_seconds": 5400,
+      "version": "v1.0.0"
+    }
+  ],
+  "fetched_at_ms": 1718453415000
+}

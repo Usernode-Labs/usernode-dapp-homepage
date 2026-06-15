@@ -7,6 +7,8 @@ USER node
 
 # This repo has no package.json; it's just static files + server.js.
 COPY --chown=node:node server.js index.html dapps.json ./
+# Include peers.local.json if present (for --local-dev).
+COPY --chown=node:node peers.local.json ./peers.local.json 2>/dev/null || true
 # Static screenshot assets served at /screenshots/* by server.js.
 COPY --chown=node:node public ./public
 

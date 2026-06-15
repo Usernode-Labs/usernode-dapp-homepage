@@ -477,65 +477,6 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
       }
-      /* Peer discovery styles */
-      .peerRow {
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        gap: 12px;
-        align-items: center;
-        padding: 12px;
-        border: 1px solid var(--card-item-border);
-        border-radius: 10px;
-        background: var(--card);
-        transition: border-color 150ms ease, box-shadow 150ms ease;
-      }
-      .peerRow:hover {
-        border-color: var(--card-hover-border);
-        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
-      }
-      .peerStatusIndicator {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        flex-shrink: 0;
-      }
-      .peerStatusIndicator.synced { background: #10b981; }
-      .peerStatusIndicator.lagging { background: #f59e0b; }
-      .peerStatusIndicator.offline { background: #6b7280; }
-      .peerInfo {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 0;
-      }
-      .peerId {
-        font-weight: 600;
-        font-size: 13px;
-        font-family: ui-monospace, monospace;
-        word-break: break-all;
-      }
-      .peerEndpoint {
-        font-size: 12px;
-        color: var(--muted);
-        font-family: ui-monospace, monospace;
-      }
-      .peerStats {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        font-size: 12px;
-        color: var(--muted);
-        text-align: right;
-        flex-shrink: 0;
-      }
-      .peerBlockHeight { font-family: ui-monospace, monospace; }
-      .peerLastSeen { font-size: 11px; }
-      .peersStatus {
-        text-align: center;
-        padding: 20px;
-        color: var(--muted);
-        font-size: 13px;
-      }
       .launchBtn {
         flex: 0 0 auto;
         font-size: 12px;
@@ -1191,11 +1132,6 @@
                 </svg>
                 <span class="brandName">DAPPS</span>
               </a>
-              <div class="brandSep" id="viewSep" style="display:none"></div>
-              <div style="display:flex; gap:8px; flex: 0 0 auto;" id="viewTabs">
-                <button style="background:transparent;border:none;color:var(--fg);cursor:pointer;font-weight:600;font-size:14px;padding:0;" id="tabDapps">Dapps</button>
-                <button style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-weight:600;font-size:14px;padding:0;" id="tabPeers">Peers</button>
-              </div>
             </div>
             <div class="headerActions">
             <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
@@ -1211,7 +1147,6 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M9 18h6"/></svg>
               </button>
               <div class="sortMenu" id="sortMenu" role="menu">
-                <!-- Dapp sort options -->
                 <button class="sortOpt" data-sort="popular" role="menuitemradio" aria-label="Popular" title="Popular">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
                 </button>
@@ -1224,28 +1159,12 @@
                 <button class="sortOpt" data-sort="alpha" role="menuitemradio" aria-label="Alphabetical" title="Alphabetical">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l3 3 3-3M6 20V4"/><path d="M13 6h7M13 12h5M13 18h3"/></svg>
                 </button>
-                <!-- Peer sort options (initially hidden) -->
-                <div id="peerSortOpts" style="display:none">
-                  <button class="sortOpt" data-sort="status" role="menuitemradio" aria-label="By status" title="By status">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="20" cy="12" r="1"/><path d="M9 7v10M20 7v10"/></svg>
-                  </button>
-                  <button class="sortOpt" data-sort="block_height" role="menuitemradio" aria-label="By block height" title="By block height">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-                  </button>
-                  <button class="sortOpt" data-sort="last_seen" role="menuitemradio" aria-label="By last seen" title="By last seen">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-                  </button>
-                  <button class="sortOpt" data-sort="peer_id" role="menuitemradio" aria-label="By peer ID" title="By peer ID">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l3 3 3-3M6 20V4"/><path d="M13 6h7M13 12h5M13 18h3"/></svg>
-                  </button>
-                </div>
               </div>
             </div>
             </div>
           </div>
         </div>
         <ul id="dappList"></ul>
-        <div id="peerList" style="display:none; padding: 12px 12px 14px; flex: 1 1 auto; min-height: 0;"></div>
       </div>
       <div id="launchOverlay" role="status" aria-live="polite" aria-label="Launching dapp" hidden>
         <div class="launchCard">
@@ -2618,209 +2537,6 @@
             setStep("done");
           }
         }
-      })();
-
-      // ── Peer Discovery ────────────────────────────────────────────────────────
-
-      (function initPeerDiscovery() {
-        const dappList = document.getElementById("dappList");
-        const peerList = document.getElementById("peerList");
-        const tabDapps = document.getElementById("tabDapps");
-        const tabPeers = document.getElementById("tabPeers");
-        const viewSep = document.getElementById("viewSep");
-        const sortMenu = document.getElementById("sortMenu");
-        const peerSortOpts = document.getElementById("peerSortOpts");
-        const dappSortOpts = Array.from(sortMenu.querySelectorAll(".sortOpt:not(#peerSortOpts *)"));
-
-        let peerPollTimer = null;
-        let peers = [];
-        let peerSort = "status";
-        let currentView = "dapps";
-        let peerPollInterval = 10000;
-        let backgroundPollInterval = 30000;
-
-        function switchView(view) {
-          currentView = view;
-          const isDappsView = view === "dapps";
-          dappList.style.display = isDappsView ? "" : "none";
-          peerList.style.display = isDappsView ? "none" : "block";
-          viewSep.style.display = view !== "dapps" ? "block" : "none";
-
-          // Update tab styling
-          tabDapps.style.color = isDappsView ? "var(--fg)" : "var(--muted)";
-          tabPeers.style.color = isDappsView ? "var(--muted)" : "var(--fg)";
-
-          // Update sort menu
-          if (isDappsView) {
-            peerSortOpts.style.display = "none";
-            dappSortOpts.forEach((opt) => (opt.style.display = ""));
-          } else {
-            peerSortOpts.style.display = "flex";
-            peerSortOpts.style.flexDirection = "column";
-            dappSortOpts.forEach((opt) => (opt.style.display = "none"));
-          }
-
-          // Resume/start peer polling if switching to peers
-          if (view === "peers") {
-            startPeerPolling();
-          }
-        }
-
-        tabDapps.addEventListener("click", () => switchView("dapps"));
-        tabPeers.addEventListener("click", () => switchView("peers"));
-
-        async function fetchPeers() {
-          try {
-            const resp = await fetch("/api/peers", { cache: "no-store" });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
-            peers = data.peers || [];
-            return true;
-          } catch (e) {
-            console.warn("[peers] fetch error:", e.message);
-            return false;
-          }
-        }
-
-        async function fetchPeerConfig() {
-          try {
-            const resp = await fetch("/api/peers/config", { cache: "no-store" });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const cfg = await resp.json();
-            peerPollInterval = cfg.poll_interval_ms || 10000;
-            return cfg;
-          } catch (e) {
-            console.warn("[peers] config fetch error:", e.message);
-            return null;
-          }
-        }
-
-        function formatTime(ms) {
-          const now = Date.now();
-          const elapsed = now - ms;
-          const seconds = Math.floor(elapsed / 1000);
-          const minutes = Math.floor(seconds / 60);
-          const hours = Math.floor(minutes / 60);
-
-          if (seconds < 60) return `${seconds}s ago`;
-          if (minutes < 60) return `${minutes}m ago`;
-          if (hours < 24) return `${hours}h ago`;
-          return `${Math.floor(hours / 24)}d ago`;
-        }
-
-        function sortPeers(list) {
-          const sorted = [...list];
-          const now = Date.now();
-          const STALE_MS = 180000;
-
-          switch (peerSort) {
-            case "status":
-              sorted.sort((a, b) => {
-                const order = { synced: 0, lagging: 1, offline: 2 };
-                return (order[a.status] || 3) - (order[b.status] || 3);
-              });
-              break;
-            case "block_height":
-              sorted.sort((a, b) => (b.block_height || 0) - (a.block_height || 0));
-              break;
-            case "last_seen":
-              sorted.sort((a, b) => (b.last_seen_ms || 0) - (a.last_seen_ms || 0));
-              break;
-            case "peer_id":
-              sorted.sort((a, b) => (a.id || "").localeCompare(b.id || ""));
-              break;
-          }
-          return sorted;
-        }
-
-        function renderPeers() {
-          const sorted = sortPeers(peers);
-          const now = Date.now();
-          const STALE_MS = 180000;
-
-          if (!sorted.length) {
-            peerList.innerHTML =
-              '<div class="peersStatus">No peers available yet. Checking network…</div>';
-            return;
-          }
-
-          peerList.innerHTML = sorted
-            .map((p) => {
-              const isStale = now - p.last_seen_ms > STALE_MS;
-              const status = isStale ? "offline" : p.status;
-              return `
-            <div class="peerRow" style="${isStale ? "opacity:0.6;" : ""}">
-              <div class="peerStatusIndicator ${status}"></div>
-              <div class="peerInfo">
-                <div class="peerId">${p.id}</div>
-                <div class="peerEndpoint">${p.endpoint}</div>
-              </div>
-              <div class="peerStats">
-                <div class="peerBlockHeight">#${p.block_height || "?"}</div>
-                <div class="peerLastSeen">${formatTime(p.last_seen_ms)}</div>
-              </div>
-            </div>
-          `;
-            })
-            .join("");
-        }
-
-        function startPeerPolling() {
-          if (peerPollTimer) return;
-
-          async function tick() {
-            const shouldPoll =
-              currentView === "peers" || document.hidden === false;
-            if (shouldPoll) {
-              await fetchPeers();
-              renderPeers();
-            }
-            const interval =
-              document.hidden ? backgroundPollInterval : peerPollInterval;
-            peerPollTimer = setTimeout(tick, interval);
-          }
-
-          fetchPeerConfig().then(() => {
-            tick();
-          });
-        }
-
-        function stopPeerPolling() {
-          if (peerPollTimer) {
-            clearTimeout(peerPollTimer);
-            peerPollTimer = null;
-          }
-        }
-
-        // Handle page visibility changes for background polling
-        document.addEventListener("visibilitychange", () => {
-          if (currentView === "peers") {
-            // Trigger a poll immediately on tab return
-            if (!document.hidden) {
-              fetchPeers().then(() => renderPeers());
-            }
-          }
-        });
-
-        // Sort menu for peers
-        peerSortOpts.addEventListener("click", (e) => {
-          const opt = e.target.closest(".sortOpt");
-          if (!opt || !opt.dataset.sort) return;
-          const sort = opt.dataset.sort;
-          if (sort === peerSort) return;
-          peerSort = sort;
-
-          // Update active indicator
-          peerSortOpts.querySelectorAll(".sortOpt").forEach((o) => {
-            o.classList.toggle("active", o.dataset.sort === sort);
-          });
-          renderPeers();
-        });
-
-        // Set initial peer sort as active
-        peerSortOpts
-          .querySelector('[data-sort="status"]')
-          .classList.add("active");
       })();
 
     </script>
