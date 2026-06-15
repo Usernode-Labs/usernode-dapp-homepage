@@ -22,6 +22,81 @@
       flex-direction: column;
     }
 
+    /* Navbar */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(11, 15, 22, 0.98);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+      backdrop-filter: blur(10px);
+    }
+
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+      text-decoration: none;
+      color: #e7edf7;
+    }
+
+    .navbar-logo {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #2563eb 0%, #6ea8fe 100%);
+      border-radius: 8px;
+      font-weight: bold;
+      color: #fff;
+      font-size: 18px;
+    }
+
+    .navbar-title {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    .navbar-brand:hover .navbar-title {
+      color: #6ea8fe;
+    }
+
+    .navbar-links {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex: 0 0 auto;
+    }
+
+    .navbar-link {
+      padding: 8px 14px;
+      color: #a8b3c7;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .navbar-link:hover {
+      background: rgba(110, 168, 254, 0.1);
+      color: #6ea8fe;
+    }
+
+    .navbar-link.active {
+      color: #6ea8fe;
+      background: rgba(110, 168, 254, 0.15);
+    }
+
     main {
       flex: 1;
       display: flex;
@@ -294,7 +369,148 @@
       border-color: #2563eb;
     }
 
+    /* Modal dialogs */
+    .modalOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 20px;
+    }
+
+    .modalOverlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: #141b26;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    .modalHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      position: sticky;
+      top: 0;
+      background: #141b26;
+    }
+
+    .modalTitle {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .modalClose {
+      background: none;
+      border: none;
+      color: #a8b3c7;
+      font-size: 28px;
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s ease;
+    }
+
+    .modalClose:hover {
+      color: #e7edf7;
+    }
+
+    .modalBody {
+      padding: 20px;
+    }
+
+    .modalSection {
+      margin-bottom: 20px;
+    }
+
+    .modalSection:last-child {
+      margin-bottom: 0;
+    }
+
+    .modalSection h3 {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #6ea8fe;
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .modalSection p {
+      color: #a8b3c7;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .modalSection ul {
+      color: #a8b3c7;
+      line-height: 1.8;
+      font-size: 14px;
+      margin-left: 20px;
+    }
+
+    .modalSection li {
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 768px) {
+      header {
+        padding: 10px 16px;
+      }
+
+      .navbar-title {
+        font-size: 16px;
+      }
+
+      .navbar-links {
+        gap: 0;
+      }
+
+      .navbar-link {
+        padding: 6px 10px;
+        font-size: 13px;
+      }
+    }
+
     @media (max-width: 640px) {
+      header {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px 16px;
+      }
+
+      .navbar-brand {
+        width: 100%;
+      }
+
+      .navbar-links {
+        width: 100%;
+        justify-content: space-around;
+      }
+
+      .navbar-link {
+        flex: 1;
+        text-align: center;
+        padding: 8px 6px;
+        font-size: 12px;
+      }
+
       .controls {
         bottom: 12px;
         left: 12px;
@@ -320,10 +536,27 @@
         top: 12px;
         right: 12px;
       }
+
+      .modal {
+        max-width: calc(100vw - 20px);
+      }
     }
   </style>
 </head>
 <body>
+  <header>
+    <a href="/" class="navbar-brand">
+      <div class="navbar-logo">📷</div>
+      <div class="navbar-title">Reader</div>
+    </a>
+    <nav class="navbar-links">
+      <a href="/reader" class="navbar-link active">App</a>
+      <a href="#about" class="navbar-link" onclick="showModal('about'); return false;">About</a>
+      <a href="#help" class="navbar-link" onclick="showModal('help'); return false;">Help</a>
+      <a href="#settings" class="navbar-link" onclick="showModal('settings'); return false;">Documentation</a>
+    </nav>
+  </header>
+
   <main>
     <video id="videoFeed" playsinline></video>
     <canvas id="displayCanvas"></canvas>
@@ -391,6 +624,112 @@
           <span id="confidenceValue">0.50</span>
         </label>
         <input type="range" id="confidenceSlider" min="0" max="100" value="50" />
+      </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modalOverlay" id="aboutModal">
+      <div class="modal">
+        <div class="modalHeader">
+          <h2 class="modalTitle">About Reader</h2>
+          <button class="modalClose" onclick="closeModal('about')">&times;</button>
+        </div>
+        <div class="modalBody">
+          <div class="modalSection">
+            <h3>What is Reader?</h3>
+            <p>Reader is a real-time foreground/background detection tool that uses your webcam and advanced machine learning to separate people and objects from their backgrounds in real time.</p>
+          </div>
+          <div class="modalSection">
+            <h3>Key Features</h3>
+            <ul>
+              <li><strong>Real-time Segmentation:</strong> Process video at 30+ FPS using MediaPipe Selfie Segmentation</li>
+              <li><strong>Multiple Visualizations:</strong> View raw feed, foreground mask, background blur, or confidence heatmap</li>
+              <li><strong>Adjustable Sensitivity:</strong> Fine-tune detection with a confidence threshold slider</li>
+              <li><strong>Privacy First:</strong> All processing happens locally in your browser—no data is sent to servers</li>
+            </ul>
+          </div>
+          <div class="modalSection">
+            <h3>Technology</h3>
+            <p>Built with TensorFlow.js and MediaPipe, Reader runs completely in your browser for fast, private video processing.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modalOverlay" id="helpModal">
+      <div class="modal">
+        <div class="modalHeader">
+          <h2 class="modalTitle">Help & Keyboard Shortcuts</h2>
+          <button class="modalClose" onclick="closeModal('help')">&times;</button>
+        </div>
+        <div class="modalBody">
+          <div class="modalSection">
+            <h3>Getting Started</h3>
+            <ol style="margin-left: 20px; color: #a8b3c7; line-height: 1.8; font-size: 14px;">
+              <li style="margin-bottom: 8px;">Click <strong>Start Camera</strong> to enable your webcam</li>
+              <li style="margin-bottom: 8px;">Grant camera permission when prompted by your browser</li>
+              <li style="margin-bottom: 8px;">Choose a visualization mode from the dropdown menu</li>
+              <li style="margin-bottom: 8px;">Adjust the confidence threshold slider to fine-tune detection</li>
+              <li style="margin-bottom: 8px;">Click the settings icon (⚙️) to view FPS and other stats</li>
+            </ol>
+          </div>
+          <div class="modalSection">
+            <h3>Visualization Modes</h3>
+            <ul>
+              <li><strong>Raw Feed:</strong> Your unprocessed camera stream</li>
+              <li><strong>Foreground Mask:</strong> Highlights detected people/objects; darkens the background</li>
+              <li><strong>Background Blur:</strong> Applies blur to background areas while keeping foreground sharp</li>
+              <li><strong>Segmentation Map:</strong> Shows confidence scores as a color gradient (blue = low, red = high)</li>
+            </ul>
+          </div>
+          <div class="modalSection">
+            <h3>Tips</h3>
+            <ul>
+              <li>Better lighting improves detection accuracy</li>
+              <li>Higher confidence threshold = fewer false detections but might miss edges</li>
+              <li>The app pauses automatically when you switch browser tabs to save battery</li>
+              <li>Works best with a single person or object in frame</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modalOverlay" id="settingsModal">
+      <div class="modal">
+        <div class="modalHeader">
+          <h2 class="modalTitle">Documentation</h2>
+          <button class="modalClose" onclick="closeModal('settings')">&times;</button>
+        </div>
+        <div class="modalBody">
+          <div class="modalSection">
+            <h3>How It Works</h3>
+            <p>Reader uses a neural network model called MediaPipe Selfie Segmentation to analyze each video frame. The model outputs a confidence map where each pixel has a score from 0 to 1 indicating how likely it is to be part of the foreground.</p>
+          </div>
+          <div class="modalSection">
+            <h3>Settings Panel</h3>
+            <ul>
+              <li><strong>FPS:</strong> Frames per second being processed</li>
+              <li><strong>Inference Time:</strong> How long the ML model takes to process each frame (in milliseconds)</li>
+              <li><strong>Resolution:</strong> The camera resolution being analyzed</li>
+              <li><strong>Model:</strong> The machine learning model being used</li>
+              <li><strong>Status:</strong> Current processing status (Running, Paused, or Error)</li>
+            </ul>
+          </div>
+          <div class="modalSection">
+            <h3>Confidence Threshold</h3>
+            <p>This slider controls the sensitivity of foreground detection. Lower values (0.0) detect more pixels as foreground but may include background artifacts. Higher values (1.0) are stricter and may miss foreground edges.</p>
+          </div>
+          <div class="modalSection">
+            <h3>Privacy & Performance</h3>
+            <ul>
+              <li>All video processing happens in your browser—no frames are uploaded anywhere</li>
+              <li>The app runs at ~30 FPS on modern devices</li>
+              <li>Inference takes 30–50 ms per frame depending on your hardware</li>
+              <li>Pauses automatically when your tab is in the background to conserve CPU and battery</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -749,6 +1088,40 @@
         errorOverlay.classList.remove('show');
       };
     }
+
+    // Modal functions
+    function showModal(modalType) {
+      const modals = {
+        about: 'aboutModal',
+        help: 'helpModal',
+        settings: 'settingsModal'
+      };
+      const modalId = modals[modalType];
+      if (modalId) {
+        document.getElementById(modalId).classList.add('show');
+      }
+    }
+
+    function closeModal(modalType) {
+      const modals = {
+        about: 'aboutModal',
+        help: 'helpModal',
+        settings: 'settingsModal'
+      };
+      const modalId = modals[modalType];
+      if (modalId) {
+        document.getElementById(modalId).classList.remove('show');
+      }
+    }
+
+    // Close modal when clicking outside
+    document.querySelectorAll('.modalOverlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          overlay.classList.remove('show');
+        }
+      });
+    });
 
     // Event listeners
     cameraBtn.addEventListener('click', () => {
