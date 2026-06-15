@@ -2,13 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Run as the non-root "node" user that ships with the base image.
-USER node
+# Install the single runtime dependency (pg, for the micro-blog feed's Postgres
+# store). Done as root so node_modules is writable, then we drop to the non-root
+# "node" user for runtime. The homepage itself is still stdlib-only; pg is loaded
+# lazily and only used when DATABASE_URL is set.
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev || npm install --omit=dev
 
-# This repo has no package.json; it's just static files + server.js.
-COPY --chown=node:node server.js index.html dapps.json ./
+# Application files.
+COPY server.js index.html dapps.json ./
 # Static screenshot assets served at /screenshots/* by server.js.
-COPY --chown=node:node public ./public
+COPY public ./public
+
+# Drop privileges for runtime.
+USER node
 
 ENV NODE_ENV=production
 ENV PORT=8000
@@ -20,4 +27,3 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:${PORT}/" >/dev/null 2>&1 || exit 1
 
 CMD ["node", "server.js"]
-

@@ -1,0 +1,17 @@
+{
+  "name": "usernode-dapp-homepage",
+  "version": "1.0.0",
+  "description": "Usernode dapps directory homepage + micro-blog feed. Zero-dependency Node stdlib server, plus pg for the authenticated feed's Postgres store.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --local-dev"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "pg": "^8.11.5"
+  }
+}

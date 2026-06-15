@@ -1141,6 +1141,224 @@
       .statusExpired { background: rgba(148, 163, 184, 0.14); color: var(--muted); }
       .statusExpired .dot { background: var(--muted); }
       @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── Micro-blog: view tabs + staging badge ─────────────────────── */
+      .viewTabs {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 12px;
+      }
+      .viewTab {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        font: inherit;
+        font-weight: 600;
+        font-size: 13.5px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+      }
+      .viewTab:hover { color: var(--fg); border-color: var(--card-hover-border); }
+      .viewTab.active {
+        color: #fff;
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .stagingBadge {
+        margin-left: auto;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+        color: #92400e;
+        background: #fde68a;
+        border-radius: 6px;
+        padding: 3px 8px;
+      }
+      html.dark .stagingBadge { color: #fde68a; background: rgba(180, 130, 20, 0.25); }
+
+      /* ── Micro-blog: feed view container ───────────────────────────── */
+      #feedView {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        padding: 14px 14px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .feedStatus {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        border: 1px solid var(--card-item-border);
+        box-shadow: var(--card-item-shadow);
+        border-radius: 12px;
+        padding: 12px 14px;
+        background: var(--card);
+      }
+      .statItem { display: flex; flex-direction: column; gap: 2px; }
+      .statLabel { font-size: 11.5px; color: var(--muted); }
+      .statValue { font-size: 19px; font-weight: 700; color: var(--fg); }
+      .convertBtn {
+        margin-left: auto;
+        appearance: none;
+        border: none;
+        background: var(--launch-btn);
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        font-size: 13.5px;
+        padding: 9px 16px;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .convertBtn:hover { filter: brightness(1.06); }
+
+      .composer {
+        border: 1px solid var(--card-item-border);
+        box-shadow: var(--card-item-shadow);
+        border-radius: 12px;
+        padding: 12px 14px;
+        background: var(--card);
+      }
+      .composer textarea {
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+        min-height: 60px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg);
+        color: var(--fg);
+        font: inherit;
+        font-size: 15px;
+        padding: 10px 12px;
+      }
+      .composer textarea:focus { outline: none; border-color: var(--accent); }
+      .composerBar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 10px;
+      }
+      .charCount { font-size: 12.5px; color: var(--muted); margin-right: auto; }
+      .charCount.over { color: #ef4444; font-weight: 700; }
+      .postBtn {
+        appearance: none;
+        border: none;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        font-size: 14px;
+        padding: 9px 20px;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .postBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .postBtn:not(:disabled):hover { filter: brightness(1.06); }
+
+      .signinPrompt {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        border: 1px dashed var(--border);
+        border-radius: 12px;
+        padding: 14px 16px;
+        background: var(--card);
+      }
+      .signinPrompt strong { font-size: 14.5px; }
+      .signinPrompt span { font-size: 13px; color: var(--muted); }
+
+      .feedLayout { display: flex; gap: 14px; align-items: flex-start; }
+      .feedMain { flex: 1 1 auto; min-width: 0; display: grid; gap: 10px; }
+      .leaderboard {
+        flex: 0 0 200px;
+        border: 1px solid var(--card-item-border);
+        box-shadow: var(--card-item-shadow);
+        border-radius: 12px;
+        padding: 12px 14px;
+        background: var(--card);
+        position: sticky;
+        top: 0;
+      }
+      .leaderTitle { font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 10px; }
+      .leaderList { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: lb; }
+      .leaderList li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border: none; box-shadow: none; padding: 0; }
+      .leaderList li::before { counter-increment: lb; content: counter(lb); font-weight: 700; color: var(--muted); width: 16px; flex: 0 0 auto; }
+      .leaderName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .leaderPts { font-weight: 700; color: var(--accent); flex: 0 0 auto; }
+      .leaderEmpty { font-size: 12.5px; color: var(--muted); }
+
+      .post {
+        border: 1px solid var(--card-item-border);
+        box-shadow: var(--card-item-shadow);
+        border-radius: 12px;
+        padding: 12px 14px;
+        background: var(--card);
+      }
+      .postHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+      .postAuthor { font-weight: 700; font-size: 14px; }
+      .postTime { font-size: 12px; color: var(--muted); }
+      .postMine { font-size: 11px; color: var(--accent); border: 1px solid var(--card-hover-border); border-radius: 6px; padding: 1px 6px; }
+      .postBody { font-size: 14.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+      .postFoot { margin-top: 10px; }
+      .likeBtn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+      }
+      .likeBtn:hover:not(:disabled) { border-color: #f43f5e; color: #f43f5e; }
+      .likeBtn:disabled { cursor: default; opacity: 0.7; }
+      .likeBtn.liked { color: #f43f5e; border-color: #f43f5e; background: rgba(244, 63, 94, 0.08); }
+      .likeBtn svg { width: 15px; height: 15px; }
+      .likeBtn.liked svg { fill: #f43f5e; }
+
+      .feedEmpty, .feedUnavailable { font-size: 13.5px; color: var(--muted); padding: 18px 4px; text-align: center; }
+      .feedError { font-size: 12.5px; color: #ef4444; margin-top: 8px; }
+      .feedError[hidden] { display: none; }
+
+      /* Convert modal extras */
+      .convertRow { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; margin-top: 10px; }
+      .convertStrong { font-weight: 700; }
+      .convertLabel { display: block; font-size: 12.5px; color: var(--muted); margin: 14px 0 6px; }
+      .convertInput {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg);
+        color: var(--fg);
+        font: inherit;
+        font-size: 16px;
+        padding: 10px 12px;
+      }
+      .convertInput:focus { outline: none; border-color: var(--accent); }
+
+      @media (max-width: 560px) {
+        .feedLayout { flex-direction: column; }
+        .leaderboard { flex: 1 1 auto; width: 100%; box-sizing: border-box; position: static; order: -1; }
+      }
     </style>
   </head>
   <body>
@@ -1199,8 +1417,49 @@
               </div>
             </div>
           </div>
+          <div class="viewTabs" role="tablist" aria-label="Views">
+            <button class="viewTab active" id="tabDapps" type="button" role="tab" aria-selected="true">Dapps</button>
+            <button class="viewTab" id="tabFeed" type="button" role="tab" aria-selected="false">Feed</button>
+            <span class="stagingBadge" id="stagingBadge" hidden title="You are viewing staging mock data">Staging</span>
+          </div>
         </div>
         <ul id="dappList"></ul>
+        <div id="feedView" hidden>
+          <!-- Points / token status strip (signed-in only) -->
+          <div class="feedStatus" id="feedStatus" hidden>
+            <div class="statItem"><span class="statLabel">Points available</span><span class="statValue" id="statAvail">0</span></div>
+            <div class="statItem"><span class="statLabel">Earned (all-time)</span><span class="statValue" id="statEarned">0</span></div>
+            <div class="statItem"><span class="statLabel">Token balance</span><span class="statValue" id="statTokens">0</span></div>
+            <button class="convertBtn" id="openConvertBtn" type="button">Convert</button>
+          </div>
+
+          <!-- Composer (signed-in) OR sign-in prompt (anonymous) -->
+          <div class="composer" id="composer" hidden>
+            <textarea id="composerText" rows="3" maxlength="280" placeholder="What's happening on Usernode?"></textarea>
+            <div class="composerBar">
+              <span class="charCount" id="charCount">0/280</span>
+              <button class="postBtn" id="postBtn" type="button" disabled>Post</button>
+            </div>
+            <div class="feedError" id="composerError" hidden></div>
+          </div>
+          <div class="signinPrompt" id="signinPrompt" hidden>
+            <strong>Sign in through Usernode to join the conversation.</strong>
+            <span>Posting, liking, and earning points need your Usernode identity. You can still read the feed below.</span>
+          </div>
+
+          <div class="feedLayout">
+            <div class="feedMain">
+              <div id="feedList"></div>
+              <div class="feedEmpty" id="feedEmpty" hidden>No posts yet — be the first to post.</div>
+              <div class="feedUnavailable" id="feedUnavailable" hidden>The feed is unavailable in this environment.</div>
+            </div>
+            <aside class="leaderboard" id="leaderboard">
+              <div class="leaderTitle">Top contributors</div>
+              <ol id="leaderList" class="leaderList"></ol>
+              <div class="leaderEmpty" id="leaderEmpty" hidden>No points earned yet.</div>
+            </aside>
+          </div>
+        </div>
       </div>
       <div id="launchOverlay" role="status" aria-live="polite" aria-label="Launching dapp" hidden>
         <div class="launchCard">
@@ -1313,6 +1572,33 @@
         <div id="submitStepDone" hidden>
           <div id="doneBody"></div>
           <div class="modalActions"><button class="btnPrimary" id="doneClose" type="button">Done</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Convert points → tokens modal -->
+    <div class="modalOverlay" id="convertModal" hidden role="dialog" aria-modal="true" aria-label="Convert points to tokens">
+      <div class="modalCard">
+        <div class="modalHead">
+          <div class="modalTitle">Convert points to tokens</div>
+          <button class="modalClose" id="convertClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div id="convertStepForm">
+          <p class="modalNote">Trade your earned points for an in-app token balance. The rate is <strong id="convertRate">10 points → 1 token</strong>. Conversions are one-way and can't be undone.</p>
+          <div class="convertRow"><span>Points available</span><span class="convertStrong" id="convertAvail">0</span></div>
+          <label class="convertLabel" for="convertPoints">Points to convert</label>
+          <input class="convertInput" id="convertPoints" type="number" min="0" step="1" inputmode="numeric" placeholder="0" />
+          <div class="convertRow"><span>You'll receive</span><span class="convertStrong" id="convertPreview">0 tokens</span></div>
+          <div class="modalNote" id="convertSimNote">💡 v1 note: the token balance is simulated in-app only — nothing is transferred on-chain yet.</div>
+          <div class="modalError" id="convertError" hidden></div>
+          <div class="modalActions">
+            <button class="btnGhost" id="convertCancel" type="button">Cancel</button>
+            <button class="btnPrimary" id="convertConfirm" type="button" disabled>Convert</button>
+          </div>
+        </div>
+        <div id="convertStepDone" hidden>
+          <div id="convertDoneBody"></div>
+          <div class="modalActions"><button class="btnPrimary" id="convertDoneClose" type="button">Done</button></div>
         </div>
       </div>
     </div>
@@ -2583,6 +2869,309 @@
             setStep("done");
           }
         }
+      })();
+
+      // ── Micro-blog feed ─────────────────────────────────────────────────────
+      (function microblog() {
+        const API = "/api/microblog";
+        const params = new URLSearchParams(location.search);
+        const TOKEN = params.get("token") || "";
+        const MAX_LEN = 280;
+
+        const tabDapps = document.getElementById("tabDapps");
+        const tabFeed = document.getElementById("tabFeed");
+        const dappList = document.getElementById("dappList");
+        const feedView = document.getElementById("feedView");
+        const stagingBadge = document.getElementById("stagingBadge");
+
+        const feedStatus = document.getElementById("feedStatus");
+        const statAvail = document.getElementById("statAvail");
+        const statEarned = document.getElementById("statEarned");
+        const statTokens = document.getElementById("statTokens");
+
+        const composer = document.getElementById("composer");
+        const composerText = document.getElementById("composerText");
+        const charCount = document.getElementById("charCount");
+        const postBtn = document.getElementById("postBtn");
+        const composerError = document.getElementById("composerError");
+        const signinPrompt = document.getElementById("signinPrompt");
+
+        const feedList = document.getElementById("feedList");
+        const feedEmpty = document.getElementById("feedEmpty");
+        const feedUnavailable = document.getElementById("feedUnavailable");
+        const leaderList = document.getElementById("leaderList");
+        const leaderEmpty = document.getElementById("leaderEmpty");
+
+        const convertModal = document.getElementById("convertModal");
+        const openConvertBtn = document.getElementById("openConvertBtn");
+        const convertRate = document.getElementById("convertRate");
+        const convertAvail = document.getElementById("convertAvail");
+        const convertPoints = document.getElementById("convertPoints");
+        const convertPreview = document.getElementById("convertPreview");
+        const convertError = document.getElementById("convertError");
+        const convertConfirm = document.getElementById("convertConfirm");
+        const convertStepForm = document.getElementById("convertStepForm");
+        const convertStepDone = document.getElementById("convertStepDone");
+        const convertDoneBody = document.getElementById("convertDoneBody");
+
+        if (!tabFeed || !feedView) return;
+
+        let me = null;          // { points_available, ... } when signed in, else null
+        let unavailable = false; // server reported the feed is disabled (no DB)
+        let rate = 10;
+        const HEART =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
+
+        function authHeaders(extra) {
+          const h = Object.assign({ "content-type": "application/json" }, extra || {});
+          if (TOKEN) h["x-usernode-token"] = TOKEN;
+          return h;
+        }
+        function esc(s) {
+          return String(s).replace(/[&<>"']/g, (c) =>
+            ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+        }
+        function relTime(iso) {
+          const t = new Date(iso).getTime();
+          if (!isFinite(t)) return "";
+          const s = Math.max(1, Math.floor((Date.now() - t) / 1000));
+          if (s < 60) return s + "s ago";
+          const m = Math.floor(s / 60); if (m < 60) return m + "m ago";
+          const h = Math.floor(m / 60); if (h < 24) return h + "h ago";
+          const d = Math.floor(h / 24); if (d < 7) return d + "d ago";
+          return new Date(t).toLocaleDateString();
+        }
+
+        // ── View switching ──
+        function showFeed(on) {
+          tabFeed.classList.toggle("active", on);
+          tabDapps.classList.toggle("active", !on);
+          tabFeed.setAttribute("aria-selected", String(on));
+          tabDapps.setAttribute("aria-selected", String(!on));
+          feedView.hidden = !on;
+          dappList.style.display = on ? "none" : "";
+          if (on) refreshAll();
+        }
+        tabFeed.addEventListener("click", () => showFeed(true));
+        tabDapps.addEventListener("click", () => showFeed(false));
+
+        // ── Loaders ──
+        async function refreshAll() {
+          await loadMe();
+          await Promise.all([loadFeed(), loadLeaderboard()]);
+        }
+
+        async function loadMe() {
+          try {
+            const r = await fetch(`${API}/me`, { headers: authHeaders(), cache: "no-store" });
+            if (r.status === 503) { unavailable = true; me = null; }
+            else if (r.ok) { me = await r.json(); rate = me.rate || rate; unavailable = false; }
+            else { me = null; }
+          } catch (_) { me = null; }
+          applyAuthUI();
+        }
+
+        function applyAuthUI() {
+          const signedIn = !!me;
+          composer.hidden = !signedIn || unavailable;
+          feedStatus.hidden = !signedIn || unavailable;
+          signinPrompt.hidden = signedIn || unavailable;
+          if (signedIn) {
+            statAvail.textContent = me.points_available;
+            statEarned.textContent = me.points_earned;
+            statTokens.textContent = me.token_balance;
+            convertRate.textContent = `${rate} points → 1 token`;
+          }
+        }
+
+        async function loadFeed() {
+          try {
+            const r = await fetch(`${API}/feed?limit=50`, { headers: authHeaders(), cache: "no-store" });
+            if (r.status === 503) { unavailable = true; renderUnavailable(); return; }
+            const data = await r.json();
+            if (data && data.staging) stagingBadge.hidden = false;
+            renderFeed(data.posts || []);
+          } catch (_) {
+            renderUnavailable();
+          }
+        }
+
+        function renderUnavailable() {
+          feedList.innerHTML = "";
+          feedEmpty.hidden = true;
+          feedUnavailable.hidden = false;
+          composer.hidden = true;
+          feedStatus.hidden = true;
+          signinPrompt.hidden = true;
+        }
+
+        function renderFeed(posts) {
+          feedUnavailable.hidden = true;
+          feedList.innerHTML = "";
+          if (!posts.length) { feedEmpty.hidden = false; return; }
+          feedEmpty.hidden = true;
+          const signedIn = !!me;
+          for (const p of posts) {
+            const el = document.createElement("div");
+            el.className = "post";
+            el.dataset.id = p.id;
+            const mineTag = p.mine ? '<span class="postMine">you</span>' : "";
+            el.innerHTML =
+              `<div class="postHead"><span class="postAuthor">${esc(p.author)}</span>${mineTag}` +
+              `<span class="postTime">${esc(relTime(p.created_at))}</span></div>` +
+              `<div class="postBody">${esc(p.body)}</div>` +
+              `<div class="postFoot">` +
+              `<button class="likeBtn${p.liked_by_me ? " liked" : ""}" type="button"` +
+              `${signedIn ? "" : " disabled title='Sign in to like'"} data-liked="${p.liked_by_me ? 1 : 0}">` +
+              `${HEART}<span class="likeNum">${p.like_count}</span></button></div>`;
+            feedList.appendChild(el);
+          }
+        }
+
+        async function loadLeaderboard() {
+          try {
+            const r = await fetch(`${API}/leaderboard?limit=10`, { cache: "no-store" });
+            if (!r.ok) { leaderList.innerHTML = ""; leaderEmpty.hidden = false; return; }
+            const data = await r.json();
+            const leaders = (data && data.leaders) || [];
+            leaderList.innerHTML = "";
+            if (!leaders.length) { leaderEmpty.hidden = false; return; }
+            leaderEmpty.hidden = true;
+            for (const l of leaders) {
+              const li = document.createElement("li");
+              li.innerHTML = `<span class="leaderName">${esc(l.username)}</span><span class="leaderPts">${l.points}</span>`;
+              leaderList.appendChild(li);
+            }
+          } catch (_) { /* leave as-is */ }
+        }
+
+        // ── Composer ──
+        function syncCompose() {
+          const len = composerText.value.length;
+          charCount.textContent = `${len}/${MAX_LEN}`;
+          charCount.classList.toggle("over", len > MAX_LEN);
+          postBtn.disabled = len === 0 || len > MAX_LEN || composerText.value.trim().length === 0;
+        }
+        composerText.addEventListener("input", syncCompose);
+
+        postBtn.addEventListener("click", async () => {
+          const body = composerText.value.trim();
+          if (!body) return;
+          postBtn.disabled = true;
+          composerError.hidden = true;
+          try {
+            const r = await fetch(`${API}/posts`, {
+              method: "POST",
+              headers: authHeaders(),
+              body: JSON.stringify({ body }),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || "Could not post.");
+            composerText.value = "";
+            syncCompose();
+            await Promise.all([loadMe(), loadFeed(), loadLeaderboard()]);
+          } catch (e) {
+            composerError.textContent = e.message;
+            composerError.hidden = false;
+            postBtn.disabled = false;
+          }
+        });
+
+        // ── Like toggle (event delegation) ──
+        feedList.addEventListener("click", async (e) => {
+          const btn = e.target.closest(".likeBtn");
+          if (!btn || btn.disabled) return;
+          const postEl = btn.closest(".post");
+          const id = postEl && postEl.dataset.id;
+          if (!id) return;
+          const liked = btn.dataset.liked === "1";
+          btn.disabled = true;
+          try {
+            const r = await fetch(`${API}/posts/${id}/like`, {
+              method: liked ? "DELETE" : "POST",
+              headers: authHeaders(),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || "Could not update like.");
+            const now = !!data.liked;
+            btn.dataset.liked = now ? "1" : "0";
+            btn.classList.toggle("liked", now);
+            const num = btn.querySelector(".likeNum");
+            if (num) num.textContent = data.like_count;
+            // A like you give may have earned the author points — refresh your strip too.
+            loadMe();
+            loadLeaderboard();
+          } catch (_) {
+            /* swallow — leave UI unchanged */
+          } finally {
+            btn.disabled = false;
+          }
+        });
+
+        // ── Convert modal ──
+        function openConvert() {
+          if (!me) return;
+          convertStepForm.hidden = false;
+          convertStepDone.hidden = true;
+          convertError.hidden = true;
+          convertPoints.value = "";
+          convertAvail.textContent = me.points_available;
+          convertRate.textContent = `${rate} points → 1 token`;
+          syncConvert();
+          convertModal.hidden = false;
+        }
+        function closeConvert() { convertModal.hidden = true; }
+        function syncConvert() {
+          const pts = parseInt(convertPoints.value, 10);
+          const valid = Number.isInteger(pts) && pts > 0;
+          const tokens = valid ? Math.floor(pts / rate) : 0;
+          convertPreview.textContent = `${tokens} token${tokens === 1 ? "" : "s"}`;
+          const avail = me ? me.points_available : 0;
+          convertConfirm.disabled = !valid || tokens < 1 || tokens * rate > avail;
+        }
+        openConvertBtn.addEventListener("click", openConvert);
+        document.getElementById("convertClose").addEventListener("click", closeConvert);
+        document.getElementById("convertCancel").addEventListener("click", closeConvert);
+        convertModal.addEventListener("click", (e) => { if (e.target === convertModal) closeConvert(); });
+        convertPoints.addEventListener("input", syncConvert);
+
+        convertConfirm.addEventListener("click", async () => {
+          const pts = parseInt(convertPoints.value, 10);
+          if (!Number.isInteger(pts) || pts <= 0) return;
+          convertConfirm.disabled = true;
+          convertError.hidden = true;
+          try {
+            const r = await fetch(`${API}/convert`, {
+              method: "POST",
+              headers: authHeaders(),
+              body: JSON.stringify({ points: pts }),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || "Could not convert.");
+            if (me) {
+              me.points_available = data.points_available;
+              me.points_earned = data.points_earned;
+              me.token_balance = data.token_balance;
+            }
+            applyAuthUI();
+            convertDoneBody.innerHTML =
+              `<p class="modalNote">Converted <strong>${data.converted_points}</strong> points into ` +
+              `<strong>${data.tokens_credited}</strong> token${data.tokens_credited === 1 ? "" : "s"}. ` +
+              `Your token balance is now <strong>${data.token_balance}</strong>.</p>` +
+              `<p class="modalNote">Reminder: this balance is simulated in-app only (v1) — nothing was sent on-chain.</p>`;
+            convertStepForm.hidden = true;
+            convertStepDone.hidden = false;
+          } catch (e) {
+            convertError.textContent = e.message;
+            convertError.hidden = false;
+            convertConfirm.disabled = false;
+          }
+        });
+        document.getElementById("convertDoneClose").addEventListener("click", closeConvert);
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && !convertModal.hidden) closeConvert();
+        });
       })();
 
     </script>
