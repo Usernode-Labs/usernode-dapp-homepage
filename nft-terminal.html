@@ -773,12 +773,15 @@
 
         async function loadConfig() {
           try {
+            var token = new URL(location.href).searchParams.get("token") || "";
+            console.log("[LOADCONFIG] token present:", !!token);
             var r = await fetch("/api/nft-config", {
               cache: "no-store",
-              headers: { "x-usernode-token": (new URL(location.href).searchParams.get("token") || "") }
+              headers: { "x-usernode-token": token }
             });
             if (!r.ok) throw new Error("HTTP " + r.status);
             var d = await r.json();
+            console.log("[LOADCONFIG] response:", d);
             state.mintFee = Number(d.mintFee) || 50;
             state.treasuryAddress = d.treasuryAddress || null;
             state.mintEnabled = !!d.enabled && !!d.treasuryAddress;
@@ -786,6 +789,9 @@
             if (typeof d.pointsBalance === "number") {
               state.pointsBalance = d.pointsBalance;
               state.connected = true;  // authenticated user
+              console.log("[LOADCONFIG] authenticated, balance:", state.pointsBalance);
+            } else {
+              console.log("[LOADCONFIG] not authenticated");
             }
           } catch (e) {
             state.configError = true;
@@ -842,16 +848,20 @@
         function sleep(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
 
         async function doMint() {
-          if (state.busy) return;
-          if (maxMintableNow() <= 0) return;
-          if (state.pointsBalance === null) { doConnect(); return; }
+          console.log("[DOMINT START]", { busy: state.busy, maxM: maxMintableNow(), pbNull: state.pointsBalance === null, connected: state.connected, addr: state.walletAddress });
+          if (state.busy) { console.log("[DOMINT] busy, return"); return; }
+          if (maxMintableNow() <= 0) { console.log("[DOMINT] maxM <= 0, return"); return; }
+          // If not authenticated (pointsBalance === null), try to connect first.
+          if (state.pointsBalance === null && !state.connected) { console.log("[DOMINT] not auth, call doConnect"); doConnect(); return; }
+          console.log("[DOMINT] proceeding with mint");
           state.busy = true;
           resumeAudio();
           sfxCoinDrop();
           var qty = Math.min(state.quantity, maxMintableNow());
           var cost = qty * state.mintFee;
-          // Check balance before attempting.
-          if (state.pointsBalance < cost) {
+          // Check balance before attempting (use a simulated fallback if no real balance).
+          var balance = state.pointsBalance !== null ? state.pointsBalance : 1000;
+          if (balance < cost) {
             onMintFailure("INSUFFICIENT POINTS");
             state.busy = false;
             return;
@@ -885,8 +895,9 @@
           await minTime;
           try { if (laser) laser.stop(); } catch (_) {}
           if (ok) {
+            var oldBal = state.pointsBalance !== null ? state.pointsBalance : 1000;
             state.pointsBalance = newBalance;
-            onMintSuccess(ids, qty);
+            onMintSuccess(ids, qty, oldBal, newBalance);
           }
           else onMintFailure(reason);
           state.busy = false;
@@ -954,13 +965,11 @@
           marquee.style.color = rarityColor(rar);
         }
 
-        function onMintSuccess(ids, qty) {
+        function onMintSuccess(ids, qty, oldBal, newBal) {
           stopLoading();
           sfxFanfare();
-          var oldBal = state.pointsBalance;
           ids.forEach(function (id) { state.mintedIds.add(id); });
-          var cost = qty * state.mintFee;
-          var newBal = state.pointsBalance;  // already deducted server-side
+          // oldBal and newBal are passed from doMint to capture the transaction correctly
           var featured = ids[0];
           var rar = rarityForId(featured);
           ids.forEach(function (id) { pushWorldEvent("YOU MINTED NODER #" + pad(id, 3)); });
@@ -1094,13 +1103,15 @@
 
           // start button
           startBtn.className = "";
+          var isAuthenticated = state.pointsBalance !== null || (state.connected && state.walletAddress);
+          var displayBal = state.pointsBalance !== null ? state.pointsBalance : 1000;
           if (maxMintableNow() <= 0) {
             startBtn.classList.add("offline");
             startBtn.textContent = "SOLD OUT — 100/100";
-          } else if (state.pointsBalance === null) {
+          } else if (!isAuthenticated) {
             startBtn.classList.add("locked");
             startBtn.textContent = "[ INSERT WALLET TO PLAY ]";
-          } else if (state.pointsBalance < cost) {
+          } else if (displayBal < cost) {
             startBtn.classList.add("offline");
             startBtn.textContent = "[ INSUFFICIENT POINTS ]";
           } else if (state.configError || !state.mintEnabled) {
@@ -1158,7 +1169,7 @@
         connectBtn.addEventListener("click", function () { resumeAudio(); doConnect(); });
         qtyMinus.addEventListener("click", function () { resumeAudio(); state.quantity--; render(); sfxBlip(); });
         qtyPlus.addEventListener("click", function () { resumeAudio(); state.quantity++; render(); sfxBlip(); });
-        startBtn.addEventListener("click", function () { resumeAudio(); doMint(); });
+        startBtn.addEventListener("click", function () { console.log("[START BTN CLICK]", { busy: state.busy, maxM: maxMintableNow(), pbNull: state.pointsBalance === null, connected: state.connected }); resumeAudio(); doMint(); });
         overlayBtn.addEventListener("click", closeOverlay);
 
         muteBtn.addEventListener("click", function () {
