@@ -2422,6 +2422,10 @@
         const F = (id) => document.getElementById(id);
         let pollTimer = null;
         let current = null; // { id, pay_to, amount, memo }
+        // Document version of dapps.json the form last saw — sent back as
+        // seen_dapps_version so the server can detect the list changing underneath
+        // an in-progress submission (optimistic concurrency control).
+        let seenDappsVersion = null;
 
         function showError(el, msg) { el.textContent = msg; el.hidden = !msg; }
         function setStep(which) {
@@ -2430,11 +2434,35 @@
           stepDone.hidden = which !== "done";
         }
 
+        // Pull the current dapps_version so a stale form can be detected on submit.
+        async function refreshDappsVersion() {
+          try {
+            const resp = await fetch("/api/submit-config", { cache: "no-store" });
+            if (resp.ok) {
+              const cfg = await resp.json();
+              if (typeof cfg.dapps_version === "number") seenDappsVersion = cfg.dapps_version;
+            }
+          } catch (_) { /* non-fatal — server still revalidates on submit */ }
+        }
+
+        // Reload the homepage listing in place after a conflict so the user sees
+        // the latest rows without a full navigation. Reuses the page-level loader.
+        async function reloadListing() {
+          try {
+            const json = await loadDappsJson();
+            allApps = Array.isArray(json) ? json : json.apps || json.items || [];
+            if (json && typeof json.version === "number") seenDappsVersion = json.version;
+            renderDapps(allApps);
+            if (typeof loadAllStats === "function") loadAllStats(allApps);
+          } catch (_) { /* keep whatever is on screen */ }
+        }
+
         function openModal() {
           showError(errForm, "");
           showError(errPay, "");
           setStep("form");
           modal.hidden = false;
+          refreshDappsVersion();
         }
         function closeModal() {
           modal.hidden = true;
@@ -2446,8 +2474,9 @@
         document.getElementById("submitCancel").addEventListener("click", closeModal);
         document.getElementById("doneClose").addEventListener("click", () => {
           closeModal();
-          // A freshly published dapp just went live — reload to reflect it.
-          if (current && current._published) location.reload();
+          // A freshly published (or already-listed) dapp should be reflected in
+          // the list — reload to surface the row.
+          if (current && (current._published || current._reloadOnClose)) location.reload();
         });
         modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
 
@@ -2477,6 +2506,8 @@
           if (!/^https:\/\//i.test(body.url)) return showError(errForm, "URL must start with https://");
           if (!body.pubkey.startsWith("ut1")) return showError(errForm, "Pubkey must start with ut1.");
 
+          if (typeof seenDappsVersion === "number") body.seen_dapps_version = seenDappsVersion;
+
           continueBtn.disabled = true;
           continueBtn.textContent = "Submitting…";
           try {
@@ -2486,8 +2517,29 @@
               body: JSON.stringify(body),
             });
             const data = await resp.json();
+
+            // Optimistic-concurrency conflict — the list changed underneath us.
+            // Caught before any fee is charged, so this never costs tokens.
+            if (resp.status === 409 && data && data.code === "conflict") {
+              if (typeof data.latest_dapps_version === "number") seenDappsVersion = data.latest_dapps_version;
+              await reloadListing();
+              if (data.reason === "already_listed") {
+                showAlreadyListed(data.dapp);
+              } else {
+                // submission_in_progress (or any other clash): keep the user's
+                // typed details, explain, and let them retry with one click.
+                showError(
+                  errForm,
+                  (data.message || "This dapp already has a submission in progress.") +
+                    " The homepage list was just refreshed — adjust the link or address and try again."
+                );
+              }
+              return;
+            }
+
             if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
             current = data;
+            if (typeof data.dapps_version === "number") seenDappsVersion = data.dapps_version;
             F("payAmount").textContent = `${data.amount} tokens`;
             F("payTo").textContent = data.pay_to;
             F("payMemo").textContent = data.memo;
@@ -2531,6 +2583,22 @@
             payWalletBtn.textContent = "Pay with wallet";
           }
         });
+
+        // Friendly terminal state when the dapp is already on the homepage — no
+        // payment is needed. Offers to close or open the live listing.
+        function showAlreadyListed(dapp) {
+          current = { _reloadOnClose: true };
+          const safe = (s) => String(s == null ? "" : s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+          const name = dapp && dapp.name ? safe(dapp.name) : "This dapp";
+          const link = dapp && dapp.url
+            ? `<p class="modalNote"><a href="${safe(dapp.url)}" target="_blank" rel="noopener">Open ${name} ↗</a></p>`
+            : "";
+          doneBody.innerHTML =
+            `<div class="statusPill statusPublished"><span class="dot"></span>Already listed</div>` +
+            `<p class="modalNote">Good news: <strong>${name}</strong> is already on the homepage. No payment is needed. 🎉</p>` +
+            link;
+          setStep("done");
+        }
 
         function renderStatus(status) {
           const map = {
