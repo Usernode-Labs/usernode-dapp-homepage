@@ -210,6 +210,53 @@
           display: none;
         }
       }
+      /* Search bar: persistent input sitting above the DAPPS title row, inside
+         the sticky header so it stays visible while the list scrolls. */
+      .searchRow {
+        position: relative;
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .searchInput {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 9px 36px 9px 11px;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .searchInput:focus {
+        outline: 2px solid var(--accent);
+        border-color: transparent;
+      }
+      /* Hide the native search clear affordance; we render our own ✕. */
+      .searchInput::-webkit-search-cancel-button { -webkit-appearance: none; }
+      .searchClear {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        line-height: 1;
+      }
+      .searchClear:hover { color: var(--fg); background: var(--border); }
+      .searchClear[hidden] { display: none; }
       h1 {
         margin: 0;
         font-size: 18px;
@@ -1192,6 +1239,20 @@
     <main>
       <div class="card">
         <div class="header">
+          <div class="searchRow">
+            <input
+              class="searchInput"
+              id="dappSearch"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Search dApps…"
+              aria-label="Search dApps"
+            />
+            <button class="searchClear" id="dappSearchClear" type="button" aria-label="Clear search" title="Clear search" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
           <div class="headerRow">
             <div class="brand">
               <a class="brandLink" href="https://usernode.evanshapiro.dev" target="_blank" rel="noopener" aria-label="Usernode home">
@@ -1434,6 +1495,8 @@
       let allApps = [];
       let statsMap = {};
       let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
+      // Live search query (client-side only, not persisted across reloads).
+      let searchQuery = "";
 
       // --- Pins / auth ---
       // The platform shell injects the session JWT as ?token=… on iframe load.
@@ -1556,6 +1619,20 @@
         if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
         if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
         return String(n);
+      }
+
+      // Case-insensitive substring match across the visible/searchable text of
+      // each dapp. Returns the list unchanged when there's no active query.
+      function filterApps(apps) {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return apps;
+        return apps.filter((d) => {
+          const hay = [d.name, d.description, d.author, d.category]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(q);
+        });
       }
 
       function sortApps(apps) {
@@ -1752,7 +1829,13 @@
           return;
         }
 
-        const sorted = sortApps(dapps);
+        const filtered = filterApps(dapps);
+        if (filtered.length === 0) {
+          addRow(`No dApps match "${searchQuery.trim()}"`);
+          return;
+        }
+
+        const sorted = sortApps(filtered);
 
         // Signed-out (or no pins yet): flat list, identical to the original UI.
         const pinned = signedIn
@@ -1862,6 +1945,37 @@
       });
 
       updateSortUI();
+
+      // ── Search ──────────────────────────────────────────────────────────────
+      const searchInput = document.getElementById("dappSearch");
+      const searchClear = document.getElementById("dappSearchClear");
+
+      function applySearchQuery(value) {
+        searchQuery = value || "";
+        if (searchClear) searchClear.hidden = searchQuery.length === 0;
+        renderDapps(allApps);
+      }
+
+      function clearSearch() {
+        if (searchInput) searchInput.value = "";
+        applySearchQuery("");
+        if (searchInput) searchInput.focus();
+      }
+
+      if (searchInput) {
+        searchInput.addEventListener("input", (e) => {
+          applySearchQuery(e.target.value);
+        });
+        searchInput.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            clearSearch();
+          }
+        });
+      }
+      if (searchClear) {
+        searchClear.addEventListener("click", clearSearch);
+      }
 
       // ── Launch overlay ──────────────────────────────────────────────────────
       const _launchOverlay = document.getElementById("launchOverlay");
