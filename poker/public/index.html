@@ -102,7 +102,11 @@
         <label class="block text-sm mb-1">Amount (chips = tokens)</label>
         <input id="buyinAmount" type="number" class="w-full bg-slate-800 rounded px-3 py-2 mb-1" />
         <p id="buyinRange" class="text-xs text-slate-500 mb-3"></p>
-        <p id="buyinErr" class="text-sm text-red-400 mb-2"></p>
+        <div id="buyinPwWrap" class="hidden mb-3">
+          <label class="block text-sm mb-1">🔒 Table password</label>
+          <input id="buyinPassword" type="password" autocomplete="off" class="w-full bg-slate-800 rounded px-3 py-2" placeholder="Leave blank if your wallet is whitelisted" />
+        </div>
+        <p id="buyinErr" class="text-sm text-rose-400 mb-2"></p>
         <div class="flex gap-2">
           <button id="buyinContinue" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded py-2 font-semibold">Continue to payment</button>
           <button onclick="closeBuyin()" class="px-4 bg-slate-700 rounded py-2">Cancel</button>
@@ -121,6 +125,60 @@
           <button onclick="closeBuyin()" class="px-4 bg-slate-700 rounded py-2">Close</button>
         </div>
         <p id="payErr" class="text-sm text-red-400 mt-2"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create-table modal -->
+  <div id="createModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-40 p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 max-h-[88vh] overflow-auto">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-lg font-bold">Create a table</h3>
+        <button onclick="closeCreate()" class="text-slate-400">✕</button>
+      </div>
+      <label class="block text-sm mb-1">Name</label>
+      <input id="cName" class="w-full bg-slate-800 rounded px-3 py-2 mb-3" placeholder="No-Limit Hold'em" />
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="block text-sm mb-1">Seats (2–9)</label>
+          <input id="cSeats" type="number" min="2" max="9" value="6" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Action timer (s)</label>
+          <input id="cTimer" type="number" min="5" max="120" value="30" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Small blind</label>
+          <input id="cSb" type="number" min="1" value="25" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Big blind</label>
+          <input id="cBb" type="number" min="1" value="50" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Min buy-in</label>
+          <input id="cMin" type="number" min="1" value="1000" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Max buy-in</label>
+          <input id="cMax" type="number" min="1" value="10000" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+      </div>
+      <label class="block text-sm mb-1">Visibility</label>
+      <select id="cVis" class="w-full bg-slate-800 rounded px-3 py-2 mb-3">
+        <option value="public">Public — listed in the lobby, anyone can join</option>
+        <option value="private">Private — locked; needs password or whitelist</option>
+      </select>
+      <div id="cPrivateWrap" class="hidden">
+        <label class="block text-sm mb-1">Password <span class="text-slate-500">(optional if whitelisting)</span></label>
+        <input id="cPassword" type="password" autocomplete="off" class="w-full bg-slate-800 rounded px-3 py-2 mb-3" placeholder="Set a join password" />
+        <label class="block text-sm mb-1">Wallet whitelist <span class="text-slate-500">(optional; one ut1… per line)</span></label>
+        <textarea id="cWhitelist" rows="3" class="w-full bg-slate-800 rounded px-3 py-2 mb-3 text-xs" placeholder="ut1...&#10;ut1..."></textarea>
+      </div>
+      <p id="cErr" class="text-sm text-rose-400 mb-2"></p>
+      <div class="flex gap-2">
+        <button id="cCreate" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded py-2 font-semibold">Create table</button>
+        <button onclick="closeCreate()" class="px-4 bg-slate-700 rounded py-2">Cancel</button>
       </div>
     </div>
   </div>
@@ -168,13 +226,14 @@
         ME = data.you || null;
         const rows = data.tables.map((t) => {
           const full = t.seated >= t.max_seats;
+          const lock = t.is_private ? '<span class="text-amber-300" title="Private table">🔒 </span>' : '';
           return `
           <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-3">
             <div class="min-w-0">
-              <div class="font-semibold truncate">${escapeHtml(t.name)}</div>
-              <div class="text-sm text-slate-400">Blinds ${t.sb}/${t.bb} · Buy-in ${t.min_buyin}–${t.max_buyin} · <span class="${full ? 'text-amber-400' : 'text-emerald-300'}">${t.seated}/${t.max_seats} seated</span></div>
+              <div class="font-semibold truncate">${lock}${escapeHtml(t.name)}${t.is_private ? ' <span class="text-[10px] uppercase tracking-wide text-amber-300/80 align-middle">Private</span>' : ''}</div>
+              <div class="text-sm text-slate-400">Blinds ${t.sb}/${t.bb} · Buy-in ${t.min_buyin}–${t.max_buyin} · ${t.max_seats}-max · <span class="${full ? 'text-amber-400' : 'text-emerald-300'}">${t.seated}/${t.max_seats} seated</span></div>
             </div>
-            <button onclick="openTable('${t.id}')" class="shrink-0 bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">Open</button>
+            <button onclick="openTable('${t.id}')" class="shrink-0 bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">${t.is_private ? 'Join' : 'Open'}</button>
           </div>`;
         }).join('');
         const userLine = ME
@@ -197,10 +256,46 @@
       }
     }
 
-    async function createTable() {
-      try { const r = await api('/api/tables', { method: 'POST', body: '{}' }); openTable(r.id); }
-      catch (e) { toast(e.message); }
+    // ── Create-table flow ──────────────────────────────────────────────────
+    function createTable() {
+      $('cErr').textContent = '';
+      $('cVis').value = 'public';
+      $('cPrivateWrap').classList.add('hidden');
+      $('createModal').classList.remove('hidden'); $('createModal').classList.add('flex');
     }
+    function closeCreate() { $('createModal').classList.add('hidden'); $('createModal').classList.remove('flex'); }
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'cVis') {
+        $('cPrivateWrap').classList.toggle('hidden', e.target.value !== 'private');
+      }
+    });
+    function bindCreate() {
+      const btn = $('cCreate');
+      if (!btn) return;
+      btn.onclick = async () => {
+        $('cErr').textContent = '';
+        const payload = {
+          name: $('cName').value,
+          max_seats: Number($('cSeats').value),
+          action_timer_seconds: Number($('cTimer').value),
+          sb: Number($('cSb').value),
+          bb: Number($('cBb').value),
+          min_buyin: Number($('cMin').value),
+          max_buyin: Number($('cMax').value),
+          visibility: $('cVis').value,
+          password: $('cVis').value === 'private' ? $('cPassword').value : '',
+          whitelist: $('cVis').value === 'private' ? $('cWhitelist').value : '',
+        };
+        btn.disabled = true; btn.textContent = 'Creating…';
+        try {
+          const r = await api('/api/tables', { method: 'POST', body: JSON.stringify(payload) });
+          closeCreate();
+          openTable(r.id);
+        } catch (e) { $('cErr').textContent = e.message; }
+        finally { btn.disabled = false; btn.textContent = 'Create table'; }
+      };
+    }
+    bindCreate();
 
     // ── Table ──────────────────────────────────────────────────────────────
     function openTable(id) {
@@ -431,14 +526,19 @@
       $('seatPicker').innerHTML = `<span class="bg-emerald-700 rounded px-3 py-1 text-sm">Seat ${seatNo + 1}</span>`;
       $('buyinRange').textContent = `Between ${t.min_buyin} and ${t.max_buyin}`;
       $('buyinAmount').value = t.min_buyin;
+      // Private tables: surface a password field (whitelisted wallets may skip it).
+      $('buyinPwWrap').classList.toggle('hidden', !t.is_private);
+      if (t.is_private) $('buyinPassword').value = '';
       $('buyinModal').classList.remove('hidden'); $('buyinModal').classList.add('flex');
     }
     function closeBuyin() { $('buyinModal').classList.add('hidden'); $('buyinModal').classList.remove('flex'); }
 
     $('buyinContinue').onclick = async () => {
       const amount = Number($('buyinAmount').value);
+      const body = { seat_no: BUYIN.seat, amount };
+      if (LAST_VIEW.table.is_private) body.password = $('buyinPassword').value || '';
       try {
-        const r = await api(`/api/tables/${CURRENT_TABLE}/buyin`, { method: 'POST', body: JSON.stringify({ seat_no: BUYIN.seat, amount }) });
+        const r = await api(`/api/tables/${CURRENT_TABLE}/buyin`, { method: 'POST', body: JSON.stringify(body) });
         BUYIN.sid = r.sid;
         $('payTo').textContent = r.pay_to;
         $('payAmount').textContent = r.amount;

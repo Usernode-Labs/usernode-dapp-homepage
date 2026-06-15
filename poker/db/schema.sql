@@ -16,6 +16,25 @@ CREATE TABLE IF NOT EXISTS tables (
   created_by            TEXT,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Per-table visibility (creator controls). 'public' tables are listed openly;
+-- 'private' tables appear locked and require a password or a whitelisted wallet
+-- to join. The access SECRET (password hash + whitelist) lives in the private
+-- table_access table below, never on this public row.
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
+
+-- Private access material for a table: salted password hash and/or an allowed
+-- wallet whitelist. Marked staging:private — auth material must never leak from
+-- a debug endpoint and must not propagate prod→staging. This PRIVATE table FKs
+-- the PUBLIC tables row (child-private → parent-public is allowed by the linter;
+-- the reverse is not).
+CREATE TABLE IF NOT EXISTS table_access (
+  table_id       TEXT PRIMARY KEY REFERENCES tables(id),
+  password_hash  TEXT,            -- scrypt hash, hex (nullable = no password)
+  password_salt  TEXT,            -- hex salt for the scrypt hash
+  whitelist      JSONB,           -- array of allowed ut1… wallet addresses
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE table_access IS 'staging:private';
 
 -- Seat occupancy + chip stacks. Public: chip counts at a table are visible to
 -- everyone in-app, like a real table.

@@ -30,10 +30,48 @@ const MIN_BUYIN = Number(process.env.MIN_BUYIN) || 1000;
 const MAX_BUYIN = Number(process.env.MAX_BUYIN) || 10000;
 const ACTION_TIMER_SECONDS = Number(process.env.ACTION_TIMER_SECONDS) || 30;
 const MAX_SEATS = 6;
+const MIN_SEATS_ALLOWED = 2;
+const MAX_SEATS_ALLOWED = 9;
 const SIT_OUT_AFTER = 3;
 const BUYIN_TTL_MS = 30 * 60 * 1000;
 
 const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : null;
+
+// ── Table-access helpers (private tables) ────────────────────────────────────
+// Passwords are stored only as a salted scrypt hash in the private table_access
+// table; the plaintext is never persisted or logged. Whitelist entries are
+// ut1… wallet addresses. A user may join a private table with EITHER the correct
+// password OR a whitelisted wallet.
+function hashPassword(plain, saltHex) {
+  const salt = saltHex || crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(String(plain), salt, 32).toString("hex");
+  return { hash, salt };
+}
+function passwordMatches(access, plain) {
+  if (!access.passwordHash || !access.passwordSalt) return false;
+  if (typeof plain !== "string" || !plain) return false;
+  const { hash } = hashPassword(plain, access.passwordSalt);
+  const a = Buffer.from(hash, "hex");
+  const b = Buffer.from(access.passwordHash, "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+function walletWhitelisted(access, wallet) {
+  if (!Array.isArray(access.whitelist) || !access.whitelist.length) return false;
+  if (!wallet) return false;
+  const w = String(wallet).trim().toLowerCase();
+  return access.whitelist.some((x) => String(x).trim().toLowerCase() === w);
+}
+// Returns null if access is allowed, otherwise an { code, error } to return.
+function checkTableAccess(rt, { wallet, password }) {
+  if (rt.access.visibility !== "private") return null;
+  if (passwordMatches(rt.access, password)) return null;
+  if (walletWhitelisted(rt.access, wallet)) return null;
+  const needs = [];
+  if (rt.access.passwordHash) needs.push("password");
+  if (rt.access.whitelist && rt.access.whitelist.length) needs.push("whitelisted wallet");
+  const how = needs.length ? needs.join(" or ") : "an invitation";
+  return { code: 403, error: `This is a private table — ${how} required to join.` };
+}
 
 // ── In-memory table runtimes + chain idempotency ─────────────────────────────
 const runtimes = new Map();           // tableId -> runtime
@@ -49,6 +87,7 @@ async function migrate() {
 }
 
 const DEMO_TABLE_ID = "staging-demo-6max";
+const DEMO_PRIVATE_TABLE_ID = "staging-demo-private";
 
 async function seedStaging() {
   if (!IS_STAGING) return;
@@ -131,6 +170,31 @@ async function seedStaging() {
       );
     }
   }
+
+  // Private + password demo table so the table-creator/private-join flow is
+  // testable in staging. Password is "demo123"; one seat is pre-filled so the
+  // felt isn't empty. table_access is staging:private (schema-only), so this
+  // seed is the only place the demo password exists in staging.
+  await pool.query(
+    `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by, visibility)
+     VALUES ($1,'Staging demo — Private (password: demo123)',10,20,400,4000,4,20,'open','staging-demo-user','private')
+     ON CONFLICT (id) DO NOTHING`,
+    [DEMO_PRIVATE_TABLE_ID]
+  );
+  {
+    const { hash, salt } = hashPassword("demo123");
+    await pool.query(
+      `INSERT INTO table_access (table_id, password_hash, password_salt, whitelist)
+       VALUES ($1,$2,$3,$4) ON CONFLICT (table_id) DO NOTHING`,
+      [DEMO_PRIVATE_TABLE_ID, hash, salt, JSON.stringify(["ut1stagingwhitelisteddemo000000000000000000000000000000000000"])]
+    );
+    await pool.query(
+      `INSERT INTO seats (table_id, seat_no, user_id, username, wallet, stack, status, joined_at)
+       VALUES ($1,0,'staging-demo-dave','Staging demo Dave','ut1stagingdemowalletdave',2500,'active', now())
+       ON CONFLICT (table_id, seat_no) DO NOTHING`,
+      [DEMO_PRIVATE_TABLE_ID]
+    );
+  }
 }
 
 async function ensureDefaultTable() {
@@ -166,7 +230,18 @@ async function loadRuntime(tableId) {
       });
     }
   }
-  const runtime = { table, seats, hand: null, lastHandNo: 0, button: -1, starting: false };
+  // Load private access material separately so it can never leak through the
+  // public table view (buildTableView only reads runtime.table).
+  let access = { visibility: table.visibility || "public", passwordHash: null, passwordSalt: null, whitelist: [] };
+  if (access.visibility === "private") {
+    const a = await pool.query(`SELECT * FROM table_access WHERE table_id=$1`, [tableId]);
+    if (a.rowCount) {
+      access.passwordHash = a.rows[0].password_hash || null;
+      access.passwordSalt = a.rows[0].password_salt || null;
+      access.whitelist = Array.isArray(a.rows[0].whitelist) ? a.rows[0].whitelist : [];
+    }
+  }
+  const runtime = { table, seats, access, hand: null, lastHandNo: 0, button: -1, starting: false };
   runtimes.set(tableId, runtime);
   return runtime;
 }
@@ -226,6 +301,8 @@ app.get("/api/tables", async (req, res) => {
       max_buyin: Number(t.max_buyin),
       max_seats: t.max_seats,
       action_timer_seconds: t.action_timer_seconds,
+      visibility: t.visibility || "public",
+      is_private: (t.visibility || "public") === "private",
       seated: seatRows.rows[0].n,
     });
   }
@@ -235,16 +312,57 @@ app.get("/api/tables", async (req, res) => {
   res.json({ tables: out, treasury: treasury.address() || null, you });
 });
 
-// Create a table (slice 1: fixed 6-max NL template).
+// Create a table with full creator controls: seat count, blinds, buy-in range,
+// action timer, public/private visibility, optional password + wallet whitelist.
 app.post("/api/tables", async (req, res) => {
+  const b = req.body || {};
   const id = "t_" + crypto.randomBytes(5).toString("hex");
-  const name = (typeof req.body.name === "string" && req.body.name.trim().slice(0, 60)) || "No-Limit Hold'em — 6-max";
+
+  const intIn = (v, dflt) => { const n = Math.floor(Number(v)); return Number.isFinite(n) ? n : dflt; };
+  const name = (typeof b.name === "string" && b.name.trim().slice(0, 60)) || "No-Limit Hold'em";
+  const maxSeats = intIn(b.max_seats, MAX_SEATS);
+  const sb = intIn(b.sb, SB);
+  const bb = intIn(b.bb, BB);
+  const minBuyin = intIn(b.min_buyin, MIN_BUYIN);
+  const maxBuyin = intIn(b.max_buyin, MAX_BUYIN);
+  const timer = intIn(b.action_timer_seconds, ACTION_TIMER_SECONDS);
+  const visibility = b.visibility === "private" ? "private" : "public";
+
+  // Validate the settings so a malformed table can't break the engine.
+  if (maxSeats < MIN_SEATS_ALLOWED || maxSeats > MAX_SEATS_ALLOWED)
+    return res.status(400).json({ error: `seat count must be ${MIN_SEATS_ALLOWED}–${MAX_SEATS_ALLOWED}` });
+  if (!(sb >= 1) || !(bb >= 1)) return res.status(400).json({ error: "blinds must be at least 1" });
+  if (bb < sb) return res.status(400).json({ error: "big blind must be ≥ small blind" });
+  if (!(minBuyin >= bb)) return res.status(400).json({ error: "minimum buy-in must be at least one big blind" });
+  if (maxBuyin < minBuyin) return res.status(400).json({ error: "maximum buy-in must be ≥ minimum buy-in" });
+  if (timer < 5 || timer > 120) return res.status(400).json({ error: "action timer must be 5–120 seconds" });
+
+  // Parse the whitelist (newline/comma separated ut1… addresses).
+  let whitelist = [];
+  if (typeof b.whitelist === "string" && b.whitelist.trim()) {
+    whitelist = b.whitelist.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean).slice(0, 200);
+  } else if (Array.isArray(b.whitelist)) {
+    whitelist = b.whitelist.map((x) => String(x).trim()).filter(Boolean).slice(0, 200);
+  }
+  const password = typeof b.password === "string" ? b.password : "";
+  if (visibility === "private" && !password && !whitelist.length)
+    return res.status(400).json({ error: "a private table needs a password or a wallet whitelist" });
+
   await pool.query(
-    `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9)`,
-    [id, name, SB, BB, MIN_BUYIN, MAX_BUYIN, MAX_SEATS, ACTION_TIMER_SECONDS, req.user.id]
+    `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by, visibility)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9,$10)`,
+    [id, name, sb, bb, minBuyin, maxBuyin, maxSeats, timer, req.user.id, visibility]
   );
-  res.status(201).json({ id });
+  if (visibility === "private") {
+    let hash = null, salt = null;
+    if (password) { const h = hashPassword(password); hash = h.hash; salt = h.salt; }
+    await pool.query(
+      `INSERT INTO table_access (table_id, password_hash, password_salt, whitelist)
+       VALUES ($1,$2,$3,$4)`,
+      [id, hash, salt, JSON.stringify(whitelist)]
+    );
+  }
+  res.status(201).json({ id, visibility });
 });
 
 app.get("/api/tables/:id", async (req, res) => {
@@ -269,6 +387,10 @@ app.post("/api/tables/:id/buyin", async (req, res) => {
     return res.status(400).json({ error: `buy-in must be between ${rt.table.min_buyin} and ${rt.table.max_buyin}` });
   if (!wallet || !wallet.startsWith("ut1"))
     return res.status(400).json({ error: "no linked Usernode wallet (ut1…) found" });
+
+  // Private-table gate: correct password OR a whitelisted wallet.
+  const denied = checkTableAccess(rt, { wallet, password: req.body.password });
+  if (denied) return res.status(denied.code).json({ error: denied.error });
 
   // Seat must be free, or already yours.
   const existing = rt.seats.get(seatNo);

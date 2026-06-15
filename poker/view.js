@@ -56,6 +56,8 @@ function buildTableView(runtime, viewerUserId) {
       max_buyin: Number(t.max_buyin),
       max_seats: t.max_seats,
       action_timer_seconds: t.action_timer_seconds,
+      visibility: t.visibility || "public",
+      is_private: (t.visibility || "public") === "private",
     },
     seats,
     hand: null,
