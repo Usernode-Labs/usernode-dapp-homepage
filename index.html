@@ -630,6 +630,33 @@
         }
       }
 
+      /* Maintenance status indicator */
+      .statusDot {
+        width: 6px;
+        height: 6px;
+        border-radius: 2px;
+        flex-shrink: 0;
+        position: relative;
+        margin-right: 6px;
+      }
+
+      .statusBadge {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .statusBadge .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
       /* ── Preview modal ──────────────────────────────────────────────
          A single reusable overlay populated on open. Uses the shared
          theme variables so it recolors in light/dark for free. */
@@ -1376,6 +1403,20 @@
         Utility: '#38bdf8',
         Social:  '#f43f5e',
       };
+      const MAINTENANCE_STATUS_CONFIG = {
+        maintenance: {
+          label: "Maintenance",
+          color: "#f59e0b",
+          bgColor: "rgba(245, 158, 11, 0.12)",
+          borderColor: "#f59e0b66",
+        },
+        unavailable: {
+          label: "Unavailable",
+          color: "#ef4444",
+          bgColor: "rgba(239, 68, 68, 0.12)",
+          borderColor: "#ef444466",
+        },
+      };
 
       const list = document.getElementById("dappList");
       const hamBtn = document.getElementById("hamBtn");
@@ -1620,9 +1661,14 @@
         const nameGroup = document.createElement("div");
         nameGroup.style.cssText = "display:flex;align-items:center;min-width:0;flex:1 1 auto";
 
-        const liveDot = document.createElement("span");
-        liveDot.className = "liveDot";
-        nameGroup.appendChild(liveDot);
+        const statusIndicator = document.createElement("span");
+        if (dapp.maintenanceStatus && MAINTENANCE_STATUS_CONFIG[dapp.maintenanceStatus]) {
+          statusIndicator.className = "statusDot";
+          statusIndicator.style.background = MAINTENANCE_STATUS_CONFIG[dapp.maintenanceStatus].color;
+        } else {
+          statusIndicator.className = "liveDot";
+        }
+        nameGroup.appendChild(statusIndicator);
 
         const name = document.createElement("div");
         name.className = "name";
@@ -2210,24 +2256,45 @@
 
       function buildPreviewTag(dapp) {
         previewTagRow.textContent = "";
-        if (!dapp.category) {
+        const hasTags = dapp.category || (dapp.maintenanceStatus && MAINTENANCE_STATUS_CONFIG[dapp.maintenanceStatus]);
+        if (!hasTags) {
           previewTagRow.hidden = true;
           return;
         }
         previewTagRow.hidden = false;
-        const tag = document.createElement("span");
-        tag.className = "categoryTag";
-        tag.textContent = dapp.category;
-        const color = CATEGORY_COLORS[dapp.category];
-        if (color) {
-          tag.style.color = color;
-          tag.style.background = color + "33";
-          tag.style.border = "1px solid " + color + "66";
-        } else {
-          tag.style.color = "var(--muted)";
-          tag.style.border = "1px solid var(--border)";
+
+        if (dapp.category) {
+          const tag = document.createElement("span");
+          tag.className = "categoryTag";
+          tag.textContent = dapp.category;
+          const color = CATEGORY_COLORS[dapp.category];
+          if (color) {
+            tag.style.color = color;
+            tag.style.background = color + "33";
+            tag.style.border = "1px solid " + color + "66";
+          } else {
+            tag.style.color = "var(--muted)";
+            tag.style.border = "1px solid var(--border)";
+          }
+          previewTagRow.appendChild(tag);
         }
-        previewTagRow.appendChild(tag);
+
+        if (dapp.maintenanceStatus && MAINTENANCE_STATUS_CONFIG[dapp.maintenanceStatus]) {
+          const config = MAINTENANCE_STATUS_CONFIG[dapp.maintenanceStatus];
+          const badge = document.createElement("span");
+          badge.className = "statusBadge";
+          badge.style.color = config.color;
+          badge.style.background = config.bgColor;
+          badge.style.border = "1px solid " + config.borderColor;
+          const dot = document.createElement("span");
+          dot.className = "dot";
+          dot.style.background = config.color;
+          badge.appendChild(dot);
+          const label = document.createElement("span");
+          label.textContent = config.label;
+          badge.appendChild(label);
+          previewTagRow.appendChild(badge);
+        }
       }
 
       // Populate the description block: an emphasized summary lead (short
