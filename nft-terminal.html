@@ -771,19 +771,6 @@
           ctx.shadowBlur = 0;
         }
 
-        // ── Bridge integration ──────────────────────────────────
-        function getBridge() {
-          var cands = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge];
-          for (var i = 0; i < cands.length; i++) {
-            if (cands[i] && typeof cands[i].sendTransaction === "function") return cands[i];
-          }
-          return null;
-        }
-        function maskAddress(a) {
-          if (!a || typeof a !== "string" || a.length < 10) return a || "";
-          return a.slice(0, 4).toUpperCase() + "••••••••" + a.slice(-4).toUpperCase();
-        }
-
         async function loadConfig() {
           try {
             var r = await fetch("/api/nft-config", {
@@ -809,16 +796,36 @@
           render();
         }
 
+        function getBridge() {
+          var cands = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge];
+          for (var i = 0; i < cands.length; i++) {
+            if (cands[i] && typeof cands[i].getAddress === "function") return cands[i];
+          }
+          return null;
+        }
+
+        function maskAddress(a) {
+          if (!a || typeof a !== "string" || a.length < 10) return a || "";
+          return a.slice(0, 4).toUpperCase() + "••••••••" + a.slice(-4).toUpperCase();
+        }
+
         async function doConnect() {
           if (state.connected) return;
           resumeAudio();
-          // With server-tracked points, connect is auth-only and happens at config load.
-          // This button is now disabled for authenticated users (pointsBalance !== null).
-          // If user clicks it while not authenticated, reload to trigger auth flow.
-          if (state.pointsBalance === null) {
-            // User is not authenticated yet. Reload to get a fresh token from the parent.
-            location.reload();
+          var addr = null;
+          var b = getBridge();
+          if (b) {
+            try { if (typeof b.getAddress === "function") addr = await b.getAddress(); } catch (_) {}
           }
+          state.walletAddress = addr || "ut1????••••••••xxxx";
+          state.connected = true;
+          sfxCoinDrop();
+          // Brief address flash in the HUD
+          coinReadout.classList.remove("disconnected");
+          coinReadout.classList.add("connected");
+          coinReadout.textContent = "LINKED: " + maskAddress(state.walletAddress);
+          setTimeout(function () { render(); }, 1600);
+          render();
         }
 
         function pickIds(n) {
@@ -864,7 +871,7 @@
                 "content-type": "application/json",
                 "x-usernode-token": (new URL(location.href).searchParams.get("token") || "")
               },
-              body: JSON.stringify({ quantity: qty })
+              body: JSON.stringify({ quantity: qty, walletAddress: state.walletAddress || null })
             });
             var d = await r.json();
             if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
@@ -1046,7 +1053,12 @@
         function render() {
           // points readout (server-tracked, color-coded)
           var cost = totalCost();
-          if (state.pointsBalance !== null) {
+          if (state.connected && state.walletAddress) {
+            coinReadout.classList.remove("disconnected");
+            coinReadout.classList.add("connected");
+            coinReadout.style.color = "var(--green)";
+            coinReadout.textContent = "PLAYER 1 READY";
+          } else if (state.pointsBalance !== null) {
             coinReadout.classList.remove("disconnected");
             coinReadout.classList.add("connected");
             var color = (state.pointsBalance >= cost) ? "var(--green)" : "var(--red)";
@@ -1056,10 +1068,13 @@
             coinReadout.classList.add("disconnected");
             coinReadout.classList.remove("connected");
             coinReadout.style.color = "var(--red)";
-            coinReadout.textContent = "NO ACCOUNT — INSERT WALLET";
+            coinReadout.textContent = "NO COINS — INSERT WALLET";
           }
           // connect button
-          if (state.pointsBalance !== null) {
+          if (state.connected && state.walletAddress) {
+            connectBtn.classList.add("connected");
+            connectBtn.textContent = "[ CONTROLLER LINKED ✓ ]";
+          } else if (state.pointsBalance !== null) {
             connectBtn.classList.add("connected");
             connectBtn.textContent = "[ ACCOUNT LINKED ✓ ]";
           } else {
