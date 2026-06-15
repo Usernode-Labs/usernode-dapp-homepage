@@ -15,7 +15,11 @@
 // fairness verification never depend on a successful submit.
 
 const IS_STAGING = process.env.USERNODE_ENV === "staging";
-const TREASURY_ADDRESS = (process.env.TREASURY_ADDRESS || "").trim();
+// In staging, TREASURY_ADDRESS is private:false so staging_default doesn't
+// apply via the platform. Fall back to the manifest staging_default in code
+// so the buy-in flow is exercisable without configuring a real treasury.
+const STAGING_TREASURY_FALLBACK = "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az";
+const TREASURY_ADDRESS = (process.env.TREASURY_ADDRESS || (IS_STAGING ? STAGING_TREASURY_FALLBACK : "")).trim();
 const SIGNING_KEY = (process.env.TREASURY_SIGNING_KEY || "").trim();
 const NODE_RPC_URL = (process.env.NODE_RPC_URL || "").trim();
 
