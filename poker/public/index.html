@@ -37,13 +37,18 @@
   <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
   <style>
     :root { color-scheme: dark; }
+    * { -webkit-tap-highlight-color: transparent; }
     body { background: #0b1220; color: #e5e7eb; }
     .felt {
       background: radial-gradient(ellipse at center, #15803d 0%, #14532d 70%, #0f3d22 100%);
       border: 8px solid #3f2d18; border-radius: 48% / 60%;
+      box-shadow: inset 0 0 60px #00000066, 0 10px 40px #00000055;
     }
-    .seat-spot { transition: box-shadow .2s, transform .2s; }
-    .seat-actor { box-shadow: 0 0 0 3px #fbbf24, 0 0 22px #fbbf2488; }
+    .seat-spot { transition: box-shadow .2s, transform .2s, opacity .2s; }
+    .seat-actor { box-shadow: 0 0 0 3px #fbbf24, 0 0 22px #fbbf2488; z-index: 5; }
+    .seat-winner { box-shadow: 0 0 0 3px #fde047, 0 0 30px #fde047cc; animation: winpulse 1s ease-in-out infinite alternate; z-index: 6; }
+    .seat-folded { opacity: .45; }
+    @keyframes winpulse { from { box-shadow: 0 0 0 3px #fde047, 0 0 18px #fde04788; } to { box-shadow: 0 0 0 3px #fde047, 0 0 34px #fde047ee; } }
     .card {
       width: 42px; height: 60px; border-radius: 6px; background: #fff; color: #111;
       display: inline-flex; align-items: center; justify-content: center; font-weight: 700;
@@ -51,15 +56,40 @@
     }
     .card.back { background: linear-gradient(135deg, #1e3a8a, #1e40af); color: transparent; }
     .card.red { color: #dc2626; }
-    .timer-ring { transition: width 1s linear; }
+    .card.win { outline: 2px solid #fde047; outline-offset: 1px; }
+    @keyframes dealflip { from { transform: rotateY(90deg); opacity: 0; } to { transform: rotateY(0); opacity: 1; } }
+    .card.flip { animation: dealflip .35s ease-out both; }
+    /* Dealer / blind badges pinned to a seat */
+    .badge {
+      position: absolute; top: -8px; right: -8px; width: 22px; height: 22px;
+      border-radius: 50%; font-size: 11px; font-weight: 800; line-height: 22px;
+      text-align: center; box-shadow: 0 1px 4px #000a; z-index: 7;
+    }
+    .badge-d { background: #f8fafc; color: #0b1220; }
+    .badge-sb { background: #38bdf8; color: #082f49; right: auto; left: -8px; }
+    .badge-bb { background: #fb923c; color: #431407; right: auto; left: -8px; }
+    /* Action timer ring around the active seat */
+    .timer-ring { position: absolute; inset: -6px; border-radius: 14px; pointer-events: none; }
+    .phase-pill { background:#0b1220cc; border:1px solid #334155; }
+    .chip-pill { background:#0008; border:1px solid #ffffff22; }
+    @keyframes bannerpop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .banner-pop { animation: bannerpop .3s ease-out both; }
+    /* Action bar respects iOS/Android safe-area so buttons aren't clipped. */
+    .action-bar { padding-bottom: calc(.75rem + env(safe-area-inset-bottom)); }
     @media (max-width: 720px) {
       .felt { border-radius: 32px; }
+      .card { width: 34px; height: 48px; font-size: 15px; }
     }
-    .chip-pill { background:#0008; border:1px solid #ffffff22; }
+    @media (max-width: 440px) {
+      /* Tighten seats so the outermost ones don't clip past the felt edge. */
+      .seat-spot { min-width: 74px !important; padding: 2px 4px; }
+      .badge { width: 18px; height: 18px; line-height: 18px; font-size: 9px; }
+    }
   </style>
 </head>
 <body class="min-h-screen">
-  <div id="app" class="max-w-5xl mx-auto px-3 pb-40 pt-4"><p class="text-slate-500 mt-20 text-center">Loading…</p></div>
+  <div id="app" class="max-w-5xl mx-auto px-3 pb-40 pt-4"><p class="text-slate-400 mt-20 text-center">Loading…</p></div>
+  <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-44 z-50 hidden px-4 py-2 rounded-lg text-sm font-medium shadow-lg"></div>
 
   <!-- Buy-in modal -->
   <div id="buyinModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-40 p-4">
@@ -122,55 +152,70 @@
     }
 
     function suitColor(card) { return /[hd]/.test(card[1]) ? 'red' : ''; }
-    function cardHtml(card, faceDown) {
-      if (faceDown || !card) return `<span class="card back">x</span>`;
+    function cardHtml(card, faceDown, extra = '', flip = false) {
+      const fl = flip ? ' flip' : '';
+      if (faceDown || !card) return `<span class="card back${fl}">x</span>`;
       const suit = { c: '♣', d: '♦', h: '♥', s: '♠' }[card[1]] || '';
-      return `<span class="card ${suitColor(card)}">${card[0]}${suit}</span>`;
+      return `<span class="card ${suitColor(card)} ${extra}${fl}">${card[0]}${suit}</span>`;
     }
 
     // ── Lobby ──────────────────────────────────────────────────────────────
     async function showLobby() {
       stopStream();
+      $('app').innerHTML = '<p class="text-slate-400 mt-20 text-center">Loading tables…</p>';
       try {
         const data = await api('/api/tables');
         ME = data.you || null;
-        const rows = data.tables.map((t) => `
-          <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex items-center justify-between">
-            <div>
-              <div class="font-semibold">${escapeHtml(t.name)}</div>
-              <div class="text-sm text-slate-400">Blinds ${t.sb}/${t.bb} · Buy-in ${t.min_buyin}–${t.max_buyin} · ${t.seated}/${t.max_seats} seated</div>
+        const rows = data.tables.map((t) => {
+          const full = t.seated >= t.max_seats;
+          return `
+          <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-semibold truncate">${escapeHtml(t.name)}</div>
+              <div class="text-sm text-slate-400">Blinds ${t.sb}/${t.bb} · Buy-in ${t.min_buyin}–${t.max_buyin} · <span class="${full ? 'text-amber-400' : 'text-emerald-300'}">${t.seated}/${t.max_seats} seated</span></div>
             </div>
-            <button onclick="openTable('${t.id}')" class="bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">Open</button>
-          </div>`).join('');
+            <button onclick="openTable('${t.id}')" class="shrink-0 bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">Open</button>
+          </div>`;
+        }).join('');
         const userLine = ME
           ? `Signed in as <b>${escapeHtml(ME.username || 'guest')}</b>${ME.wallet ? '' : ' · <span class="text-amber-400">no wallet linked</span>'}`
-          : '<span class="text-amber-400">Open this app via Usernode to sign in and play.</span>';
+          : '<span class="text-amber-300">Open this app via Usernode to sign in and play.</span>';
         $('app').innerHTML = `
           <div class="flex items-center justify-between mb-4">
             <h1 class="text-2xl font-bold">♠ Usernode Hold'em</h1>
             ${ME ? `<button onclick="createTable()" class="bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-2 text-sm">+ Create table</button>` : ''}
           </div>
-          <p class="text-sm text-slate-400 mb-3">${userLine}</p>
-          <div class="space-y-3">${rows || '<p class="text-slate-500">No open tables.</p>'}</div>`;
+          <p class="text-sm text-slate-300 mb-3">${userLine}</p>
+          <div class="space-y-3">${rows || '<div class="bg-slate-800/40 border border-dashed border-slate-700 rounded-xl p-8 text-center text-slate-400">No open tables right now.</div>'}</div>`;
       } catch (e) {
-        $('app').innerHTML = `<p class="text-red-400">${escapeHtml(e.message)}</p>`;
+        $('app').innerHTML = `
+          <div class="mt-16 text-center">
+            <div class="text-lg font-semibold text-rose-300 mb-1">Couldn't load tables</div>
+            <p class="text-sm text-slate-400 mb-4">${escapeHtml(e.message)}</p>
+            <button onclick="showLobby()" class="bg-slate-700 hover:bg-slate-600 rounded-lg px-4 py-2 text-sm">Retry</button>
+          </div>`;
       }
     }
 
     async function createTable() {
       try { const r = await api('/api/tables', { method: 'POST', body: '{}' }); openTable(r.id); }
-      catch (e) { alert(e.message); }
+      catch (e) { toast(e.message); }
     }
 
     // ── Table ──────────────────────────────────────────────────────────────
     function openTable(id) {
       CURRENT_TABLE = id;
       stopStream();
+      $('app').innerHTML = '<p class="text-slate-400 mt-20 text-center">Joining table…</p>';
       ES = new EventSource(`/api/tables/${id}/stream?token=${encodeURIComponent(TOKEN)}`);
       ES.onmessage = (ev) => { try { renderTable(JSON.parse(ev.data)); } catch (_) {} };
-      ES.onerror = () => {};
+      // EventSource auto-reconnects; surface the gap quietly rather than freezing.
+      ES.onerror = () => { if (ES && ES.readyState === 0) toast('Reconnecting…', 'info'); };
     }
-    function stopStream() { if (ES) { ES.close(); ES = null; } }
+    function stopStream() {
+      if (ES) { ES.close(); ES = null; }
+      if (TIMER_INT) { clearInterval(TIMER_INT); TIMER_INT = null; }
+    }
 
     function seatPosition(i, n) {
       // Distribute seats around an ellipse; viewer's seat is rotated to bottom.
@@ -180,12 +225,30 @@
       return { x, y };
     }
 
+    const PHASE_LABEL = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', complete: 'Showdown' };
+    let LAST_HAND_ID = null, LAST_BOARD_LEN = 0;
+
     function renderTable(view) {
       LAST_VIEW = view;
       const t = view.table;
       const you = view.you.seat;
       const seats = view.seats;
       const n = seats.length;
+      const hand = view.hand;
+
+      // Set of winning seat numbers (for showdown highlight).
+      const winners = (hand && hand.result && hand.result.winners) || [];
+      const winSeats = new Set(winners.map((w) => w.seat));
+      const showdown = !!(hand && hand.complete && hand.result);
+
+      // Trigger the deal-flip animation only when a new hand starts or a new
+      // street's cards land — not on every SSE tick.
+      const boardLen = hand ? hand.board.length : 0;
+      const sameHand = hand && hand.id === LAST_HAND_ID;
+      const newHand = hand && !sameHand;
+      const prevBoardLen = sameHand ? LAST_BOARD_LEN : 0;
+      if (hand) { LAST_HAND_ID = hand.id; LAST_BOARD_LEN = boardLen; }
+      else { LAST_HAND_ID = null; LAST_BOARD_LEN = 0; }
 
       // Rotate so the viewer sits at the bottom.
       const order = [];
@@ -195,38 +258,56 @@
       const seatEls = order.map((s, i) => {
         const pos = seatPosition(i, n);
         const isMe = s.isYou;
+        const isWinner = showdown && winSeats.has(s.seat_no);
         const cards = (s.holeCards && s.holeCards.length)
-          ? s.holeCards.map((c) => cardHtml(c)).join('')
-          : (s.holeCount ? cardHtml(null, true).repeat(s.holeCount) : '');
+          ? s.holeCards.map((c) => cardHtml(c, false, isWinner ? 'win' : '', newHand || showdown)).join('')
+          : (s.holeCount ? cardHtml(null, true, '', newHand).repeat(s.holeCount) : '');
         const occ = s.occupied;
-        return `<div class="seat-spot absolute -translate-x-1/2 -translate-y-1/2 ${s.isActor ? 'seat-actor' : ''} rounded-xl px-2 py-1 ${occ ? 'bg-slate-900/85 border border-slate-600' : 'bg-slate-800/40 border border-dashed border-slate-700'}"
-            style="left:${pos.x}%;top:${pos.y}%;min-width:96px;text-align:center">
+        const badges = hand ? [
+          hand.button === s.seat_no ? '<span class="badge badge-d" title="Dealer">D</span>' : '',
+          hand.sbSeat === s.seat_no ? '<span class="badge badge-sb" title="Small blind">SB</span>' : '',
+          hand.bbSeat === s.seat_no ? '<span class="badge badge-bb" title="Big blind">BB</span>' : '',
+        ].join('') : '';
+        const cls = [
+          'seat-spot absolute -translate-x-1/2 -translate-y-1/2 rounded-xl px-2 py-1',
+          isWinner ? 'seat-winner' : (s.isActor ? 'seat-actor' : ''),
+          s.folded ? 'seat-folded' : '',
+          occ ? 'bg-slate-900/85 border border-slate-600' : 'bg-slate-800/40 border border-dashed border-slate-700',
+        ].join(' ');
+        const ring = (s.isActor && !showdown) ? `<svg id="ring-${s.seat_no}" class="timer-ring" viewBox="0 0 100 100" preserveAspectRatio="none"><rect x="2" y="2" width="96" height="96" rx="12" fill="none" stroke="#fbbf24" stroke-width="3" pathLength="100" stroke-dasharray="100" stroke-dashoffset="0"/></svg>` : '';
+        return `<div class="${cls}" style="left:${pos.x}%;top:${pos.y}%;min-width:96px;text-align:center">
+            ${ring}${occ ? badges : ''}
             ${occ ? `
               <div class="text-xs font-semibold truncate ${isMe ? 'text-emerald-300' : ''}">${escapeHtml(s.username || '')}${isMe ? ' (you)' : ''}</div>
-              <div class="text-[11px] text-amber-300 chip-pill rounded px-1 inline-block mt-0.5">${s.stack} ${s.folded ? '· folded' : ''}${s.allIn ? '· all-in' : ''}</div>
+              <div class="text-[11px] text-amber-300 chip-pill rounded px-1 inline-block mt-0.5">${s.stack}${s.folded ? ' · folded' : ''}${s.allIn ? ' · all-in' : ''}</div>
               <div class="mt-1 flex gap-0.5 justify-center" style="transform:scale(.62);transform-origin:center">${cards}</div>
-              ${s.committed ? `<div class="text-[10px] text-slate-300 mt-0.5">bet ${s.committed}</div>` : ''}
-            ` : `<button onclick="startBuyin(${s.seat_no})" class="text-xs text-slate-400 hover:text-emerald-300 py-3">Sit here</button>`}
+              ${s.committed ? `<div class="text-[10px] text-slate-200 mt-0.5">bet ${s.committed}</div>` : ''}
+            ` : `<button onclick="startBuyin(${s.seat_no})" class="text-xs text-slate-400 hover:text-emerald-300 py-3 w-full">Sit here</button>`}
           </div>`;
       }).join('');
 
-      const hand = view.hand;
       const board = hand ? hand.board : [];
-      const boardEls = board.map((c) => cardHtml(c)).join('') || '<span class="text-slate-400 text-sm">waiting for players…</span>';
+      const boardEls = board.map((c, idx) => cardHtml(c, false, '', idx >= prevBoardLen)).join('')
+        || '<span class="text-slate-300 text-sm">Waiting for players to be seated…</span>';
       const pot = hand && hand.pots && hand.pots.length ? hand.pots.reduce((a, p) => a + p.amount, 0) : 0;
+      const phase = hand ? (PHASE_LABEL[hand.street] || hand.street) : 'Lobby';
 
       $('app').innerHTML = `
         <div class="flex items-center justify-between mb-3">
-          <button onclick="showLobby()" class="text-sm text-slate-400 hover:text-white">← Lobby</button>
-          <div class="text-sm text-slate-300">${escapeHtml(t.name)} · ${t.sb}/${t.bb}</div>
+          <button onclick="showLobby()" class="text-sm text-slate-400 hover:text-white px-2 py-1">← Lobby</button>
+          <div class="text-sm text-slate-200 truncate px-2">${escapeHtml(t.name)} · <span class="text-slate-400">${t.sb}/${t.bb}</span></div>
           <button onclick="cashOut()" class="text-sm bg-slate-700 hover:bg-slate-600 rounded px-3 py-1">Cash out</button>
         </div>
+        <div class="flex items-center justify-center gap-2 mb-2">
+          <span class="phase-pill rounded-full px-3 py-0.5 text-xs font-semibold ${showdown ? 'text-amber-300' : 'text-emerald-300'}">${phase}</span>
+          ${hand ? `<span class="text-[11px] text-slate-400">Hand #${hand.handNo}</span>` : ''}
+        </div>
         <div class="relative felt mx-auto" style="max-width:680px;height:380px">
-          <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-            <div class="flex gap-1 justify-center mb-2">${boardEls}</div>
-            <div class="text-amber-300 font-semibold">Pot: ${pot}</div>
-            ${hand && hand.commitment ? `<div class="text-[10px] text-emerald-200/70 mt-1">fair commit: ${hand.commitment.slice(0, 16)}…</div>` : ''}
-            ${hand && hand.timer && hand.timer.paused ? `<div class="text-[11px] text-amber-200 mt-1">⏸ timer paused — confirming on-chain…</div>` : ''}
+          <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center w-full px-4">
+            <div class="flex gap-1 justify-center mb-2 min-h-[60px] items-center">${boardEls}</div>
+            <div class="inline-block chip-pill rounded-full px-4 py-1 text-amber-300 font-bold text-lg">Pot ${pot}</div>
+            ${hand && hand.timer && hand.timer.paused ? `<div class="text-[11px] text-amber-200 mt-2">⏸ timer paused — confirming on-chain…</div>` : ''}
+            ${hand && hand.commitment ? `<div class="text-[10px] text-emerald-200/60 mt-1">provably-fair commit ${hand.commitment.slice(0, 12)}…</div>` : ''}
           </div>
           ${seatEls}
         </div>
@@ -234,14 +315,52 @@
         <div id="historyWrap" class="mt-5"></div>`;
 
       renderActionBar(view);
+      startTimerLoop(hand);
       loadHistory(t.id);
     }
 
     function renderResultBanner(hand) {
       if (!hand || !hand.result) return '';
-      const w = hand.result.winners || [];
-      const txt = w.map((x) => `${escapeHtml(x.username || ('seat ' + x.seat))} wins ${x.amount}${x.name ? ' (' + x.name + ')' : ''}`).join(' · ');
-      return `<div class="mt-3 text-center bg-emerald-900/40 border border-emerald-700 rounded-lg py-2 text-sm">${txt || 'Hand complete'}</div>`;
+      const r = hand.result;
+      const w = r.winners || [];
+      if (r.uncontested && w.length) {
+        const x = w[0];
+        return `<div class="banner-pop mt-3 text-center bg-emerald-900/50 border border-emerald-600 rounded-xl py-3">
+          <div class="text-sm text-slate-300">Uncontested</div>
+          <div class="text-lg font-bold text-emerald-300">${escapeHtml(x.username || ('Seat ' + (x.seat + 1)))} wins ${x.amount}</div>
+        </div>`;
+      }
+      const lines = w.map((x) => `
+        <div class="text-lg font-bold text-amber-300">${escapeHtml(x.username || ('Seat ' + (x.seat + 1)))} wins ${x.amount}</div>
+        ${x.name ? `<div class="text-sm text-slate-200">${escapeHtml(x.name)}</div>` : ''}`).join('');
+      return `<div class="banner-pop mt-3 text-center bg-gradient-to-b from-amber-900/40 to-emerald-900/40 border border-amber-600/70 rounded-xl py-3">
+        <div class="text-xs uppercase tracking-wide text-amber-200/80 mb-1">Showdown</div>
+        ${lines || '<div class="text-base font-semibold">Hand complete</div>'}
+      </div>`;
+    }
+
+    // ── Action timer ring + countdown ──────────────────────────────────────
+    let TIMER_INT = null;
+    function startTimerLoop(hand) {
+      if (TIMER_INT) { clearInterval(TIMER_INT); TIMER_INT = null; }
+      if (!hand || hand.complete || !hand.timer) return;
+      const total = (hand.timer.seconds || 30) * 1000;
+      const actor = hand.actorSeat;
+      const update = () => {
+        const ring = actor != null ? $('ring-' + actor) ? $('ring-' + actor).querySelector('rect') : null : null;
+        if (hand.timer.paused || !hand.timer.deadline) {
+          if (ring) ring.setAttribute('stroke-dashoffset', '0');
+          return;
+        }
+        const remain = Math.max(0, hand.timer.deadline - Date.now());
+        const frac = Math.max(0, Math.min(1, remain / total));
+        if (ring) {
+          ring.setAttribute('stroke-dashoffset', String(100 - frac * 100));
+          ring.setAttribute('stroke', frac < 0.25 ? '#ef4444' : '#fbbf24');
+        }
+      };
+      update();
+      TIMER_INT = setInterval(update, 250);
     }
 
     // ── Action bar (fixed, thumb-reachable on mobile) ──────────────────────
@@ -253,7 +372,7 @@
       const bb = view.table.bb;
       const bar = document.createElement('div');
       bar.id = 'actionBar';
-      bar.className = 'fixed bottom-0 inset-x-0 bg-slate-900/95 border-t border-slate-700 p-3 z-30';
+      bar.className = 'action-bar fixed bottom-0 inset-x-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-3 pt-3 z-30';
       const minTo = L.canRaise ? L.minRaiseTo : (L.canBet ? L.minBet : 0);
       bar.innerHTML = `
         <div class="max-w-3xl mx-auto">
@@ -287,19 +406,19 @@
     }
     async function act(type) {
       try { await api(`/api/tables/${CURRENT_TABLE}/action`, { method: 'POST', body: JSON.stringify({ type }) }); }
-      catch (e) { alert(e.message); }
+      catch (e) { toast(e.message); }
     }
     async function actBet() {
       const amount = Number($('betInput').value);
       const L = LAST_VIEW.hand.legal;
       try { await api(`/api/tables/${CURRENT_TABLE}/action`, { method: 'POST', body: JSON.stringify({ type: L.canRaise ? 'raise' : 'bet', amount }) }); }
-      catch (e) { alert(e.message); }
+      catch (e) { toast(e.message); }
     }
 
     async function cashOut() {
       if (!confirm('Leave the table and cash out your chips on-chain?')) return;
-      try { const r = await api(`/api/tables/${CURRENT_TABLE}/cashout`, { method: 'POST', body: '{}' }); alert('Cashing out ' + r.cashed_out + ' chips.'); }
-      catch (e) { alert(e.message); }
+      try { const r = await api(`/api/tables/${CURRENT_TABLE}/cashout`, { method: 'POST', body: '{}' }); toast('Cashing out ' + r.cashed_out + ' chips.', 'info'); }
+      catch (e) { toast(e.message); }
     }
 
     // ── Buy-in flow ────────────────────────────────────────────────────────
@@ -381,7 +500,7 @@
     async function loadHistory(tableId) {
       try {
         const data = await api(`/api/tables/${tableId}/hands`);
-        if (!data.hands.length) { $('historyWrap').innerHTML = ''; return; }
+        if (!data.hands.length) { $('historyWrap').innerHTML = '<h3 class="font-semibold mb-2">Hand history</h3><p class="text-sm text-slate-500">No completed hands yet.</p>'; return; }
         const rows = data.hands.map((h) => {
           const w = (h.result && h.result.winners) || [];
           const wtxt = w.map((x) => `${escapeHtml(x.username || ('seat ' + x.seat))} +${x.amount}`).join(', ');
@@ -410,10 +529,20 @@
           <div><b>On-chain reveal tx</b><div class="text-xs break-all text-slate-400">${v.reveal_tx || '(not anchored)'}</div></div>
           <div><b>Dealt deck</b><div class="text-xs break-all text-slate-500">${(v.deck || []).join(' ')}</div></div>`;
         $('verifyModal').classList.remove('hidden'); $('verifyModal').classList.add('flex');
-      } catch (e) { alert(e.message); }
+      } catch (e) { toast(e.message); }
     }
 
     function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    let TOAST_T = null;
+    function toast(msg, kind = 'error') {
+      const el = $('toast');
+      el.textContent = msg;
+      el.className = 'fixed left-1/2 -translate-x-1/2 bottom-44 z-50 px-4 py-2 rounded-lg text-sm font-medium shadow-lg ' +
+        (kind === 'error' ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white');
+      if (TOAST_T) clearTimeout(TOAST_T);
+      TOAST_T = setTimeout(() => { el.classList.add('hidden'); }, 3200);
+    }
 
     showLobby();
   </script>

@@ -70,6 +70,8 @@ function buildTableView(runtime, viewerUserId) {
       board: engine.board.slice(),
       betToMatch: engine.betToMatch,
       button: buttonSeat(engine),
+      sbSeat: seatAtIdx(engine, engine.sbIdx),
+      bbSeat: seatAtIdx(engine, engine.bbIdx),
       commitment: hand.commitment,
       complete: engine.complete,
       pots: engine.complete && engine.result ? engine.result.pots : derivePots(engine),
@@ -102,6 +104,14 @@ function seatOfActor(engine) {
 
 function buttonSeat(engine) {
   const p = engine.players[engine.button];
+  return p ? p.seat : null;
+}
+
+// Resolve a player-array index (sbIdx/bbIdx) to its seat number. Returns null
+// when the index is absent (e.g. a hand persisted before these fields existed).
+function seatAtIdx(engine, idx) {
+  if (idx == null) return null;
+  const p = engine.players[idx];
   return p ? p.seat : null;
 }
 

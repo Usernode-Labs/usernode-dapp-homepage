@@ -75,6 +75,8 @@ function createHand({ players, button, sb, bb, deck, handId }) {
     sb,
     bb,
     button,
+    sbIdx,
+    bbIdx,
     street: "preflop",
     board: [],
     deck: deck.slice(),

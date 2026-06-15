@@ -54,11 +54,14 @@ async function seedStaging() {
   if (!IS_STAGING) return;
   // Demo Play Money 6-max table with a few occupied seats so the lobby/felt
   // aren't blank. Idempotent.
+  // Snappier shot-clock on the demo table so the self-running hand cycles
+  // through betting → showdown quickly for testers (staging-only).
+  const DEMO_TIMER = 15;
   await pool.query(
     `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by)
      VALUES ($1,'Staging demo — Play Money 6-max',$2,$3,$4,$5,$6,$7,'open','staging-demo-user')
      ON CONFLICT (id) DO NOTHING`,
-    [DEMO_TABLE_ID, SB, BB, MIN_BUYIN, MAX_BUYIN, MAX_SEATS, ACTION_TIMER_SECONDS]
+    [DEMO_TABLE_ID, SB, BB, MIN_BUYIN, MAX_BUYIN, MAX_SEATS, DEMO_TIMER]
   );
   const demoSeats = [
     [0, "staging-demo-alice", "Staging demo Alice", 4200],
@@ -646,6 +649,37 @@ setInterval(() => {
   }
 }, 1000);
 
+// ── Staging demo keepalive ───────────────────────────────────────────────────
+// The auto-fold timer eventually sits the seeded demo players out (or busts
+// them to 0), which would stop the self-running demo and leave a stale, empty
+// felt for later testers. In staging only, periodically revive the demo seats
+// (fresh stacks, cleared sit-out) and restart a hand so the live table always
+// has something to show. Strict no-op in production.
+if (IS_STAGING) {
+  setInterval(async () => {
+    try {
+      const rt = await loadRuntime(DEMO_TABLE_ID);
+      if (!rt || (rt.hand && !rt.hand.engineState.complete)) return;
+      const revived = [];
+      for (const [seatNo, s] of rt.seats) {
+        if (!s || !s.userId) continue;
+        if (s.status !== "active" || s.stack <= 0) {
+          s.status = "active";
+          s.sitOutCount = 0;
+          if (s.stack <= 0) s.stack = 2000 + seatNo * 500;
+          revived.push([seatNo, s.stack]);
+        }
+      }
+      for (const [seatNo, stack] of revived) {
+        await pool.query(
+          `UPDATE seats SET status='active', sit_out_count=0, stack=$1 WHERE table_id=$2 AND seat_no=$3`,
+          [stack, DEMO_TABLE_ID, seatNo]).catch(() => {});
+      }
+      maybeStartHand(rt).catch(() => {});
+    } catch (_) {}
+  }, 6000);
+}
+
 // ── Chain poller: credit buy-ins, settle payouts, expire sessions ────────────
 let polling = false;
 async function pollChain() {
@@ -755,6 +789,13 @@ async function main() {
   await migrate();
   await ensureDefaultTable();
   await seedStaging();
+  // Kick off a self-running demo hand in staging so the live felt (phase pill,
+  // dealer/blind badges, action timer ring, auto-showdown) is visible without a
+  // second human player. The timer tick auto-acts for the seeded demo seats.
+  if (IS_STAGING) {
+    const demoRt = await loadRuntime(DEMO_TABLE_ID);
+    if (demoRt) maybeStartHand(demoRt).catch(() => {});
+  }
   setInterval(() => pollChain().catch(() => {}), 30000);
   pollChain().catch(() => {});
   app.listen(PORT, "0.0.0.0", () => {
