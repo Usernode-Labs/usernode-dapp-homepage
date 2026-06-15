@@ -2,15 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install the single runtime dependency (pg, for the micro-blog feed's Postgres
-# store). Done as root so node_modules is writable, then we drop to the non-root
-# "node" user for runtime. The homepage itself is still stdlib-only; pg is loaded
-# lazily and only used when DATABASE_URL is set.
-COPY package.json package-lock.json* ./
+# Give the non-root "node" user ownership of the workdir so it can write
+# node_modules during the install step below.
+RUN chown node:node /app
+
+# Run as the non-root "node" user that ships with the base image.
+USER node
+
+# Install the single runtime dependency (pg, for the micro-blog feed and pins)
+# before copying app sources so the npm layer is cached across source-only changes.
+COPY --chown=node:node package.json package-lock.json* ./
 RUN npm ci --omit=dev || npm install --omit=dev
 
-# Application files.
-COPY server.js index.html dapps.json ./
+# App sources.
+COPY --chown=node:node server.js index.html dapps.json ./
 # Static screenshot assets served at /screenshots/* by server.js.
 COPY public ./public
 

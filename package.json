@@ -1,7 +1,7 @@
 {
   "name": "usernode-dapp-homepage",
   "version": "1.0.0",
-  "description": "Usernode dapps directory homepage + micro-blog feed. Zero-dependency Node stdlib server, plus pg for the authenticated feed's Postgres store.",
+  "description": "Usernode dapps directory homepage with on-chain stats, per-user pinned favorites, and micro-blog feed.",
   "private": true,
   "main": "server.js",
   "scripts": {

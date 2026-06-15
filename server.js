@@ -13,11 +13,15 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// Optional Postgres driver — only needed when DATABASE_URL is configured (the
-// micro-blog feed). Wrapped so a standalone checkout without `npm install` (or
-// a deploy with no DB) still boots the public homepage / dapp directory.
+// Optional Postgres driver — used by the micro-blog feed and per-user dapp pins.
+// Wrapped so a standalone checkout without `npm install` (or a deploy with no DB)
+// still boots the public homepage; pg-backed features degrade to 503.
 let PgPool = null;
-try { ({ Pool: PgPool } = require("pg")); } catch (_) { /* pg not installed */ }
+try {
+  PgPool = require("pg").Pool;
+} catch (_) {
+  console.warn("[pg] module not available — feed and pin features disabled");
+}
 
 // ── .env loader ──────────────────────────────────────────────────────────────
 (function loadDotEnv() {
@@ -61,6 +65,10 @@ const DAPPS_PATH = (() => {
   return path.join(__dirname, "dapps.json");
 })();
 
+const JWT_SECRET = process.env.JWT_SECRET || "";
+const DATABASE_URL = process.env.DATABASE_URL || "";
+const IS_STAGING = process.env.USERNODE_ENV === "staging";
+
 // ── Submit-a-dapp config ──────────────────────────────────────────────────────
 // On-chain submission fee flow. All values are read from process.env with an
 // in-code default, mirroring USERNAMES_PUBKEY. The real values are provided by
@@ -83,13 +91,9 @@ const SUBMISSION_FEE = Number(process.env.SUBMISSION_FEE) || 1000;
 const SUBMISSION_TTL_HOURS = Number(process.env.SUBMISSION_TTL_HOURS) || 24;
 
 // ── Micro-blog feed config ────────────────────────────────────────────────────
-// First feature on this app to require authenticated users + a relational store.
-// It consumes the two platform-injected env vars the homepage otherwise ignores:
-// JWT_SECRET (verify iframe session tokens) and DATABASE_URL (Postgres). When
-// DATABASE_URL is absent the feed degrades to an "unavailable" state and every
-// existing public surface keeps working unchanged.
-const IS_STAGING = process.env.USERNODE_ENV === "staging";
-const JWT_SECRET = process.env.JWT_SECRET || "";
+// Consumes JWT_SECRET and DATABASE_URL (declared above). When DATABASE_URL is
+// absent the feed degrades to an "unavailable" state and every existing public
+// surface keeps working unchanged.
 const POINTS_PER_POST = Number(process.env.POINTS_PER_POST) || 5;
 const POINTS_PER_LIKE = Number(process.env.POINTS_PER_LIKE) || 1;
 const POINTS_PER_TOKEN = Number(process.env.POINTS_PER_TOKEN) || 10;
@@ -609,6 +613,208 @@ if (pgPool) {
   console.log("[microblog] DATABASE_URL not set — feed disabled (homepage unaffected)");
 }
 
+// ── Database (per-user dapp pins) ────────────────────────────────────────────
+// The homepage itself is public, but pinning a dapp is a per-user action, so it
+// needs the platform's Postgres (DATABASE_URL) + JWT auth (JWT_SECRET). Only the
+// /api/pins routes consult auth/DB; every existing route stays public.
+
+let pinsPool = null;   // pg.Pool once initialised
+let pinsReady = false; // true after a successful migration
+
+// dapp_pins is marked `staging:private` (see migration COMMENT) because a row
+// ties a Usernode identity to the dapps they personally favorite — that's
+// owner-only preference data, not public app content. Staging therefore gets
+// the table schema-only and must seed its own rows (IS_STAGING block below).
+const SEED_PINS = [
+  // Obviously-synthetic staging users pinning real dapps from dapps.json so the
+  // Pinned section + sorting can be exercised in a staging preview.
+  { user_id: "staging-demo-user-1", pubkey: "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms" }, // Opinion Market
+  { user_id: "staging-demo-user-1", pubkey: "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu" }, // Falling Sands
+  { user_id: "staging-demo-user-2", pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05" }, // Last One Wins
+];
+
+async function initPinsDb() {
+  if (!PgPool) return;
+  if (!DATABASE_URL) {
+    console.warn("[pins] DATABASE_URL not set — pin features disabled");
+    return;
+  }
+  try {
+    pinsPool = new PgPool({ connectionString: DATABASE_URL });
+    pinsPool.on("error", (err) => console.warn(`[pins] pool error: ${err.message}`));
+
+    await pinsPool.query(`
+      CREATE TABLE IF NOT EXISTS dapp_pins (
+        user_id     TEXT        NOT NULL,
+        dapp_pubkey TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, dapp_pubkey)
+      )
+    `);
+    await pinsPool.query(
+      `CREATE INDEX IF NOT EXISTS dapp_pins_user_id_idx ON dapp_pins (user_id)`
+    );
+    // staging:private — staging gets structure only, never prod rows.
+    await pinsPool.query(`COMMENT ON TABLE dapp_pins IS 'staging:private'`);
+
+    pinsReady = true;
+    console.log("[pins] dapp_pins table ready");
+
+    if (IS_STAGING) {
+      for (const p of SEED_PINS) {
+        await pinsPool.query(
+          `INSERT INTO dapp_pins (user_id, dapp_pubkey)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, dapp_pubkey) DO NOTHING`,
+          [p.user_id, p.pubkey]
+        );
+      }
+      console.log(`[pins] seeded ${SEED_PINS.length} staging demo pin(s)`);
+    }
+  } catch (e) {
+    pinsReady = false;
+    console.warn(`[pins] could not initialise database: ${e.message}`);
+  }
+}
+
+// ── JWT auth (built-in crypto, HS256 only) ───────────────────────────────────
+// The platform shell injects a `?token=…` JWT on iframe load; the frontend
+// forwards it via the `x-usernode-token` header. We verify HS256 against
+// JWT_SECRET without pulling in a `jsonwebtoken` dependency.
+
+function b64urlToBuf(str) {
+  const pad = str.length % 4 === 0 ? "" : "=".repeat(4 - (str.length % 4));
+  return Buffer.from(str.replace(/-/g, "+").replace(/_/g, "/") + pad, "base64");
+}
+
+function verifyJwt(token) {
+  if (!token || !JWT_SECRET) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+
+  let header;
+  try {
+    header = JSON.parse(b64urlToBuf(headerB64).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  if (!header || header.alg !== "HS256") return null;
+
+  const expected = crypto
+    .createHmac("sha256", JWT_SECRET)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest();
+  const got = b64urlToBuf(sigB64);
+  if (expected.length !== got.length || !crypto.timingSafeEqual(expected, got)) {
+    return null;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(b64urlToBuf(payloadB64).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  // Reject expired tokens (exp is seconds since epoch, per JWT spec).
+  if (payload && typeof payload.exp === "number" && payload.exp * 1000 <= Date.now()) {
+    return null;
+  }
+  return payload;
+}
+
+function getUser(req) {
+  const headerTok = req.headers["x-usernode-token"];
+  let token = Array.isArray(headerTok) ? headerTok[0] : headerTok;
+  if (!token) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      token = u.searchParams.get("token") || "";
+    } catch (_) {}
+  }
+  const payload = verifyJwt(token);
+  if (!payload || payload.id == null) return null;
+  return payload;
+}
+
+function jsonRes(res, status, obj) {
+  return send(
+    res,
+    status,
+    { "content-type": "application/json", "cache-control": "no-store" },
+    JSON.stringify(obj)
+  );
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      if (!chunks.length) return resolve(null);
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch (_) {
+        resolve(undefined); // signals malformed JSON
+      }
+    });
+    req.on("error", () => resolve(null));
+  });
+}
+
+async function handlePins(req, res, urlObj) {
+  const user = getUser(req);
+  if (!user) return jsonRes(res, 401, { error: "auth required" });
+  if (!pinsReady) return jsonRes(res, 503, { error: "pins unavailable" });
+  const userId = String(user.id);
+
+  try {
+    if (req.method === "GET") {
+      const { rows } = await pinsPool.query(
+        `SELECT dapp_pubkey FROM dapp_pins WHERE user_id = $1`,
+        [userId]
+      );
+      return jsonRes(res, 200, { pins: rows.map((r) => r.dapp_pubkey) });
+    }
+
+    if (req.method === "POST") {
+      const body = await readBody(req);
+      if (body === undefined) return jsonRes(res, 400, { error: "invalid JSON" });
+      const pubkey = body && typeof body.pubkey === "string" ? body.pubkey.trim() : "";
+      if (!pubkey) return jsonRes(res, 400, { error: "pubkey required" });
+      // Only honour pins for dapps we actually list; unknown keys are ignored
+      // (still 200 to keep the client simple).
+      if (loadPubkeys().includes(pubkey)) {
+        await pinsPool.query(
+          `INSERT INTO dapp_pins (user_id, dapp_pubkey)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, dapp_pubkey) DO NOTHING`,
+          [userId, pubkey]
+        );
+      }
+      return jsonRes(res, 200, { pinned: true });
+    }
+
+    if (req.method === "DELETE") {
+      const pubkey = (urlObj.searchParams.get("pubkey") || "").trim();
+      if (!pubkey) return jsonRes(res, 400, { error: "pubkey required" });
+      await pinsPool.query(
+        `DELETE FROM dapp_pins WHERE user_id = $1 AND dapp_pubkey = $2`,
+        [userId, pubkey]
+      );
+      return jsonRes(res, 200, { pinned: false });
+    }
+
+    return jsonRes(res, 405, { error: "method not allowed" });
+  } catch (e) {
+    console.warn(`[pins] request error: ${e.message}`);
+    return jsonRes(res, 500, { error: "internal error" });
+  }
+}
+
+// Kick off DB init (non-blocking — the homepage serves regardless).
+initPinsDb();
+
 // ── HTTP helpers for the submit/review API ───────────────────────────────────
 
 function sendJson(res, statusCode, obj) {
@@ -675,38 +881,8 @@ function validateSubmissionInput(body) {
   if (logo) dapp.logo = logo;
   return { ok: true, dapp };
 }
-
-// ── Micro-blog auth (stdlib HS256 JWT verify) ────────────────────────────────
-// The platform shell mints a JWT for the logged-in Usernode user, injects it as
-// ?token=… on the iframe load, and the frontend forwards it via x-usernode-token.
-// We verify HS256 with JWT_SECRET using only Node crypto — no auth library — to
-// keep this app's minimal-dependency posture (pg is the only added dependency).
-
-function b64urlToBuf(str) {
-  let s = String(str).replace(/-/g, "+").replace(/_/g, "/");
-  while (s.length % 4) s += "=";
-  return Buffer.from(s, "base64");
-}
-
-function verifyJwt(token) {
-  if (!token || !JWT_SECRET) return null;
-  const parts = String(token).split(".");
-  if (parts.length !== 3) return null;
-  const [h, p, sig] = parts;
-  const expected = crypto.createHmac("sha256", JWT_SECRET).update(`${h}.${p}`).digest();
-  let provided;
-  try { provided = b64urlToBuf(sig); } catch (_) { return null; }
-  if (provided.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(provided, expected)) return null;
-  let payload;
-  try { payload = JSON.parse(b64urlToBuf(p).toString("utf8")); } catch (_) { return null; }
-  if (!payload || typeof payload !== "object") return null;
-  if (typeof payload.exp === "number" && Date.now() / 1000 > payload.exp) return null;
-  return payload;
-}
-
-// Resolve the authenticated user from ?token= or the x-usernode-token header.
-// Returns { id, username, usernode_pubkey } or null when anonymous.
+// Resolve the authenticated user for micro-blog routes from ?token= or the
+// x-usernode-token header. Returns { id, username, usernode_pubkey } or null.
 function userFromReq(req, urlObj) {
   const token =
     (urlObj && urlObj.searchParams.get("token")) ||
@@ -1155,6 +1331,12 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith(EXPLORER_PROXY_PREFIX)) {
     const subPath = pathname.slice(EXPLORER_PROXY_PREFIX.length);
     return proxyExplorer(req, res, subPath);
+  }
+
+  if (pathname === "/api/pins") {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    handlePins(req, res, urlObj);
+    return;
   }
 
   if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
