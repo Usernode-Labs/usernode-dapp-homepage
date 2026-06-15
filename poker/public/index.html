@@ -59,7 +59,7 @@
   </style>
 </head>
 <body class="min-h-screen">
-  <div id="app" class="max-w-5xl mx-auto px-3 pb-40 pt-4"></div>
+  <div id="app" class="max-w-5xl mx-auto px-3 pb-40 pt-4"><p class="text-slate-500 mt-20 text-center">Loading…</p></div>
 
   <!-- Buy-in modal -->
   <div id="buyinModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-40 p-4">
@@ -133,7 +133,7 @@
       stopStream();
       try {
         const data = await api('/api/tables');
-        ME = data.you;
+        ME = data.you || null;
         const rows = data.tables.map((t) => `
           <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex items-center justify-between">
             <div>
@@ -142,12 +142,15 @@
             </div>
             <button onclick="openTable('${t.id}')" class="bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">Open</button>
           </div>`).join('');
+        const userLine = ME
+          ? `Signed in as <b>${escapeHtml(ME.username || 'guest')}</b>${ME.wallet ? '' : ' · <span class="text-amber-400">no wallet linked</span>'}`
+          : '<span class="text-amber-400">Open this app via Usernode to sign in and play.</span>';
         $('app').innerHTML = `
           <div class="flex items-center justify-between mb-4">
             <h1 class="text-2xl font-bold">♠ Usernode Hold'em</h1>
-            <button onclick="createTable()" class="bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-2 text-sm">+ Create table</button>
+            ${ME ? `<button onclick="createTable()" class="bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-2 text-sm">+ Create table</button>` : ''}
           </div>
-          <p class="text-sm text-slate-400 mb-3">Signed in as <b>${escapeHtml(ME.username || 'guest')}</b>${ME.wallet ? '' : ' · <span class="text-amber-400">no wallet linked</span>'}</p>
+          <p class="text-sm text-slate-400 mb-3">${userLine}</p>
           <div class="space-y-3">${rows || '<p class="text-slate-500">No open tables.</p>'}</div>`;
       } catch (e) {
         $('app').innerHTML = `<p class="text-red-400">${escapeHtml(e.message)}</p>`;

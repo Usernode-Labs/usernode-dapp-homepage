@@ -172,8 +172,10 @@ async function loadRuntime(tableId) {
 const app = express();
 app.use(express.json({ limit: "64kb" }));
 
-const PUBLIC_API_PATHS = new Set(["/health"]);
-const PUBLIC_PREFIXES = ["/explorer-api/"];
+// /api/tables (lobby read) and /api/hands/* (verify) are intentionally public
+// per the spec — they expose no user-private data.
+const PUBLIC_API_PATHS = new Set(["/health", "/api/tables"]);
+const PUBLIC_PREFIXES = ["/explorer-api/", "/api/hands/"];
 
 app.use((req, res, next) => {
   const token = req.query.token || req.headers["x-usernode-token"];
@@ -224,7 +226,10 @@ app.get("/api/tables", async (req, res) => {
       seated: seatRows.rows[0].n,
     });
   }
-  res.json({ tables: out, treasury: treasury.address() || null, you: { id: req.user.id, username: req.user.username, wallet: req.user.usernode_pubkey || null } });
+  const you = req.user
+    ? { id: req.user.id, username: req.user.username, wallet: req.user.usernode_pubkey || null }
+    : null;
+  res.json({ tables: out, treasury: treasury.address() || null, you });
 });
 
 // Create a table (slice 1: fixed 6-max NL template).
