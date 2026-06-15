@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Reader — Foreground/Background Detection</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: #0a0e17;
+      color: #e7edf7;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      min-height: 0;
+    }
+
+    /* Hidden video element for camera stream */
+    video {
+      display: none;
+    }
+
+    /* Main canvas taking up most of the viewport */
+    #displayCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #000;
+    }
+
+    /* Control overlay */
+    .controls {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .controlRow {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      pointer-events: auto;
+    }
+
+    button, input[type="range"], select {
+      padding: 10px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(20, 27, 38, 0.95);
+      color: #e7edf7;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    button:hover {
+      background: rgba(20, 27, 38, 1);
+      border-color: rgba(110, 168, 254, 0.5);
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    button.primary {
+      background: #2563eb;
+      border-color: #2563eb;
+    }
+
+    button.primary:hover {
+      background: #1d4ed8;
+    }
+
+    button.danger {
+      background: #dc2626;
+      border-color: #dc2626;
+    }
+
+    button.danger:hover {
+      background: #b91c1c;
+    }
+
+    input[type="range"] {
+      padding: 0;
+      width: 200px;
+      cursor: pointer;
+      height: 32px;
+    }
+
+    select {
+      min-width: 150px;
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    /* Settings panel */
+    .settingsPanel {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(20, 27, 38, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 16px;
+      min-width: 280px;
+      max-width: 320px;
+      z-index: 10;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .settingsPanel h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #a8b3c7;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .settingRow {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 13px;
+    }
+
+    .settingRow:last-child {
+      border-bottom: none;
+    }
+
+    .settingLabel {
+      color: #a8b3c7;
+    }
+
+    .settingValue {
+      color: #6ea8fe;
+      font-weight: 600;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    .statusBadge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+
+    .statusBadge.running {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+    }
+
+    .statusBadge.paused {
+      background: rgba(248, 113, 113, 0.2);
+      color: #f87171;
+    }
+
+    .statusBadge.error {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+    }
+
+    .statusBadge.pending {
+      background: rgba(251, 191, 36, 0.2);
+      color: #fbbf24;
+    }
+
+    /* Error state */
+    .errorOverlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      text-align: center;
+      z-index: 20;
+    }
+
+    .errorOverlay.show {
+      display: flex;
+    }
+
+    .errorContent {
+      max-width: 500px;
+    }
+
+    .errorContent h2 {
+      font-size: 24px;
+      margin-bottom: 12px;
+      color: #ef4444;
+    }
+
+    .errorContent p {
+      color: #a8b3c7;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .errorContent button {
+      margin-top: 16px;
+    }
+
+    /* Loading spinner */
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(110, 168, 254, 0.2);
+      border-top-color: #6ea8fe;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loadingContainer {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.7);
+      gap: 16px;
+      z-index: 15;
+    }
+
+    .loadingContainer.hidden {
+      display: none;
+    }
+
+    .loadingText {
+      color: #a8b3c7;
+      font-size: 14px;
+    }
+
+    /* Toggle button for settings panel */
+    #toggleSettings {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 11;
+    }
+
+    #toggleSettings.active {
+      background: rgba(37, 99, 235, 0.2);
+      border-color: #2563eb;
+    }
+
+    @media (max-width: 640px) {
+      .controls {
+        bottom: 12px;
+        left: 12px;
+        right: 12px;
+      }
+
+      .controlRow {
+        flex-direction: column;
+      }
+
+      button, input[type="range"], select {
+        width: 100%;
+      }
+
+      .settingsPanel {
+        top: 12px;
+        right: 12px;
+        min-width: auto;
+        max-width: calc(100vw - 24px);
+      }
+
+      #toggleSettings {
+        top: 12px;
+        right: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <video id="videoFeed" playsinline></video>
+    <canvas id="displayCanvas"></canvas>
+
+    <!-- Loading indicator -->
+    <div class="loadingContainer" id="loadingContainer">
+      <div class="spinner"></div>
+      <div class="loadingText" id="loadingText">Loading model...</div>
+    </div>
+
+    <!-- Error overlay -->
+    <div class="errorOverlay" id="errorOverlay">
+      <div class="errorContent">
+        <h2 id="errorTitle">Error</h2>
+        <p id="errorMessage">Something went wrong.</p>
+        <button class="primary" id="errorRetryBtn">Retry</button>
+        <button id="errorCloseBtn">Close</button>
+      </div>
+    </div>
+
+    <!-- Settings toggle button -->
+    <button id="toggleSettings" title="Toggle settings panel">⚙️</button>
+
+    <!-- Settings panel -->
+    <div class="settingsPanel" id="settingsPanel" style="display: none;">
+      <h3>Settings</h3>
+      <div class="settingRow">
+        <span class="settingLabel">FPS</span>
+        <span class="settingValue" id="fpsStat">0</span>
+      </div>
+      <div class="settingRow">
+        <span class="settingLabel">Inference Time</span>
+        <span class="settingValue" id="latencyStat">0 ms</span>
+      </div>
+      <div class="settingRow">
+        <span class="settingLabel">Resolution</span>
+        <span class="settingValue" id="resolutionStat">0×0</span>
+      </div>
+      <div class="settingRow">
+        <span class="settingLabel">Model</span>
+        <span class="settingValue" id="modelStat">MediaPipe Selfie</span>
+      </div>
+      <div class="settingRow">
+        <span class="settingLabel">Status</span>
+        <div style="width: 100%;">
+          <span class="statusBadge running" id="statusBadge">Running</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Control panel -->
+    <div class="controls">
+      <div class="controlRow">
+        <button class="primary" id="cameraBtn">Start Camera</button>
+        <select id="visualizationMode">
+          <option value="raw">Raw Feed</option>
+          <option value="foreground" selected>Foreground Mask</option>
+          <option value="background-blur">Background Blur</option>
+          <option value="segmentation-map">Segmentation Map</option>
+        </select>
+      </div>
+      <div class="controlRow">
+        <label for="confidenceSlider">
+          Confidence Threshold:
+          <span id="confidenceValue">0.50</span>
+        </label>
+        <input type="range" id="confidenceSlider" min="0" max="100" value="50" />
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.0"></script>
+
+  <script>
+    // State management
+    const state = {
+      cameraActive: false,
+      stream: null,
+      model: null,
+      modelLoaded: false,
+      modelError: null,
+      visualizationMode: 'foreground',
+      confidenceThreshold: 0.5,
+      fps: 0,
+      latency: 0,
+      tabVisible: true,
+      currentSegmentation: null,
+      lastFrameTime: performance.now(),
+      frameCount: 0,
+    };
+
+    // DOM elements
+    const videoEl = document.getElementById('videoFeed');
+    const displayCanvas = document.getElementById('displayCanvas');
+    const ctx = displayCanvas.getContext('2d', { willReadFrequently: true });
+    const cameraBtn = document.getElementById('cameraBtn');
+    const visualizationModeSelect = document.getElementById('visualizationMode');
+    const confidenceSlider = document.getElementById('confidenceSlider');
+    const confidenceValue = document.getElementById('confidenceValue');
+    const errorOverlay = document.getElementById('errorOverlay');
+    const errorTitle = document.getElementById('errorTitle');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorRetryBtn = document.getElementById('errorRetryBtn');
+    const errorCloseBtn = document.getElementById('errorCloseBtn');
+    const loadingContainer = document.getElementById('loadingContainer');
+    const loadingText = document.getElementById('loadingText');
+    const toggleSettingsBtn = document.getElementById('toggleSettings');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const fpsStat = document.getElementById('fpsStat');
+    const latencyStat = document.getElementById('latencyStat');
+    const resolutionStat = document.getElementById('resolutionStat');
+    const statusBadge = document.getElementById('statusBadge');
+
+    // Hidden canvases for processing
+    let inputCanvas = document.createElement('canvas');
+    let inputCtx = inputCanvas.getContext('2d', { willReadFrequently: true });
+    let segmentationCanvas = document.createElement('canvas');
+    let segmentationCtx = segmentationCanvas.getContext('2d', { willReadFrequently: true });
+
+    // Tab visibility tracking
+    document.addEventListener('visibilitychange', () => {
+      state.tabVisible = !document.hidden;
+      if (!state.tabVisible && state.cameraActive) {
+        stopCamera();
+      }
+    });
+
+    // Initialize the model
+    async function loadModel() {
+      try {
+        loadingText.textContent = 'Loading MediaPipe Selfie Segmentation...';
+        state.model = await bodySegmentation.createSegmenter(
+          bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
+          {
+            runtime: 'tfjs',
+            solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+          }
+        );
+        state.modelLoaded = true;
+        loadingContainer.classList.add('hidden');
+      } catch (err) {
+        state.modelError = err.message;
+        showError('Model Load Failed', `Failed to load ML model: ${err.message}`, () => loadModel());
+      }
+    }
+
+    // Camera management
+    async function startCamera() {
+      try {
+        state.stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: false,
+        });
+        videoEl.srcObject = state.stream;
+        videoEl.play();
+        state.cameraActive = true;
+        cameraBtn.textContent = 'Stop Camera';
+        cameraBtn.classList.remove('primary');
+        cameraBtn.classList.add('danger');
+        updateStatus('running');
+        startRenderLoop();
+      } catch (err) {
+        const message = err.name === 'NotAllowedError'
+          ? 'Camera permission denied. Please enable camera access in your browser settings.'
+          : `Camera error: ${err.message}`;
+        showError('Camera Access Failed', message, () => startCamera());
+        updateStatus('error');
+      }
+    }
+
+    function stopCamera() {
+      if (state.stream) {
+        state.stream.getTracks().forEach(t => t.stop());
+        state.stream = null;
+      }
+      state.cameraActive = false;
+      cameraBtn.textContent = 'Start Camera';
+      cameraBtn.classList.add('primary');
+      cameraBtn.classList.remove('danger');
+      updateStatus('paused');
+      ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+      ctx.fillRect(0, 0, displayCanvas.width, displayCanvas.height);
+    }
+
+    // Render loop
+    function startRenderLoop() {
+      if (!state.cameraActive) return;
+
+      requestAnimationFrame(async () => {
+        if (!state.cameraActive) return;
+
+        const startTime = performance.now();
+
+        // Draw video frame to input canvas
+        if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
+          inputCanvas.width = videoEl.videoWidth;
+          inputCanvas.height = videoEl.videoHeight;
+          inputCtx.drawImage(videoEl, 0, 0);
+
+          // Run segmentation
+          if (state.modelLoaded && state.model) {
+            try {
+              const segmentation = await state.model.segmentPeople(inputCanvas, {
+                flipHorizontal: false,
+              });
+              state.currentSegmentation = segmentation;
+              const inferenceTime = performance.now() - startTime;
+              state.latency = Math.round(inferenceTime);
+            } catch (err) {
+              console.error('Segmentation error:', err);
+            }
+          }
+
+          // Render based on visualization mode
+          renderVisualization();
+          updateStats();
+        }
+
+        startRenderLoop();
+      });
+    }
+
+    function renderVisualization() {
+      displayCanvas.width = inputCanvas.width;
+      displayCanvas.height = inputCanvas.height;
+
+      const mode = state.visualizationMode;
+
+      if (mode === 'raw') {
+        ctx.drawImage(inputCanvas, 0, 0);
+      } else if (mode === 'foreground' || mode === 'background-blur' || mode === 'segmentation-map') {
+        // Generate segmentation mask
+        generateSegmentationMask();
+
+        if (mode === 'foreground') {
+          renderForegroundMask();
+        } else if (mode === 'background-blur') {
+          renderBackgroundBlur();
+        } else if (mode === 'segmentation-map') {
+          renderSegmentationMap();
+        }
+      }
+    }
+
+    function generateSegmentationMask() {
+      if (!state.currentSegmentation || !state.currentSegmentation[0]) return;
+
+      const mask = state.currentSegmentation[0].mask;
+      segmentationCanvas.width = mask.canvas.width;
+      segmentationCanvas.height = mask.canvas.height;
+      segmentationCtx.drawImage(mask.canvas, 0, 0);
+    }
+
+    function renderForegroundMask() {
+      const imgData = segmentationCtx.getImageData(
+        0, 0,
+        segmentationCanvas.width,
+        segmentationCanvas.height
+      );
+      const data = imgData.data;
+
+      // Draw input image
+      ctx.drawImage(inputCanvas, 0, 0);
+
+      // Apply mask overlay: darken background
+      const threshold = Math.round(state.confidenceThreshold * 255);
+      for (let i = 0; i < data.length; i += 4) {
+        const confidence = data[i]; // R channel contains confidence
+        if (confidence < threshold) {
+          // Darken background
+          data[i] = Math.floor(data[i] * 0.3);     // R
+          data[i + 1] = Math.floor(data[i + 1] * 0.3); // G
+          data[i + 2] = Math.floor(data[i + 2] * 0.3); // B
+          data[i + 3] = 255; // A
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    function renderBackgroundBlur() {
+      ctx.drawImage(inputCanvas, 0, 0);
+
+      const imgData = ctx.getImageData(0, 0, displayCanvas.width, displayCanvas.height);
+      const data = imgData.data;
+      const maskData = segmentationCtx.getImageData(
+        0, 0,
+        segmentationCanvas.width,
+        segmentationCanvas.height
+      ).data;
+
+      const threshold = Math.round(state.confidenceThreshold * 255);
+
+      // Apply blur to background areas
+      const blurred = applyGaussianBlur(imgData, 15);
+      const blurredData = blurred.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const confidence = maskData[i];
+        if (confidence < threshold) {
+          // Use blurred pixel for background
+          data[i] = blurredData[i];
+          data[i + 1] = blurredData[i + 1];
+          data[i + 2] = blurredData[i + 2];
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    function renderSegmentationMap() {
+      const imgData = segmentationCtx.getImageData(
+        0, 0,
+        segmentationCanvas.width,
+        segmentationCanvas.height
+      );
+      const data = imgData.data;
+
+      // Convert grayscale confidence to heatmap (blue → cyan → green → yellow → red)
+      for (let i = 0; i < data.length; i += 4) {
+        const confidence = data[i] / 255; // Normalize 0-1
+        let r, g, b;
+
+        if (confidence < 0.25) {
+          // Blue
+          r = 0;
+          g = 0;
+          b = Math.floor(255 * (confidence / 0.25));
+        } else if (confidence < 0.5) {
+          // Cyan
+          r = 0;
+          g = Math.floor(255 * ((confidence - 0.25) / 0.25));
+          b = 255;
+        } else if (confidence < 0.75) {
+          // Green
+          r = 0;
+          g = 255;
+          b = Math.floor(255 * (1 - (confidence - 0.5) / 0.25));
+        } else {
+          // Yellow → Red
+          r = Math.floor(255 * ((confidence - 0.75) / 0.25));
+          g = Math.floor(255 * (1 - (confidence - 0.75) / 0.25));
+          b = 0;
+        }
+
+        data[i] = r;
+        data[i + 1] = g;
+        data[i + 2] = b;
+        data[i + 3] = 255;
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Simple Gaussian blur approximation
+    function applyGaussianBlur(imgData, radius) {
+      const w = displayCanvas.width;
+      const h = displayCanvas.height;
+      const pixels = new Uint8ClampedArray(imgData.data);
+      const blurred = new Uint8ClampedArray(imgData.data);
+
+      const r = Math.floor(radius);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let r_sum = 0, g_sum = 0, b_sum = 0, count = 0;
+
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              const nx = Math.min(Math.max(x + dx, 0), w - 1);
+              const ny = Math.min(Math.max(y + dy, 0), h - 1);
+              const idx = (ny * w + nx) * 4;
+
+              r_sum += pixels[idx];
+              g_sum += pixels[idx + 1];
+              b_sum += pixels[idx + 2];
+              count++;
+            }
+          }
+
+          const idx = (y * w + x) * 4;
+          blurred[idx] = Math.round(r_sum / count);
+          blurred[idx + 1] = Math.round(g_sum / count);
+          blurred[idx + 2] = Math.round(b_sum / count);
+          blurred[idx + 3] = pixels[idx + 3];
+        }
+      }
+
+      return { data: blurred };
+    }
+
+    function updateStats() {
+      const now = performance.now();
+      const delta = now - state.lastFrameTime;
+      state.frameCount++;
+
+      if (delta >= 1000) {
+        state.fps = Math.round((state.frameCount * 1000) / delta);
+        state.frameCount = 0;
+        state.lastFrameTime = now;
+      }
+
+      fpsStat.textContent = state.fps;
+      latencyStat.textContent = `${state.latency} ms`;
+      resolutionStat.textContent = `${inputCanvas.width}×${inputCanvas.height}`;
+    }
+
+    function updateStatus(status) {
+      statusBadge.className = 'statusBadge ' + (status === 'error' ? 'error' : status === 'pending' ? 'pending' : status === 'running' ? 'running' : 'paused');
+      statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    }
+
+    function showError(title, message, retryFn) {
+      errorTitle.textContent = title;
+      errorMessage.textContent = message;
+      errorOverlay.classList.add('show');
+
+      errorRetryBtn.onclick = () => {
+        errorOverlay.classList.remove('show');
+        retryFn?.();
+      };
+      errorCloseBtn.onclick = () => {
+        errorOverlay.classList.remove('show');
+      };
+    }
+
+    // Event listeners
+    cameraBtn.addEventListener('click', () => {
+      if (state.cameraActive) {
+        stopCamera();
+      } else {
+        startCamera();
+      }
+    });
+
+    visualizationModeSelect.addEventListener('change', (e) => {
+      state.visualizationMode = e.target.value;
+    });
+
+    confidenceSlider.addEventListener('input', (e) => {
+      state.confidenceThreshold = parseInt(e.target.value) / 100;
+      confidenceValue.textContent = state.confidenceThreshold.toFixed(2);
+    });
+
+    toggleSettingsBtn.addEventListener('click', () => {
+      const isHidden = settingsPanel.style.display === 'none';
+      settingsPanel.style.display = isHidden ? 'block' : 'none';
+      toggleSettingsBtn.classList.toggle('active');
+    });
+
+    // Initialize on load
+    window.addEventListener('load', loadModel);
+  </script>
+</body>
+</html>

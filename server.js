@@ -879,6 +879,39 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  if (pathname === "/reader") {
+    const READER_PATH = path.join(__dirname, "reader.html");
+    return fs.readFile(READER_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read reader.html: ${err.message}\n`
+        );
+      }
+
+      if (req.method === "HEAD") {
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "content-length": buf.length,
+          "cache-control": "no-store",
+        });
+        return res.end();
+      }
+
+      return send(
+        res,
+        200,
+        {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        },
+        buf
+      );
+    });
+  }
+
   fs.readFile(INDEX_PATH, (err, buf) => {
     if (err) {
       return send(
