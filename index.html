@@ -1922,10 +1922,12 @@
           loadAllStats(allApps);
           loadPins();
         } catch (e) {
+          // Log the technical detail for developers (the usernode-dev-console
+          // forwarder relays this to the platform dev console); show the user a
+          // clean, generic message instead of the raw error text.
+          console.error("Failed to load dapps.json:", e);
           clearList();
-          addRow(
-            `(error loading dapps.json: ${e && e.message ? e.message : String(e)})`
-          );
+          addRow("(Couldn't load the dapp list. Please refresh and try again.)");
         }
       })();
 
@@ -2656,8 +2658,21 @@
               headers: { "content-type": "application/json" },
               body: JSON.stringify(body),
             });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+            let data = null;
+            try { data = await resp.json(); } catch (_) { data = null; }
+            if (!resp.ok) {
+              // The server returns curated, user-friendly messages for client
+              // errors (validation, duplicates, submissions closed). Show those
+              // verbatim — they are intentional UX, not technical leaks.
+              if (resp.status >= 400 && resp.status < 500 && data && data.error) {
+                showError(errForm, data.error);
+                return;
+              }
+              // Anything else (5xx, missing message) is technical — fall through
+              // to the catch so the detail is logged and the user sees a generic
+              // message instead of a raw HTTP status.
+              throw new Error(`submission failed: HTTP ${resp.status}`);
+            }
             current = data;
             F("payAmount").textContent = `${data.amount} tokens`;
             F("payTo").textContent = data.pay_to;
@@ -2667,7 +2682,9 @@
             renderStatus("awaiting_payment");
             startPolling(data.id);
           } catch (e) {
-            showError(errForm, e.message || String(e));
+            // Log technical detail for developers; show a clean generic message.
+            console.error("Submission failed:", e);
+            showError(errForm, "Something went wrong submitting your dapp. Please try again.");
           } finally {
             continueBtn.disabled = false;
             continueBtn.textContent = "Continue to payment";
@@ -2679,7 +2696,13 @@
         async function requestPaymentViaBridge(to, amount, memo) {
           const candidates = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge];
           const b = candidates.find((x) => x && typeof x.sendTransaction === "function");
-          if (!b) throw new Error("Wallet bridge unavailable — pay manually using the details above.");
+          if (!b) {
+            // Tagged so the click handler can show this deliberate, friendly
+            // hint verbatim while still suppressing other (technical) errors.
+            const unavailable = new Error("Wallet bridge unavailable — pay manually using the details above.");
+            unavailable.bridgeUnavailable = true;
+            throw unavailable;
+          }
           // Bridge signature varies; pass a superset of common field names.
           return b.sendTransaction({
             to, recipient: to, destination: to,
@@ -2697,7 +2720,15 @@
             await requestPaymentViaBridge(current.pay_to, current.amount, current.memo);
             payWalletBtn.textContent = "Payment requested — waiting…";
           } catch (e) {
-            showError(errPay, e.message || String(e));
+            // The "bridge unavailable" case is a deliberate, user-friendly hint —
+            // show it verbatim. Any other failure is technical: log it for
+            // developers and show a clean generic message.
+            if (e && e.bridgeUnavailable) {
+              showError(errPay, e.message);
+            } else {
+              console.error("Payment request failed:", e);
+              showError(errPay, "Couldn't request the payment. Please pay manually using the details above.");
+            }
             payWalletBtn.disabled = false;
             payWalletBtn.textContent = "Pay with wallet";
           }
