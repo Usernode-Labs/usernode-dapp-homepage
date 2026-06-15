@@ -37,17 +37,20 @@ const { Pool } = require("pg");
 })();
 
 const LOCAL_DEV = process.argv.includes("--local-dev");
-const PORT = Number(process.env.PORT) || 8000;
+const PORT = Number(process.env.PORT) || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-insecure";
 const INDEX_PATH = path.join(__dirname, "index.html");
 const NFT_TERMINAL_PATH = path.join(__dirname, "nft-terminal.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
 
-// PostgreSQL connection for user_points table.
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://localhost/usernode_nft_test",
-});
+// PostgreSQL connection for user_points table (optional; app runs without if unavailable).
+let pool = null;
+if (process.env.DATABASE_URL) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+}
 
 // Static content-type lookup for screenshot assets served from public/.
 const STATIC_CONTENT_TYPES = {
@@ -100,6 +103,10 @@ const EXPLORER_USE_HTTP = (() => {
 
 // ── Database initialization ──────────────────────────────────────────────────
 async function initializeDatabase() {
+  if (!pool) {
+    console.warn("[db] DATABASE_URL not set; running without points persistence");
+    return false;
+  }
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_points (
@@ -111,14 +118,17 @@ async function initializeDatabase() {
       );
     `);
     console.log("[db] user_points table initialized");
+    return true;
   } catch (err) {
     console.error("[db] failed to initialize database:", err.message);
-    process.exit(1);
+    console.error("[db] app will continue without database; auth endpoints will fail");
+    return false;
   }
 }
 
 // Get or create user points record (ensures user exists with starting balance).
 async function getOrCreateUserPoints(userId, username) {
+  if (!pool) return POINTS_STARTING_BALANCE;  // fallback if no DB
   try {
     const result = await pool.query(
       `INSERT INTO user_points (user_id, username, points_balance, last_updated)
@@ -130,12 +140,16 @@ async function getOrCreateUserPoints(userId, username) {
     return result.rows[0]?.points_balance || POINTS_STARTING_BALANCE;
   } catch (err) {
     console.error("[db] getOrCreateUserPoints error:", err.message);
-    throw err;
+    return POINTS_STARTING_BALANCE;  // fallback on error
   }
 }
 
 // Deduct points from a user's balance (transaction-style: only deduct if sufficient balance).
 async function deductUserPoints(userId, amount) {
+  if (!pool) {
+    // Fallback: without DB, deny the mint to avoid giving free NFTs
+    return { ok: false, reason: "database_unavailable" };
+  }
   try {
     const result = await pool.query(
       `UPDATE user_points SET points_balance = points_balance - $2, last_updated = NOW()
@@ -149,7 +163,7 @@ async function deductUserPoints(userId, amount) {
     return { ok: true, newBalance: result.rows[0].points_balance };
   } catch (err) {
     console.error("[db] deductUserPoints error:", err.message);
-    throw err;
+    return { ok: false, reason: "database_error" };
   }
 }
 
@@ -169,6 +183,7 @@ const PUBLIC_PATHS = new Set([
   "/api/transactions",
   "/user_activity",
   "/api/submit-config",
+  "/api/nft-config",
   "/screenshots",
   "/health",
 ]);
