@@ -1,0 +1,459 @@
+{
+  "questions": [
+    {
+      "id": "bc-001",
+      "category": "Blockchain Basics",
+      "difficulty": "easy",
+      "question": "What is a blockchain, most simply?",
+      "options": [
+        "A centralized database run by one company",
+        "An append-only chain of cryptographically linked blocks",
+        "A type of cloud storage bucket",
+        "A spreadsheet emailed between banks"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "bc-002",
+      "category": "Blockchain Basics",
+      "difficulty": "easy",
+      "question": "What does it mean for a blockchain to be 'immutable'?",
+      "options": [
+        "Anyone can edit past records freely",
+        "Confirmed records are extremely hard to alter retroactively",
+        "The chain never adds new blocks",
+        "Only governments can change it"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "bc-003",
+      "category": "Blockchain Basics",
+      "difficulty": "medium",
+      "question": "What is the role of a 'consensus mechanism'?",
+      "options": [
+        "It compresses block data to save space",
+        "It lets nodes agree on the valid state of the ledger",
+        "It encrypts user passwords",
+        "It pays for internet bandwidth"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "bc-004",
+      "category": "Blockchain Basics",
+      "difficulty": "medium",
+      "question": "In Proof of Work, what are miners primarily competing to do?",
+      "options": [
+        "Guess a hash below a target difficulty",
+        "Vote on which transactions are pretty",
+        "Download the largest file fastest",
+        "Solve customer support tickets"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "bc-005",
+      "category": "Blockchain Basics",
+      "difficulty": "medium",
+      "question": "What distinguishes Proof of Stake from Proof of Work?",
+      "options": [
+        "Validators are chosen based on staked capital, not raw computation",
+        "It requires no network at all",
+        "It cannot process transactions",
+        "It only works on weekends"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "bc-006",
+      "category": "Blockchain Basics",
+      "difficulty": "easy",
+      "question": "What is a 'block' in a blockchain?",
+      "options": [
+        "A banned user account",
+        "A bundle of transactions committed together",
+        "A firewall rule",
+        "A unit of internet speed"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "bc-007",
+      "category": "Blockchain Basics",
+      "difficulty": "hard",
+      "question": "What problem does a blockchain's consensus solve that a normal database does not need to?",
+      "options": [
+        "Sorting rows alphabetically",
+        "Agreement among mutually-distrusting parties without a central authority",
+        "Rendering web pages quickly",
+        "Compressing images"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "bc-008",
+      "category": "Blockchain Basics",
+      "difficulty": "medium",
+      "question": "What is a 'fork' in blockchain terms?",
+      "options": [
+        "A divergence in the chain's history or protocol rules",
+        "A type of hardware wallet",
+        "A failed transaction fee",
+        "A customer support escalation"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "bc-009",
+      "category": "Blockchain Basics",
+      "difficulty": "easy",
+      "question": "Why is a blockchain often described as 'decentralized'?",
+      "options": [
+        "It runs on one giant supercomputer",
+        "Its ledger is maintained by many independent nodes",
+        "It has no users",
+        "It is owned by a single bank"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "bc-010",
+      "category": "Blockchain Basics",
+      "difficulty": "hard",
+      "question": "What does 'finality' mean for a transaction?",
+      "options": [
+        "The point at which it is considered irreversible",
+        "The moment it is first broadcast",
+        "When it is deleted from the mempool",
+        "When its fee is refunded"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "wk-001",
+      "category": "Wallets & Keys",
+      "difficulty": "easy",
+      "question": "What is a private key used for?",
+      "options": [
+        "Publicly identifying your account to others",
+        "Authorizing (signing) transactions from your account",
+        "Paying network fees automatically",
+        "Resetting the whole blockchain"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "wk-002",
+      "category": "Wallets & Keys",
+      "difficulty": "easy",
+      "question": "Which of these is safe to share publicly?",
+      "options": [
+        "Your seed phrase",
+        "Your private key",
+        "Your public address",
+        "Your wallet password"
+      ],
+      "answer": 2
+    },
+    {
+      "id": "wk-003",
+      "category": "Wallets & Keys",
+      "difficulty": "medium",
+      "question": "What is a seed phrase (mnemonic)?",
+      "options": [
+        "A human-readable backup that can regenerate your keys",
+        "A public username for your wallet",
+        "A transaction receipt",
+        "A network gas estimate"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "wk-004",
+      "category": "Wallets & Keys",
+      "difficulty": "medium",
+      "question": "What is the practical meaning of 'not your keys, not your coins'?",
+      "options": [
+        "Coins expire if unused",
+        "If a third party holds your keys, they control your funds",
+        "You must mint your own coins",
+        "Keys are optional on most chains"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "wk-005",
+      "category": "Wallets & Keys",
+      "difficulty": "hard",
+      "question": "How is a public address typically derived?",
+      "options": [
+        "Randomly assigned by an exchange",
+        "From the public key via hashing/encoding",
+        "By emailing the foundation",
+        "It is identical to the private key"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "wk-006",
+      "category": "Wallets & Keys",
+      "difficulty": "easy",
+      "question": "What is a 'cold wallet'?",
+      "options": [
+        "A wallet kept offline for security",
+        "A wallet with a negative balance",
+        "A wallet that only holds stablecoins",
+        "A wallet that has been frozen by a bank"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "wk-007",
+      "category": "Wallets & Keys",
+      "difficulty": "medium",
+      "question": "What does a digital signature prove about a transaction?",
+      "options": [
+        "That the network is online",
+        "That the holder of the private key authorized it",
+        "That the fee was the highest possible",
+        "That it was sent on a weekday"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "wk-008",
+      "category": "Wallets & Keys",
+      "difficulty": "hard",
+      "question": "If you lose your seed phrase and have no other backup, what typically happens?",
+      "options": [
+        "Support resets it within 24 hours",
+        "The funds are generally unrecoverable",
+        "The chain auto-refunds you",
+        "Your coins move to a recovery pool"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "un-001",
+      "category": "Usernode",
+      "difficulty": "easy",
+      "question": "On Usernode, what prefix do wallet addresses use?",
+      "options": [
+        "0x",
+        "ut1",
+        "bc1",
+        "cosmos1"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "un-002",
+      "category": "Usernode",
+      "difficulty": "medium",
+      "question": "On Usernode, a wallet address is the bech32 of what?",
+      "options": [
+        "The user's email",
+        "The public key hash",
+        "A random UUID",
+        "The block height"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "un-003",
+      "category": "Usernode",
+      "difficulty": "easy",
+      "question": "What is the Usernode Dapps homepage primarily for?",
+      "options": [
+        "Mining new tokens",
+        "Listing dapps built on the Usernode chain",
+        "Storing private keys",
+        "Sending email newsletters"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "un-004",
+      "category": "Usernode",
+      "difficulty": "medium",
+      "question": "How does the Usernode Dapps homepage decorate each dapp row with stats?",
+      "options": [
+        "By guessing randomly",
+        "By deriving unique senders and tx counts from the explorer",
+        "By asking each dapp's owner manually",
+        "By reading the user's local files"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "un-005",
+      "category": "Usernode",
+      "difficulty": "medium",
+      "question": "In the Submit-a-dapp flow, what confirms a new dapp gets published?",
+      "options": [
+        "A confirmed on-chain fee payment to the Community Fund Reserve",
+        "A moderator approving it by email",
+        "Reaching 100 upvotes",
+        "Paying a monthly subscription"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "un-006",
+      "category": "Usernode",
+      "difficulty": "hard",
+      "question": "How are usernames resolved per wallet on Usernode (as used by the homepage)?",
+      "options": [
+        "Latest on-chain set_username transaction per sender wins",
+        "First-come alphabetical order",
+        "By the longest username",
+        "By a central username server"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "un-007",
+      "category": "Usernode",
+      "difficulty": "easy",
+      "question": "Which of these is a real dapp listed on the Usernode homepage?",
+      "options": [
+        "Opinion Market",
+        "Quantum Bank Pro",
+        "MegaSwap 9000",
+        "CloudMail Plus"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "un-008",
+      "category": "Usernode",
+      "difficulty": "medium",
+      "question": "Usernode apps commonly run as child apps inside which platform?",
+      "options": [
+        "Usernode Social Vibecoding",
+        "A generic AWS console",
+        "A desktop-only installer",
+        "A printer driver suite"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "un-009",
+      "category": "Usernode",
+      "difficulty": "hard",
+      "question": "Why does the homepage query the explorer with 'recipient: pubkey' for stats?",
+      "options": [
+        "To reflect what each dapp actually received (excluding sender change)",
+        "To hide transactions from users",
+        "Because senders are secret",
+        "To double-count every transaction"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "w3-001",
+      "category": "Web3 Culture",
+      "difficulty": "easy",
+      "question": "What does 'HODL' originate from and commonly mean?",
+      "options": [
+        "A misspelling of 'hold' — to keep an asset long term",
+        "A high-frequency trading bot",
+        "A type of hardware wallet",
+        "An exchange withdrawal limit"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "w3-002",
+      "category": "Web3 Culture",
+      "difficulty": "easy",
+      "question": "What is an 'airdrop' in crypto?",
+      "options": [
+        "A free distribution of tokens to eligible wallets",
+        "A network outage",
+        "A type of mining rig",
+        "A failed transaction"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "w3-003",
+      "category": "Web3 Culture",
+      "difficulty": "medium",
+      "question": "What does 'gas' usually refer to?",
+      "options": [
+        "The fee paid to process a transaction",
+        "The speed of your internet",
+        "A wallet backup file",
+        "A governance vote"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "w3-004",
+      "category": "Web3 Culture",
+      "difficulty": "medium",
+      "question": "What is a 'smart contract'?",
+      "options": [
+        "A legal PDF signed by lawyers",
+        "Code deployed on-chain that runs deterministically",
+        "An insurance policy for wallets",
+        "A customer agreement with an exchange"
+      ],
+      "answer": 1
+    },
+    {
+      "id": "w3-005",
+      "category": "Web3 Culture",
+      "difficulty": "easy",
+      "question": "What does 'DeFi' stand for?",
+      "options": [
+        "Decentralized Finance",
+        "Default Finance",
+        "Deferred Filing",
+        "Digital Firmware"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "w3-006",
+      "category": "Web3 Culture",
+      "difficulty": "medium",
+      "question": "What is an NFT, at its core?",
+      "options": [
+        "A token representing unique, non-interchangeable ownership",
+        "A new fiat token issued by banks",
+        "A network fee tier",
+        "A node failure type"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "w3-007",
+      "category": "Web3 Culture",
+      "difficulty": "hard",
+      "question": "What does 'DYOR' advise?",
+      "options": [
+        "Do Your Own Research before investing",
+        "Delete Your Old Records",
+        "Double Your Outstanding Rewards",
+        "Deploy Your Own Rollup"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "w3-008",
+      "category": "Web3 Culture",
+      "difficulty": "medium",
+      "question": "What is a 'rug pull'?",
+      "options": [
+        "A scam where creators abandon a project and take the funds",
+        "A consensus upgrade",
+        "A staking reward schedule",
+        "A hardware wallet reset"
+      ],
+      "answer": 0
+    }
+  ]
+}
