@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Mini Minecraft</title>
+    <script>
+    // usernode-dev-console@1
+    (function () {
+      if (window.__usernodeDevConsole) return;
+      window.__usernodeDevConsole = true;
+      var S = '__usernodeDevConsole';
+      function serialize(v, depth) {
+        depth = depth || 0;
+        try {
+          if (v === undefined) return 'undefined';
+          if (v === null) return 'null';
+          if (typeof v === 'string') return v;
+          if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+          if (typeof v === 'function') return '[Function ' + (v.name || 'anonymous') + ']';
+          if (v instanceof Error) return (v.stack || (v.name + ': ' + v.message));
+          if (depth > 3) return '[…]';
+          var seen = new WeakSet();
+          return JSON.stringify(v, function (k, val) {
+            if (typeof val === 'object' && val !== null) {
+              if (seen.has(val)) return '[Circular]';
+              seen.add(val);
+            }
+            if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
+            if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+            return val;
+          });
+        } catch (e) { try { return String(v); } catch (_) { return '[unserializable]'; } }
+      }
+      function post(level, args, meta) {
+        try {
+          var payload = {
+            sentinel: S,
+            level: level,
+            args: Array.prototype.slice.call(args).map(function (a) { return serialize(a); }),
+            ts: Date.now(),
+            url: location.href,
+          };
+          if (meta) for (var k in meta) payload[k] = meta[k];
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(payload, '*');
+          }
+        } catch (_) {}
+      }
+      ['log','info','warn','error','debug'].forEach(function (level) {
+        var orig = console[level] ? console[level].bind(console) : function () {};
+        console[level] = function () { post(level, arguments); orig.apply(null, arguments); };
+      });
+      window.addEventListener('error', function (e) {
+        var msg = (e.error && (e.error.stack || e.error.message)) || e.message || 'Error';
+        post('error', [msg], { source: e.filename || '', line: e.lineno || 0, col: e.colno || 0, kind: 'error' });
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        var msg = (r && (r.stack || r.message)) || String(r);
+        post('error', [msg], { kind: 'unhandledrejection' });
+      });
+      try { post('info', ['[dev-console ready]'], { kind: 'ready' }); } catch (_) {}
+    })();
+    </script>
+    <style>
+      :root {
+        --bg: #0b0f16;
+        --fg: #e7edf7;
+        --muted: #a8b3c7;
+        --card: #141b26;
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #6ea8fe;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        height: 100dvh;
+      }
+      header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+      }
+      .backLink {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 13px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 5px 10px;
+        white-space: nowrap;
+      }
+      .backLink:hover { color: var(--fg); border-color: var(--accent); }
+      .title {
+        font-weight: 700;
+        font-size: 15px;
+        letter-spacing: 0.3px;
+        flex: 1 1 auto;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      @media (max-width: 560px) { .hint { display: none; } }
+      .btn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        font: inherit;
+        font-size: 13px;
+        padding: 5px 10px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .btn:hover { color: var(--fg); border-color: var(--accent); }
+      .stage {
+        flex: 1 1 auto;
+        min-height: 0;
+        position: relative;
+      }
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        touch-action: none;
+        cursor: crosshair;
+      }
+      .hotbar {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+        border-top: 1px solid var(--border);
+        background: var(--card);
+        overflow-x: auto;
+      }
+      .slot {
+        appearance: none;
+        border: 2px solid var(--border);
+        border-radius: 9px;
+        background: #0e1420;
+        width: 44px;
+        height: 44px;
+        flex: 0 0 auto;
+        cursor: pointer;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1px;
+        position: relative;
+      }
+      .slot.active {
+        border-color: var(--accent);
+        box-shadow: 0 0 8px rgba(110, 168, 254, 0.45);
+      }
+      .slot .swatch {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+        border: 1px solid rgba(0, 0, 0, 0.35);
+      }
+      .slot .tool { font-size: 20px; line-height: 22px; }
+      .slot .key {
+        position: absolute;
+        top: 1px;
+        left: 4px;
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .slot .lbl {
+        font-size: 8px;
+        color: var(--muted);
+        max-width: 40px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="backLink" href="/" id="backLink">&larr; Dapps</a>
+      <div class="title">Mini Minecraft</div>
+      <span class="hint" id="hint">Left-click: place &middot; Right-click: break &middot; 1&ndash;9, 0: pick block</span>
+      <button class="btn" id="resetBtn" type="button" title="Regenerate the world">New world</button>
+    </header>
+    <div class="stage" id="stage">
+      <canvas id="game"></canvas>
+    </div>
+    <div class="hotbar" id="hotbar" role="toolbar" aria-label="Block palette"></div>
+
+    <script>
+      "use strict";
+
+      // ── World model ──────────────────────────────────────────────────────
+      const COLS = 64;
+      const ROWS = 36;
+      const SAVE_KEY = "minecraft:world:v1";
+
+      // Block ids. 0 = air. ORE is terrain-only flavor (not in the hotbar).
+      const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, SAND = 4, WOOD = 5,
+            LEAVES = 6, WATER = 7, BRICK = 8, GLASS = 9, ORE = 10;
+
+      const BLOCKS = {
+        [GRASS]:  { name: "Grass",  color: "#8a5a32", top: "#5cab46" },
+        [DIRT]:   { name: "Dirt",   color: "#8a5a32" },
+        [STONE]:  { name: "Stone",  color: "#8d8d94" },
+        [SAND]:   { name: "Sand",   color: "#e7d8a1" },
+        [WOOD]:   { name: "Wood",   color: "#7a5230" },
+        [LEAVES]: { name: "Leaves", color: "#3e7d3a" },
+        [WATER]:  { name: "Water",  color: "rgba(58, 118, 196, 0.82)" },
+        [BRICK]:  { name: "Brick",  color: "#b04a3a" },
+        [GLASS]:  { name: "Glass",  color: "rgba(176, 216, 245, 0.38)" },
+        [ORE]:    { name: "Coal ore", color: "#8d8d94" },
+      };
+
+      // Hotbar layout: 9 placeable blocks + the pickaxe (break tool).
+      const PICKAXE = -1;
+      const HOTBAR = [GRASS, DIRT, STONE, SAND, WOOD, LEAVES, WATER, BRICK, GLASS, PICKAXE];
+      const HOTBAR_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+
+      let world = new Uint8Array(COLS * ROWS);
+      let selected = GRASS;
+
+      function idx(c, r) { return r * COLS + c; }
+      function inBounds(c, r) { return c >= 0 && c < COLS && r >= 0 && r < ROWS; }
+
+      // ── Terrain generation ───────────────────────────────────────────────
+      function generateWorld() {
+        world.fill(AIR);
+        let h = Math.floor(ROWS * 0.55);
+        const minH = Math.floor(ROWS * 0.35);
+        const maxH = Math.floor(ROWS * 0.82);
+        const ground = [];
+        for (let c = 0; c < COLS; c++) {
+          h += Math.floor(Math.random() * 3) - 1; // gentle random walk
+          h = Math.max(minH, Math.min(maxH, h));
+          ground.push(h);
+        }
+        for (let c = 0; c < COLS; c++) {
+          const g = ground[c];
+          for (let r = g; r < ROWS; r++) {
+            if (r === g) world[idx(c, r)] = GRASS;
+            else if (r <= g + 3) world[idx(c, r)] = DIRT;
+            else world[idx(c, r)] = Math.random() < 0.07 ? ORE : STONE;
+          }
+        }
+        // Plant a few trees on flat-ish grass.
+        for (let c = 2; c < COLS - 2; c++) {
+          const g = ground[c];
+          if (Math.random() > 0.07) continue;
+          if (Math.abs(ground[c - 1] - g) > 1 || Math.abs(ground[c + 1] - g) > 1) continue;
+          const trunkH = 3 + Math.floor(Math.random() * 2);
+          const top = g - trunkH;
+          if (top < 3) continue;
+          for (let r = g - 1; r >= top; r--) world[idx(c, r)] = WOOD;
+          for (let dc = -1; dc <= 1; dc++) {
+            for (let dr = -2; dr <= 0; dr++) {
+              const cc = c + dc, rr = top + dr;
+              if (inBounds(cc, rr) && world[idx(cc, rr)] === AIR) {
+                world[idx(cc, rr)] = LEAVES;
+              }
+            }
+          }
+          if (top - 3 >= 0) world[idx(c, top - 3)] = LEAVES;
+          c += 3; // keep trees spaced out
+        }
+      }
+
+      // ── Persistence ──────────────────────────────────────────────────────
+      let saveTimer = null;
+      function scheduleSave() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          try {
+            localStorage.setItem(SAVE_KEY, JSON.stringify(Array.from(world)));
+          } catch (_) {}
+        }, 400);
+      }
+
+      function loadWorld() {
+        try {
+          const raw = localStorage.getItem(SAVE_KEY);
+          if (!raw) return false;
+          const arr = JSON.parse(raw);
+          if (!Array.isArray(arr) || arr.length !== COLS * ROWS) return false;
+          for (let i = 0; i < arr.length; i++) {
+            const v = Number(arr[i]);
+            world[i] = v >= 0 && v <= ORE ? v : AIR;
+          }
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      // ── Rendering ────────────────────────────────────────────────────────
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const stage = document.getElementById("stage");
+
+      let tile = 16;       // CSS px per tile
+      let offX = 0;        // letterbox offsets (CSS px)
+      let offY = 0;
+      let hoverC = -1, hoverR = -1;
+      let needsDraw = true;
+
+      // Static cloud positions, regenerated with the world for variety.
+      let clouds = [];
+      function makeClouds() {
+        clouds = [];
+        const n = 4 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < n; i++) {
+          clouds.push({
+            x: Math.random(),
+            y: 0.05 + Math.random() * 0.2,
+            s: 0.6 + Math.random() * 0.9,
+          });
+        }
+      }
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = stage.clientWidth;
+        const hgt = stage.clientHeight;
+        canvas.width = Math.max(1, Math.round(w * dpr));
+        canvas.height = Math.max(1, Math.round(hgt * dpr));
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        tile = Math.max(4, Math.min(w / COLS, hgt / ROWS));
+        offX = (w - tile * COLS) / 2;
+        offY = (hgt - tile * ROWS) / 2;
+        needsDraw = true;
+      }
+
+      function drawBlock(id, x, y, t) {
+        const b = BLOCKS[id];
+        if (!b) return;
+        ctx.fillStyle = b.color;
+        ctx.fillRect(x, y, t, t);
+        if (id === GRASS) {
+          ctx.fillStyle = b.top;
+          ctx.fillRect(x, y, t, Math.max(2, t * 0.3));
+        } else if (id === WOOD) {
+          ctx.fillStyle = "rgba(0,0,0,0.18)";
+          ctx.fillRect(x + t * 0.42, y, t * 0.16, t);
+        } else if (id === BRICK) {
+          ctx.fillStyle = "rgba(0,0,0,0.22)";
+          ctx.fillRect(x, y + t * 0.48, t, Math.max(1, t * 0.06));
+          ctx.fillRect(x + t * 0.48, y, Math.max(1, t * 0.06), t * 0.5);
+        } else if (id === ORE) {
+          ctx.fillStyle = "#2b2b30";
+          const d = Math.max(2, t * 0.18);
+          ctx.fillRect(x + t * 0.2, y + t * 0.25, d, d);
+          ctx.fillRect(x + t * 0.6, y + t * 0.55, d, d);
+        } else if (id === GLASS) {
+          ctx.strokeStyle = "rgba(220, 240, 255, 0.55)";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, t - 1, t - 1);
+        }
+        // Subtle top-edge highlight for a blocky feel (skip translucents).
+        if (id !== WATER && id !== GLASS) {
+          ctx.fillStyle = "rgba(255,255,255,0.12)";
+          ctx.fillRect(x, y, t, Math.max(1, t * 0.08));
+        }
+      }
+
+      function draw() {
+        needsDraw = false;
+        const w = stage.clientWidth;
+        const hgt = stage.clientHeight;
+
+        // Sky
+        const sky = ctx.createLinearGradient(0, 0, 0, hgt);
+        sky.addColorStop(0, "#79b7e8");
+        sky.addColorStop(1, "#bfe0f5");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, w, hgt);
+
+        // Sun
+        ctx.fillStyle = "#ffe9a8";
+        ctx.beginPath();
+        ctx.arc(w * 0.85, hgt * 0.14, Math.max(14, tile * 1.4), 0, Math.PI * 2);
+        ctx.fill();
+
+        // Clouds
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        for (const cl of clouds) {
+          const cx = cl.x * w, cy = cl.y * hgt, s = cl.s * Math.max(18, tile * 1.6);
+          ctx.beginPath();
+          ctx.arc(cx, cy, s, 0, Math.PI * 2);
+          ctx.arc(cx + s * 0.9, cy + s * 0.2, s * 0.75, 0, Math.PI * 2);
+          ctx.arc(cx - s * 0.9, cy + s * 0.25, s * 0.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Blocks
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const id = world[idx(c, r)];
+            if (id === AIR) continue;
+            drawBlock(id, offX + c * tile, offY + r * tile, tile + 0.5);
+          }
+        }
+
+        // Hover highlight
+        if (inBounds(hoverC, hoverR)) {
+          ctx.strokeStyle = "rgba(255,255,255,0.9)";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(offX + hoverC * tile + 1, offY + hoverR * tile + 1, tile - 2, tile - 2);
+        }
+      }
+
+      function frame() {
+        if (needsDraw) draw();
+        requestAnimationFrame(frame);
+      }
+
+      // ── Interaction ──────────────────────────────────────────────────────
+      function cellFromEvent(e) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left - offX;
+        const y = e.clientY - rect.top - offY;
+        return [Math.floor(x / tile), Math.floor(y / tile)];
+      }
+
+      function applyAt(c, r, breaking) {
+        if (!inBounds(c, r)) return;
+        const i = idx(c, r);
+        const want = breaking || selected === PICKAXE ? AIR : selected;
+        if (world[i] === want) return;
+        world[i] = want;
+        needsDraw = true;
+        scheduleSave();
+      }
+
+      let painting = false;
+      let paintBreaking = false;
+
+      canvas.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        canvas.setPointerCapture(e.pointerId);
+        painting = true;
+        paintBreaking = e.button === 2;
+        const [c, r] = cellFromEvent(e);
+        hoverC = c; hoverR = r;
+        applyAt(c, r, paintBreaking);
+      });
+
+      canvas.addEventListener("pointermove", (e) => {
+        const [c, r] = cellFromEvent(e);
+        if (c !== hoverC || r !== hoverR) {
+          hoverC = c; hoverR = r;
+          needsDraw = true;
+        }
+        if (painting) applyAt(c, r, paintBreaking);
+      });
+
+      function endPaint() { painting = false; paintBreaking = false; }
+      canvas.addEventListener("pointerup", endPaint);
+      canvas.addEventListener("pointercancel", endPaint);
+      canvas.addEventListener("pointerleave", () => {
+        hoverC = -1; hoverR = -1;
+        needsDraw = true;
+      });
+      canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      // ── Hotbar ───────────────────────────────────────────────────────────
+      const hotbarEl = document.getElementById("hotbar");
+
+      function buildHotbar() {
+        hotbarEl.textContent = "";
+        HOTBAR.forEach((id, i) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "slot" + (id === selected ? " active" : "");
+          btn.dataset.block = String(id);
+          const name = id === PICKAXE ? "Pickaxe" : BLOCKS[id].name;
+          btn.title = name + " (" + HOTBAR_KEYS[i] + ")";
+          btn.setAttribute("aria-label", name);
+
+          const key = document.createElement("span");
+          key.className = "key";
+          key.textContent = HOTBAR_KEYS[i];
+          btn.appendChild(key);
+
+          if (id === PICKAXE) {
+            const tool = document.createElement("span");
+            tool.className = "tool";
+            tool.textContent = "⛏️";
+            btn.appendChild(tool);
+          } else {
+            const sw = document.createElement("span");
+            sw.className = "swatch";
+            sw.style.background = BLOCKS[id].color;
+            if (id === GRASS) {
+              sw.style.background =
+                "linear-gradient(to bottom, " + BLOCKS[GRASS].top + " 0 32%, " + BLOCKS[GRASS].color + " 32%)";
+            }
+            btn.appendChild(sw);
+          }
+
+          const lbl = document.createElement("span");
+          lbl.className = "lbl";
+          lbl.textContent = name;
+          btn.appendChild(lbl);
+
+          btn.addEventListener("click", () => selectBlock(id));
+          hotbarEl.appendChild(btn);
+        });
+      }
+
+      function selectBlock(id) {
+        selected = id;
+        hotbarEl.querySelectorAll(".slot").forEach((el) => {
+          el.classList.toggle("active", Number(el.dataset.block) === id);
+        });
+      }
+
+      document.addEventListener("keydown", (e) => {
+        const k = HOTBAR_KEYS.indexOf(e.key);
+        if (k !== -1) selectBlock(HOTBAR[k]);
+      });
+
+      // ── Reset ────────────────────────────────────────────────────────────
+      document.getElementById("resetBtn").addEventListener("click", () => {
+        generateWorld();
+        makeClouds();
+        needsDraw = true;
+        scheduleSave();
+      });
+
+      // ── Boot ─────────────────────────────────────────────────────────────
+      makeClouds();
+      if (!loadWorld()) generateWorld();
+      buildHotbar();
+      window.addEventListener("resize", resize);
+      resize();
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>
