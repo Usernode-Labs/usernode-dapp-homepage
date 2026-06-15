@@ -199,8 +199,8 @@
 
     /* Settings panel */
     .settingsPanel {
-      position: absolute;
-      top: 20px;
+      position: fixed;
+      top: 70px;
       right: 20px;
       background: rgba(20, 27, 38, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.2);
@@ -208,8 +208,8 @@
       padding: 16px;
       min-width: 280px;
       max-width: 320px;
-      z-index: 10;
-      max-height: 70vh;
+      z-index: 50;
+      max-height: calc(100vh - 110px);
       overflow-y: auto;
     }
 
@@ -351,8 +351,8 @@
 
     /* Toggle button for settings panel */
     #toggleSettings {
-      position: absolute;
-      top: 20px;
+      position: fixed;
+      top: 16px;
       right: 20px;
       width: 40px;
       height: 40px;
@@ -361,7 +361,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 11;
+      z-index: 99;
     }
 
     #toggleSettings.active {
@@ -526,10 +526,11 @@
       }
 
       .settingsPanel {
-        top: 12px;
+        top: 62px;
         right: 12px;
         min-width: auto;
         max-width: calc(100vw - 24px);
+        max-height: calc(100vh - 102px);
       }
 
       #toggleSettings {
@@ -576,12 +577,13 @@
         <button id="errorCloseBtn">Close</button>
       </div>
     </div>
+  </main>
 
-    <!-- Settings toggle button -->
-    <button id="toggleSettings" title="Toggle settings panel">⚙️</button>
+  <!-- Settings toggle button -->
+  <button id="toggleSettings" title="Toggle settings panel">⚙️</button>
 
-    <!-- Settings panel -->
-    <div class="settingsPanel" id="settingsPanel" style="display: none;">
+  <!-- Settings panel -->
+  <div class="settingsPanel" id="settingsPanel" style="display: none;">
       <h3>Settings</h3>
       <div class="settingRow">
         <span class="settingLabel">FPS</span>
@@ -732,7 +734,7 @@
         </div>
       </div>
     </div>
-  </main>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.0"></script>
