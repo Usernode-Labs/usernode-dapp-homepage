@@ -24,6 +24,45 @@
       "private": false,
       "default": "24",
       "staging_default": "24"
+    },
+    {
+      "key": "NFT_STORAGE_KEY",
+      "description": "API key for NFT.storage (IPFS pinning service for NFT image and metadata uploads). Get one at https://nft.storage",
+      "required": false,
+      "private": true,
+      "staging_default": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6a2V5OnN0YWdpbmciLCJpc3MiOiJuZnQuc3RvcmFnZSIsImlhdCI6MTUxNjIzOTAyMn0.staging-jwt-token"
+    },
+    {
+      "key": "ETH_RPC_URL",
+      "description": "JSON-RPC endpoint for Ethereum transaction polling. Can be Infura, Alchemy, or other provider.",
+      "required": false,
+      "private": false,
+      "default": "https://rpc.ankr.com/eth",
+      "staging_default": "https://rpc.ankr.com/eth_sepolia"
+    },
+    {
+      "key": "NFT_CONTRACT_ADDRESS",
+      "description": "Ethereum contract address where NFTs are minted. Optional; if unset, NFT minting is disabled.",
+      "required": false,
+      "private": false,
+      "default": "",
+      "staging_default": "0x0000000000000000000000000000000000000000"
+    },
+    {
+      "key": "MINTING_FEE_WEI",
+      "description": "Base minting cost in wei (not including gas). Set to 0 for free minting.",
+      "required": false,
+      "private": false,
+      "default": "0",
+      "staging_default": "0"
+    },
+    {
+      "key": "MINT_TTL_HOURS",
+      "description": "Hours an unpaid mint submission stays in 'awaiting_payment' before being swept to 'expired'.",
+      "required": false,
+      "private": false,
+      "default": "24",
+      "staging_default": "24"
     }
   ]
 }

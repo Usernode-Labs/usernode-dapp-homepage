@@ -1,0 +1,32 @@
+{
+  "tools": [
+    {
+      "id": "openzeppelin",
+      "name": "OpenZeppelin Contracts",
+      "description": "Battle-tested smart contract library for building secure NFT contracts",
+      "url": "https://docs.openzeppelin.com/contracts/",
+      "icon": "⚙️"
+    },
+    {
+      "id": "thirdweb",
+      "name": "thirdweb",
+      "description": "No-code NFT contract deploy and management platform",
+      "url": "https://thirdweb.com",
+      "icon": "🎨"
+    },
+    {
+      "id": "zora",
+      "name": "Zora Protocol",
+      "description": "Decentralized NFT creation and distribution platform",
+      "url": "https://zora.co",
+      "icon": "🔷"
+    },
+    {
+      "id": "manifold",
+      "name": "Manifold Studio",
+      "description": "Creator-first platform for launching and managing NFT contracts",
+      "url": "https://www.manifold.xyz",
+      "icon": "🎯"
+    }
+  ]
+}

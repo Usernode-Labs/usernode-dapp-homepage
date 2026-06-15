@@ -13,6 +13,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
+
 // ── .env loader ──────────────────────────────────────────────────────────────
 (function loadDotEnv() {
   const envPath = path.join(__dirname, ".env");
@@ -75,6 +76,19 @@ const SUBMISSION_FEE = Number(process.env.SUBMISSION_FEE) || 1000;
 // to `expired` (the UI stops polling). A real late payment is still credited.
 const SUBMISSION_TTL_HOURS = Number(process.env.SUBMISSION_TTL_HOURS) || 24;
 
+// ── NFT Minting config ────────────────────────────────────────────────────────
+// Optional feature for minting NFTs on Ethereum. When either NFT_STORAGE_KEY or
+// NFT_CONTRACT_ADDRESS is unset, the minting flow is disabled.
+const NFT_STORAGE_KEY = (process.env.NFT_STORAGE_KEY || "").trim();
+const ETH_RPC_URL = (process.env.ETH_RPC_URL || "https://rpc.ankr.com/eth").trim();
+const NFT_CONTRACT_ADDRESS = (process.env.NFT_CONTRACT_ADDRESS || "").trim();
+const MINTING_FEE_WEI = Number(process.env.MINTING_FEE_WEI) || 0;
+const MINT_TTL_HOURS = Number(process.env.MINT_TTL_HOURS) || 24;
+const IS_STAGING = process.env.USERNODE_ENV === "staging";
+const MINTS_PATH = path.join(__dirname, "mints.json");
+const MINT_MEMO_APP = "nft-minter";
+const MINT_MEMO_TYPE = "mint";
+
 const EXPLORER_PROD_HOST = "testnet-explorer.usernodelabs.org";
 const EXPLORER_PROD_BASE = "/api";
 const EXPLORER_LOCAL_HOST = process.env.LOCAL_EXPLORER_UPSTREAM || "localhost:4173";
@@ -87,6 +101,11 @@ const EXPLORER_PROXY_PREFIX = "/explorer-api/";
 function send(res, statusCode, headers, body) {
   res.writeHead(statusCode, headers);
   res.end(body);
+}
+
+function getBoundary(contentType) {
+  const match = contentType.match(/boundary=([^;]+)/);
+  return match ? match[1].replace(/^"([^"]+)"$/, "$1") : null;
 }
 
 const EXPLORER_USE_HTTP = (() => {
@@ -227,6 +246,65 @@ function publicSubmissionView(s) {
     expires_at: s.expires_at,
     published_at: s.published_at || null,
     dapp: s.dapp,
+  };
+}
+
+// ── NFT Minting helpers ──────────────────────────────────────────────────────
+let mints = [];  // array of mint submission records
+const mintConsumedTxIds = new Set();  // tx_id -> already credited to a mint
+
+function loadMints() {
+  try {
+    if (!fs.existsSync(MINTS_PATH)) {
+      mints = [];
+      return;
+    }
+    const raw = fs.readFileSync(MINTS_PATH, "utf8");
+    const data = JSON.parse(raw);
+    mints = Array.isArray(data) ? data : (Array.isArray(data.mints) ? data.mints : []);
+  } catch (e) {
+    console.warn(`[nft] could not read mints.json: ${e.message}`);
+    mints = [];
+  }
+  mintConsumedTxIds.clear();
+  for (const m of mints) {
+    if (m && m.payment_tx_hash) mintConsumedTxIds.add(m.payment_tx_hash);
+  }
+}
+
+function saveMints() {
+  try {
+    atomicWriteJson(MINTS_PATH, mints);
+  } catch (e) {
+    console.warn(`[nft] could not write mints.json: ${e.message}`);
+  }
+}
+
+function findMint(id) {
+  return mints.find((m) => m && m.id === id) || null;
+}
+
+function isLiveMint(m) {
+  return m && (m.status === "awaiting_payment" || m.status === "pending_confirmation" || m.status === "confirmed");
+}
+
+function mintMemoString(id) {
+  return JSON.stringify({ app: MINT_MEMO_APP, type: MINT_MEMO_TYPE, mid: id });
+}
+
+function publicMintView(m) {
+  return {
+    id: m.id,
+    status: m.status,
+    pay_to: NFT_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000",
+    amount_wei: String(MINTING_FEE_WEI),
+    memo: mintMemoString(m.id),
+    network: m.network,
+    ipfs_hash: m.ipfs_hash,
+    image_ipfs: m.image_ipfs,
+    payment_tx_hash: m.payment_tx_hash || null,
+    created_at: m.created_at,
+    expires_at: m.expires_at,
   };
 }
 
@@ -565,6 +643,7 @@ function listingHas(url, pubkey) {
 
 // Start background polling
 loadSubmissions();
+loadMints();
 (async function startStatsPoller() {
   await pollAllStats();
   setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
@@ -792,6 +871,135 @@ const server = http.createServer((req, res) => {
     const sub = findSubmission(id);
     if (!sub) return sendJson(res, 404, { error: "Submission not found." });
     return sendJson(res, 200, publicSubmissionView(sub));
+  }
+
+  // ── NFT Minting API endpoints ────────────────────────────────────────────────
+  // Public endpoints for NFT minting. No authentication required (matching the
+  // app's fully-public posture).
+
+  // List of curated NFT tools (public)
+  if (pathname === "/api/nft-tools" && (req.method === "GET" || req.method === "HEAD")) {
+    try {
+      const toolsPath = path.join(__dirname, "nft-tools.json");
+      const raw = fs.readFileSync(toolsPath, "utf8");
+      const data = JSON.parse(raw);
+      const body = JSON.stringify(data);
+      if (req.method === "HEAD") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(body),
+          "cache-control": "public, max-age=3600",
+          "access-control-allow-origin": "*",
+        });
+        return res.end();
+      }
+      return send(res, 200, {
+        "content-type": "application/json",
+        "cache-control": "public, max-age=3600",
+        "access-control-allow-origin": "*",
+      }, body);
+    } catch (e) {
+      return sendJson(res, 500, { error: "Could not load NFT tools" });
+    }
+  }
+
+  // Create a mint submission → returns payment instructions
+  if (pathname === "/api/nft/mint" && req.method === "POST") {
+    if (!NFT_STORAGE_KEY || !NFT_CONTRACT_ADDRESS) {
+      return sendJson(res, 503, { error: "NFT minting is not currently enabled." });
+    }
+    return readJsonBody(req, 512 * 1024, (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+
+      const ipfs_hash = typeof body.ipfs_hash === "string" ? body.ipfs_hash.trim() : "";
+      const network = typeof body.network === "string" ? body.network.trim() : "";
+      const image_ipfs = typeof body.image_ipfs === "string" ? body.image_ipfs.trim() : "";
+      const metadata = (typeof body.metadata === "object" && body.metadata) ? body.metadata : {};
+
+      if (!ipfs_hash) return sendJson(res, 400, { error: "IPFS hash is required." });
+      if (!network) return sendJson(res, 400, { error: "Network is required." });
+      if (!["ethereum-mainnet", "ethereum-sepolia", "ethereum-goerli"].includes(network)) {
+        return sendJson(res, 400, { error: "Invalid network." });
+      }
+
+      const now = Date.now();
+      const id = crypto.randomUUID();
+      const record = {
+        id,
+        status: "awaiting_payment",
+        network,
+        ipfs_hash,
+        image_ipfs,
+        metadata,
+        payer: null,
+        payment_tx_hash: null,
+        paid_amount: null,
+        fee_recipient: NFT_CONTRACT_ADDRESS,
+        created_at: now,
+        expires_at: now + MINT_TTL_HOURS * 3600 * 1000,
+      };
+      mints.push(record);
+      saveMints();
+      return sendJson(res, 201, {
+        id,
+        pay_to: NFT_CONTRACT_ADDRESS,
+        amount_wei: String(MINTING_FEE_WEI),
+        memo: mintMemoString(id),
+        status: record.status,
+        network,
+        expires_at: record.expires_at,
+      });
+    });
+  }
+
+  // Per-mint status poll (public). /api/nft/mints/:id
+  if (pathname.startsWith("/api/nft/mints/") && req.method === "GET") {
+    const id = decodeURIComponent(pathname.slice("/api/nft/mints/".length));
+    const mint = findMint(id);
+    if (!mint) return sendJson(res, 404, { error: "Mint not found." });
+    return sendJson(res, 200, publicMintView(mint));
+  }
+
+  // Dummy upload endpoint - client handles IPFS upload directly via NFT.storage
+  if (pathname === "/api/nft/upload" && req.method === "POST") {
+    if (!NFT_STORAGE_KEY) {
+      return sendJson(res, 503, { error: "NFT uploads are not currently enabled." });
+    }
+    // In practice, the frontend uploads directly to NFT.storage and then calls
+    // /api/nft/mint with the IPFS hashes. This endpoint is just a placeholder
+    // for future server-side upload handling if needed.
+    return readJsonBody(req, 2 * 1024, (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+
+      const imageData = typeof body.imageBase64 === "string" ? body.imageBase64 : "";
+      const metadata = typeof body.metadata === "object" ? body.metadata : {};
+
+      if (!imageData) {
+        return sendJson(res, 400, { error: "Image data is required" });
+      }
+
+      const name = typeof metadata.name === "string" ? metadata.name.trim() : "";
+      if (!name) {
+        return sendJson(res, 400, { error: "NFT name is required" });
+      }
+      if (name.length > 128) {
+        return sendJson(res, 400, { error: "NFT name is too long (max 128 chars)" });
+      }
+
+      // In staging, return dummy hashes; in production, upload would happen here
+      if (IS_STAGING) {
+        return sendJson(res, 200, {
+          ipfs_hash: "QmStaging" + crypto.randomBytes(16).toString("hex"),
+          image_ipfs: "QmImageStaging" + crypto.randomBytes(12).toString("hex"),
+          estimated_fee_wei: String(MINTING_FEE_WEI),
+        });
+      }
+
+      // For production, the frontend is expected to upload directly to NFT.storage
+      return sendJson(res, 501, {
+        error: "Server-side upload not implemented. Use NFT.storage directly from the client.",
+      });
+    });
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {

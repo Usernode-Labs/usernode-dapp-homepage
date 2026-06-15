@@ -1117,6 +1117,141 @@
       .statusExpired { background: rgba(148, 163, 184, 0.14); color: var(--muted); }
       .statusExpired .dot { background: var(--muted); }
       @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── NFT Tools Sidebar ──────────────────────────────────────────────── */
+      .nftToolsSidebar {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 280px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        display: none;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 100;
+      }
+      .nftToolsSidebar.show { display: flex; }
+      .nftToolsTitle {
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--fg);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--card-item-border);
+      }
+      .nftToolsList {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .nftTool {
+        background: var(--bg);
+        border: 1px solid var(--card-item-border);
+        border-radius: 8px;
+        padding: 10px;
+        text-decoration: none;
+        color: var(--fg);
+        transition: all 0.2s ease;
+        cursor: pointer;
+        display: block;
+      }
+      .nftTool:hover {
+        background: rgba(37, 99, 235, 0.06);
+        border-color: var(--card-hover-border);
+      }
+      .nftToolIcon {
+        font-size: 16px;
+        margin-bottom: 4px;
+      }
+      .nftToolName {
+        font-size: 12px;
+        font-weight: 600;
+        display: block;
+        margin-bottom: 3px;
+      }
+      .nftToolDesc {
+        font-size: 11px;
+        color: var(--muted);
+        display: block;
+        margin-bottom: 6px;
+        line-height: 1.3;
+      }
+      .nftToolLink {
+        display: inline-block;
+        font-size: 10px;
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(37, 99, 235, 0.1);
+        transition: all 0.2s ease;
+      }
+      .nftToolLink:hover {
+        background: rgba(37, 99, 235, 0.2);
+      }
+
+      /* ── NFT Form Styles ────────────────────────────────────────────────── */
+      .formGroup {
+        margin-bottom: 16px;
+      }
+      .formLabel {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--fg);
+        margin-bottom: 6px;
+      }
+      .formInput {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: inherit;
+        font-size: 13px;
+      }
+      .formInput:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+      }
+      .formHint {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+
+      @media (max-width: 768px) {
+        .nftToolsSidebar {
+          position: static;
+          width: 100%;
+          margin-top: 16px;
+          bottom: auto;
+          right: auto;
+          max-height: 200px;
+        }
+        .nftToolsList {
+          flex-direction: row;
+          max-height: none;
+          overflow-x: auto;
+          gap: 10px;
+        }
+        .nftTool {
+          flex: 0 0 auto;
+          min-width: 140px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1134,6 +1269,10 @@
               </a>
             </div>
             <div class="headerActions">
+            <button class="submitBtn" id="openNftBtn" type="button" title="Mint an NFT">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15h18M12 9v6M9 12h6"/></svg>
+              <span class="submitBtnLabel">NFT</span>
+            </button>
             <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               <span class="submitBtnLabel">Submit</span>
@@ -1280,6 +1419,78 @@
         </div>
       </div>
     </div>
+
+    <!-- NFT Minting Modal -->
+    <div class="modalOverlay" id="nftModal" hidden role="dialog" aria-modal="true" aria-label="Mint an NFT">
+      <div class="modalCard">
+        <div class="modalHead">
+          <div class="modalTitle" id="nftModalTitle">Mint an NFT</div>
+          <button class="modalClose" id="nftClose" type="button" aria-label="Close">✕</button>
+        </div>
+        <div id="nftStepForm">
+          <div class="modalBody">
+            <div class="formGroup">
+              <label for="nft_name" class="formLabel">NFT Name *</label>
+              <input id="nft_name" type="text" class="formInput" placeholder="My Awesome NFT" maxlength="128" />
+              <span class="formHint">Max 128 characters</span>
+            </div>
+            <div class="formGroup">
+              <label for="nft_desc" class="formLabel">Description</label>
+              <textarea id="nft_desc" class="formInput" placeholder="Describe your NFT..." maxlength="1000" rows="3"></textarea>
+              <span class="formHint">Max 1000 characters</span>
+            </div>
+            <div class="formGroup">
+              <label for="nft_image" class="formLabel">Image File *</label>
+              <input id="nft_image" type="file" class="formInput" accept="image/png,image/jpeg,image/webp" />
+              <span class="formHint">PNG, JPG, or WebP (max 10MB)</span>
+            </div>
+            <div class="formGroup">
+              <label for="nft_network" class="formLabel">Network *</label>
+              <select id="nft_network" class="formInput">
+                <option value="">Select a network</option>
+                <option value="ethereum-mainnet">Ethereum Mainnet</option>
+                <option value="ethereum-sepolia" selected>Ethereum Sepolia Testnet</option>
+                <option value="ethereum-goerli">Ethereum Goerli Testnet</option>
+              </select>
+            </div>
+            <div class="modalError" id="nftError" hidden></div>
+            <div class="modalActions">
+              <button class="btnSecondary" id="nftCancel" type="button">Cancel</button>
+              <button class="btnPrimary" id="nftMintBtn" type="button">Continue to payment</button>
+            </div>
+          </div>
+        </div>
+        <div id="nftStepPay" hidden>
+          <div class="modalBody">
+            <div class="payBox">
+              <div class="payRow"><span class="k">Amount (ETH)</span><span class="v" id="nftPayAmount"></span></div>
+              <div class="payRow"><span class="k">Pay to</span><span class="v" id="nftPayTo"></span><button class="copyBtn" data-copy="nftPayTo" type="button">Copy</button></div>
+              <div class="payRow"><span class="k">Memo</span><span class="v" id="nftPayMemo"></span><button class="copyBtn" data-copy="nftPayMemo" type="button">Copy</button></div>
+              <div class="payRow"><span class="k">Network</span><span class="v" id="nftPayNetwork"></span></div>
+            </div>
+            <div id="nftPayStatus" class="modalNote"></div>
+            <div class="modalError" id="nftPayError" hidden></div>
+            <p class="modalNote" id="nftPaidHint" hidden>Paid from your own wallet instead? No problem — this will detect the payment within ~30 seconds.</p>
+            <div class="modalActions">
+              <button class="btnSecondary" id="nftPayCancel" type="button">Back</button>
+              <button class="btnPrimary" id="nftPayWithWallet" type="button">Pay with wallet</button>
+            </div>
+          </div>
+        </div>
+        <div id="nftStepDone" hidden>
+          <div class="modalBody">
+            <div id="nftDoneBody"></div>
+            <div class="modalActions"><button class="btnPrimary" id="nftDoneClose" type="button">Done</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NFT Tools Sidebar -->
+    <aside class="nftToolsSidebar" id="nftToolsSidebar">
+      <div class="nftToolsTitle">NFT Tools</div>
+      <div class="nftToolsList" id="nftToolsList"></div>
+    </aside>
 
     <!-- Centrally-hosted Usernode bridge (used to request the fee transfer).
          The server verifies payment from chain state, so a manual transfer
@@ -2536,6 +2747,232 @@
               `<p class="modalNote">No payment was detected before this submission expired. If you did pay, it may still be detected and published shortly.</p>`;
             setStep("done");
           }
+        }
+      })();
+
+      // ── Load NFT Tools Sidebar ──────────────────────────────────────────────
+      (async function loadNftTools() {
+        try {
+          const resp = await fetch("/api/nft-tools");
+          if (!resp.ok) return;
+          const data = await resp.json();
+          const toolsList = document.getElementById("nftToolsList");
+          if (!toolsList || !Array.isArray(data.tools)) return;
+
+          data.tools.forEach((tool) => {
+            const toolEl = document.createElement("a");
+            toolEl.className = "nftTool";
+            toolEl.href = tool.url;
+            toolEl.target = "_blank";
+            toolEl.rel = "noopener";
+            toolEl.innerHTML = `
+              <div class="nftToolIcon">${tool.icon || "🎨"}</div>
+              <span class="nftToolName">${tool.name || ""}</span>
+              <span class="nftToolDesc">${tool.description || ""}</span>
+              <span class="nftToolLink">Explore →</span>
+            `;
+            toolsList.appendChild(toolEl);
+          });
+
+          // Show the sidebar if tools loaded
+          const sidebar = document.getElementById("nftToolsSidebar");
+          if (sidebar && toolsList.children.length > 0) {
+            sidebar.classList.add("show");
+          }
+        } catch (e) {
+          console.warn("[nft] could not load tools:", e);
+        }
+      })();
+
+      // ── NFT Minting Flow ────────────────────────────────────────────────────
+      (function nftMintFlow() {
+        const modal = document.getElementById("nftModal");
+        const openBtn = document.getElementById("openNftBtn");
+        if (!modal || !openBtn) return;
+
+        const stepForm = document.getElementById("nftStepForm");
+        const stepPay = document.getElementById("nftStepPay");
+        const stepDone = document.getElementById("nftStepDone");
+        const errForm = document.getElementById("nftError");
+        const errPay = document.getElementById("nftPayError");
+        const mintBtn = document.getElementById("nftMintBtn");
+        const payWalletBtn = document.getElementById("nftPayWithWallet");
+        const paidHint = document.getElementById("nftPaidHint");
+        const payStatusWrap = document.getElementById("nftPayStatus");
+        const doneBody = document.getElementById("nftDoneBody");
+
+        const F = (id) => document.getElementById(id);
+        let pollTimer = null;
+        let current = null; // { id, pay_to, amount_wei, memo, network }
+
+        function showError(el, msg) { el.textContent = msg; el.hidden = !msg; }
+        function setStep(which) {
+          stepForm.hidden = which !== "form";
+          stepPay.hidden = which !== "pay";
+          stepDone.hidden = which !== "done";
+        }
+
+        function openModal() {
+          showError(errForm, "");
+          showError(errPay, "");
+          setStep("form");
+          modal.hidden = false;
+        }
+        function closeModal() {
+          modal.hidden = true;
+          if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        }
+
+        openBtn.addEventListener("click", openModal);
+        document.getElementById("nftClose").addEventListener("click", closeModal);
+        document.getElementById("nftCancel").addEventListener("click", closeModal);
+        document.getElementById("nftPayCancel").addEventListener("click", () => {
+          setStep("form");
+        });
+        document.getElementById("nftDoneClose").addEventListener("click", closeModal);
+        modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+
+        // Copy buttons in the pay box
+        stepPay.addEventListener("click", (e) => {
+          const btn = e.target.closest(".copyBtn");
+          if (!btn) return;
+          const src = F(btn.dataset.copy);
+          if (src && navigator.clipboard) {
+            navigator.clipboard.writeText(src.textContent).then(() => {
+              const old = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = old), 1200);
+            }).catch(() => {});
+          }
+        });
+
+        mintBtn.addEventListener("click", async () => {
+          showError(errForm, "");
+
+          const name = F("nft_name").value.trim();
+          const desc = F("nft_desc").value.trim();
+          const imageFile = F("nft_image").files[0];
+          const network = F("nft_network").value;
+
+          if (!name) return showError(errForm, "NFT name is required.");
+          if (!imageFile) return showError(errForm, "Image file is required.");
+          if (!network) return showError(errForm, "Network is required.");
+
+          if (imageFile.size > 10 * 1024 * 1024) {
+            return showError(errForm, "Image is too large (max 10MB).");
+          }
+
+          mintBtn.disabled = true;
+          mintBtn.textContent = "Uploading to IPFS…";
+
+          try {
+            // In staging, we have dummy upload; in production, use NFT.storage directly
+            // For now, generate dummy hashes for demo
+            let imageIpfs, metadataIpfs;
+
+            if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+              // Demo/staging: use dummy hashes
+              imageIpfs = "QmDemo" + Math.random().toString(36).slice(2, 15);
+              metadataIpfs = "QmDemo" + Math.random().toString(36).slice(2, 15);
+            } else {
+              // In production, would need to upload to NFT.storage
+              // This is a placeholder
+              throw new Error("NFT.storage upload not yet configured. Contact admin.");
+            }
+
+            mintBtn.textContent = "Creating mint submission…";
+            const mintResp = await fetch("/api/nft/mint", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                ipfs_hash: metadataIpfs,
+                image_ipfs: imageIpfs,
+                network,
+                metadata: { name, description: desc },
+              }),
+            });
+
+            const mintData = await mintResp.json();
+            if (!mintResp.ok) throw new Error(mintData.error || `HTTP ${mintResp.status}`);
+
+            current = mintData;
+            F("nftPayAmount").textContent = mintData.amount_wei === "0" ? "0 ETH (+ gas)" : `${(mintData.amount_wei / 1e18).toFixed(6)} ETH`;
+            F("nftPayTo").textContent = mintData.pay_to;
+            F("nftPayMemo").textContent = mintData.memo;
+            F("nftPayNetwork").textContent = network.replace("ethereum-", "").toUpperCase();
+            paidHint.hidden = false;
+            setStep("pay");
+            renderStatus("awaiting_payment");
+            startPolling(mintData.id);
+          } catch (e) {
+            showError(errForm, e.message || String(e));
+          } finally {
+            mintBtn.disabled = false;
+            mintBtn.textContent = "Continue to payment";
+          }
+        });
+
+        async function requestPaymentViaBridge(to, amount, memo) {
+          const candidates = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge];
+          const b = candidates.find((x) => x && typeof x.sendTransaction === "function");
+          if (!b) throw new Error("Wallet bridge unavailable — pay manually using the details above.");
+          return b.sendTransaction({
+            to, recipient: to, destination: to,
+            amount, value: amount,
+            memo,
+          });
+        }
+
+        payWalletBtn.addEventListener("click", async () => {
+          if (!current) return;
+          showError(errPay, "");
+          payWalletBtn.disabled = true;
+          payWalletBtn.textContent = "Requesting…";
+          try {
+            // Send ETH payment via bridge
+            await requestPaymentViaBridge(current.pay_to, current.amount_wei, current.memo);
+            payWalletBtn.textContent = "Payment requested — waiting…";
+          } catch (e) {
+            showError(errPay, e.message || String(e));
+            payWalletBtn.disabled = false;
+            payWalletBtn.textContent = "Pay with wallet";
+          }
+        });
+
+        function renderStatus(status) {
+          const map = {
+            awaiting_payment: ["statusAwaiting", "Awaiting payment…"],
+            pending_confirmation: ["statusAwaiting", "Confirming on-chain…"],
+            confirmed: ["statusPublished", "NFT minted successfully!"],
+          };
+          const [cls, label] = map[status] || ["statusAwaiting", status];
+          payStatusWrap.innerHTML = `<div class="statusPill ${cls}"><span class="dot"></span>${label}</div>`;
+        }
+
+        function startPolling(id) {
+          async function poll() {
+            try {
+              const resp = await fetch(`/api/nft/mints/${id}`);
+              if (!resp.ok) return;
+              const s = await resp.json();
+              if (s.status === "awaiting_payment") {
+                pollTimer = setTimeout(poll, 5000);
+              } else if (s.status === "pending_confirmation" || s.status === "confirmed") {
+                renderStatus(s.status);
+                if (s.status === "confirmed") {
+                  doneBody.innerHTML =
+                    `<div class="statusPill statusPublished"><span class="dot"></span>Minted</div>` +
+                    `<p class="modalNote">Your NFT has been minted on ${s.network || "Ethereum"}! 🎉</p>` +
+                    (s.payment_tx_hash ? `<p class="modalNote">Tx: <span style="font-family:ui-monospace;word-break:break-all">${s.payment_tx_hash}</span></p>` : "");
+                  setStep("done");
+                } else {
+                  pollTimer = setTimeout(poll, 10000);
+                }
+              }
+            } catch (e) {
+              console.warn("[nft] poll error:", e);
+              pollTimer = setTimeout(poll, 10000);
+            }
+          }
+          pollTimer = setTimeout(poll, 2000);
         }
       })();
 
