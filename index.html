@@ -547,6 +547,79 @@
         background: transparent;
         list-style: none;
       }
+      /* Search / filter bar — sits between the header and the dapp list. */
+      .searchBar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        padding: 10px 12px 4px;
+      }
+      .searchIcon {
+        position: absolute;
+        left: 22px;
+        width: 15px;
+        height: 15px;
+        color: var(--muted);
+        opacity: 0.7;
+        pointer-events: none;
+      }
+      .searchInput {
+        flex: 1 1 auto;
+        width: 100%;
+        font-family: inherit;
+        font-size: 14px;
+        color: var(--fg);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 32px 8px 32px;
+        outline: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .searchInput::placeholder {
+        color: var(--muted);
+        opacity: 0.7;
+      }
+      .searchInput:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+      }
+      html.dark .searchInput:focus {
+        box-shadow: 0 0 0 2px rgba(110, 168, 254, 0.22);
+      }
+      .searchClear {
+        position: absolute;
+        right: 20px;
+        appearance: none;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        padding: 0;
+      }
+      .searchClear:hover {
+        color: var(--fg);
+        background: var(--border);
+      }
+      .searchClear svg {
+        width: 15px;
+        height: 15px;
+      }
+      .searchClear[hidden] {
+        display: none;
+      }
+      .noResults {
+        padding: 22px 12px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
       .author {
         color: var(--muted);
         font-size: 12px;
@@ -1245,6 +1318,21 @@
             </div>
           </div>
         </div>
+        <div class="searchBar">
+          <svg class="searchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            id="searchInput"
+            type="text"
+            class="searchInput"
+            placeholder="Search dapps…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Search dapps by name"
+          />
+          <button id="searchClear" class="searchClear" type="button" aria-label="Clear search" title="Clear search" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
         <ul id="dappList"></ul>
       </div>
       <div id="launchOverlay" role="status" aria-live="polite" aria-label="Launching dapp" hidden>
@@ -1434,6 +1522,7 @@
       let allApps = [];
       let statsMap = {};
       let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
+      let searchQuery = "";
 
       // --- Pins / auth ---
       // The platform shell injects the session JWT as ?token=… on iframe load.
@@ -1752,7 +1841,20 @@
           return;
         }
 
-        const sorted = sortApps(dapps);
+        const q = searchQuery.trim().toLowerCase();
+        const filtered = q
+          ? dapps.filter((d) => (d.name || "").toLowerCase().includes(q))
+          : dapps;
+
+        if (filtered.length === 0) {
+          const li = document.createElement("li");
+          li.className = "noResults";
+          li.textContent = `No dapps match “${searchQuery.trim()}”.`;
+          list.appendChild(li);
+          return;
+        }
+
+        const sorted = sortApps(filtered);
 
         // Signed-out (or no pins yet): flat list, identical to the original UI.
         const pinned = signedIn
@@ -1862,6 +1964,36 @@
       });
 
       updateSortUI();
+
+      // --- Search / filter ---
+      const searchInput = document.getElementById("searchInput");
+      const searchClear = document.getElementById("searchClear");
+
+      function applySearch(value) {
+        searchQuery = value || "";
+        if (searchClear) searchClear.hidden = searchQuery.length === 0;
+        renderDapps(allApps);
+      }
+
+      if (searchInput) {
+        searchInput.addEventListener("input", (e) => {
+          applySearch(e.target.value);
+        });
+        searchInput.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && searchInput.value) {
+            e.preventDefault();
+            searchInput.value = "";
+            applySearch("");
+          }
+        });
+      }
+      if (searchClear) {
+        searchClear.addEventListener("click", () => {
+          if (searchInput) searchInput.value = "";
+          applySearch("");
+          if (searchInput) searchInput.focus();
+        });
+      }
 
       // ── Launch overlay ──────────────────────────────────────────────────────
       const _launchOverlay = document.getElementById("launchOverlay");
