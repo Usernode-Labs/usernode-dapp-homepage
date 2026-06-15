@@ -119,6 +119,19 @@ like a private IP. Same convention as every other dapp in the fleet.
 
 - **Adding a new dapp**: append an object to `dapps.json` and bounce
   the server. The poller picks up new pubkeys on its next 30s tick.
+- **Operator status (maintenance/deprecated)**: an entry may carry an
+  optional `"status"` string — `"operational"` (default when omitted),
+  `"maintenance"`, or `"deprecated"`. It feeds the health status dot +
+  `/api/health` Status panel and overrides the auto-detected
+  reachability/activity status. Absence means `operational`; no
+  migration needed.
+- **`/api/health` is intentionally public**: a background reachability
+  prober HEADs each dapp's `url` (HEAD→GET fallback, 5s timeout) and
+  the route joins that with on-chain activity recency, the poller's
+  sync state, and the operator `status` into a per-dapp status map.
+  Same public posture as `/api/stats`. Staging seeds a synthetic
+  spread (`seedStagingHealth`) since live probes/`txCache` are empty
+  in a preview.
 - **Stats are recipient-only**: the poller queries `recipient: pubkey`
   so amounts shown reflect what each dapp actually received (excludes
   sender change). See the explorer `amount` caveat in the platform
