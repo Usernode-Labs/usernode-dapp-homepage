@@ -4,7 +4,7 @@
     {
       "key": "TREASURY_ADDRESS",
       "description": "Public Usernode address (ut1…) of the custodial table treasury / pooled bank. Buy-ins are paid here and payouts + on-chain commit/reveal audit writes are signed from it. Public on-chain address.",
-      "required": true,
+      "required": false,
       "private": false,
       "default": "",
       "staging_default": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az"
