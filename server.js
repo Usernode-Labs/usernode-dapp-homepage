@@ -787,6 +787,55 @@ async function handlePins(req, res, urlObj) {
 // Kick off DB init (non-blocking — the homepage serves regardless).
 initPinsDb();
 
+// ── User profile endpoint ────────────────────────────────────────────────────
+// Returns user identity + activity stats derived from the poller caches
+async function handleUserProfile(req, res) {
+  const user = getUser(req);
+  if (!user) return jsonRes(res, 401, { error: "auth required" });
+
+  const userWallet = String(user.id);
+  const activity = buildUserActivity();
+  const userData = activity[userWallet];
+
+  if (!userData) {
+    return jsonRes(res, 200, {
+      user_id: userWallet,
+      username: user.username || null,
+      account_age_ms: null,
+      total_transactions: 0,
+      dapps_used: 0,
+    });
+  }
+
+  // Calculate account age by finding earliest transaction across all dapps + usernames
+  let earliestTxTime = null;
+  const dapps = loadDapps();
+  const dappPubkeys = dapps.map(d => d.pubkey);
+  const allPubkeys = [...dappPubkeys, USERNAMES_PUBKEY];
+
+  for (const pubkey of allPubkeys) {
+    const txs = txCache[pubkey] || [];
+    for (const tx of txs) {
+      const sender = tx.source || tx.from_pubkey || tx.from;
+      if (sender !== userWallet) continue;
+      const txTime = typeof tx.timestamp_ms === "number" ? tx.timestamp_ms : null;
+      if (txTime && (!earliestTxTime || txTime < earliestTxTime)) {
+        earliestTxTime = txTime;
+      }
+    }
+  }
+
+  const dappsUsed = Object.keys(userData.transactions_by_dapp || {}).length;
+
+  return jsonRes(res, 200, {
+    user_id: userWallet,
+    username: userData.username || user.username || null,
+    account_age_ms: earliestTxTime,
+    total_transactions: userData.total_dapp_transactions || 0,
+    dapps_used: dappsUsed,
+  });
+}
+
 // ── HTTP helpers for the submit/review API ───────────────────────────────────
 
 function sendJson(res, statusCode, obj) {
@@ -873,6 +922,11 @@ const server = http.createServer((req, res) => {
   if (pathname === "/api/pins") {
     const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     handlePins(req, res, urlObj);
+    return;
+  }
+
+  if (pathname === "/api/user-profile" && req.method === "GET") {
+    handleUserProfile(req, res);
     return;
   }
 

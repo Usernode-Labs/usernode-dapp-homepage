@@ -1186,6 +1186,218 @@
       .statusExpired { background: rgba(148, 163, 184, 0.14); color: var(--muted); }
       .statusExpired .dot { background: var(--muted); }
       @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── Profile button in header ────────────────────────────────── */
+      .profileBtn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 6px 10px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 34px;
+        height: 34px;
+      }
+      .profileBtn:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .profileBtn svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+
+      /* ── Profile panel overlay (right-side) ────────────────────── */
+      .profileOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: none;
+        background: rgba(8, 12, 20, 0.55);
+        backdrop-filter: blur(2px);
+      }
+      .profileOverlay.open {
+        display: flex;
+        align-items: stretch;
+        justify-content: flex-end;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        @keyframes panelSlideIn {
+          from { transform: translateX(100%); }
+          to   { transform: translateX(0); }
+        }
+        .profileOverlay.open .profilePanel {
+          animation: panelSlideIn 240ms ease-out;
+        }
+      }
+      .profilePanel {
+        background: var(--card);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-right: none;
+        width: 100%;
+        max-width: 380px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: -8px 0 32px rgba(0, 0, 0, 0.25);
+      }
+      .profilePanelHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 16px 12px;
+        border-bottom: 1px solid var(--border);
+        flex: 0 0 auto;
+      }
+      .profilePanelTitle {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      .profilePanelClose {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        width: 30px;
+        height: 30px;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .profilePanelClose:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .profilePanelBody {
+        padding: 16px;
+        overflow-y: auto;
+        flex: 1 1 auto;
+        min-height: 0;
+        display: grid;
+        gap: 16px;
+      }
+      .profileSection {
+        display: grid;
+        gap: 8px;
+      }
+      .profileLabel {
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        font-weight: 600;
+      }
+      .profileUsername {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--fg);
+      }
+      .profileEditBtn {
+        appearance: none;
+        background: transparent;
+        border: none;
+        color: var(--accent);
+        padding: 0;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: left;
+        margin-top: 6px;
+      }
+      .profileEditBtn:hover {
+        text-decoration: underline;
+      }
+      .profileStat {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-size: 13px;
+      }
+      .profileStatLabel {
+        color: var(--muted);
+      }
+      .profileStatValue {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .profileEditForm {
+        display: grid;
+        gap: 12px;
+      }
+      .profileEditForm[hidden] {
+        display: none;
+      }
+      .profileFormField {
+        display: grid;
+        gap: 4px;
+      }
+      .profileFormLabel {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .profileFormInput {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 9px 11px;
+      }
+      .profileFormInput:focus {
+        outline: 2px solid var(--accent);
+        border-color: transparent;
+      }
+      .profileFormActions {
+        display: flex;
+        gap: 10px;
+        margin-top: 8px;
+      }
+      .profileBtnSave {
+        flex: 1 1 auto;
+        height: 36px;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .profileBtnSave:hover {
+        filter: brightness(1.08);
+      }
+      .profileBtnCancel {
+        flex: 1 1 auto;
+        height: 36px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--fg);
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .profileBtnCancel:hover {
+        background: var(--border);
+      }
     </style>
   </head>
   <body>
@@ -1206,6 +1418,9 @@
               <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span class="submitBtnLabel">Submit</span>
+              </button>
+              <button class="profileBtn" id="profileBtn" type="button" title="Profile" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               </button>
               <div class="hamMenuWrap">
                 <button class="hamBtn" id="hamBtn" type="button" aria-label="Menu" title="Menu">
@@ -1255,6 +1470,47 @@
         </div>
       </div>
     </main>
+    <div class="profileOverlay" id="profileOverlay" role="dialog" aria-modal="true" aria-label="User profile">
+      <div class="profilePanel">
+        <div class="profilePanelHeader">
+          <div class="profilePanelTitle">Profile</div>
+          <button class="profilePanelClose" id="profilePanelClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="profilePanelBody">
+          <div id="profileViewMode">
+            <div class="profileSection">
+              <div class="profileLabel">Username</div>
+              <div class="profileUsername" id="profileUsername"></div>
+              <button class="profileEditBtn" id="profileEditBtn" type="button">Edit profile</button>
+            </div>
+            <div class="profileSection">
+              <div class="profileLabel">Account Created</div>
+              <div id="profileAccountAge" style="font-size: 13px; color: var(--fg);"></div>
+            </div>
+            <div class="profileSection">
+              <div class="profileStat">
+                <span class="profileStatLabel">Total Transactions</span>
+                <span class="profileStatValue" id="profileTotalTxs">—</span>
+              </div>
+              <div class="profileStat">
+                <span class="profileStatLabel">Dapps Used</span>
+                <span class="profileStatValue" id="profileDappsUsed">—</span>
+              </div>
+            </div>
+          </div>
+          <div class="profileEditForm" id="profileEditForm" hidden>
+            <div class="profileFormField">
+              <label class="profileFormLabel" for="profileEditUsername">Username</label>
+              <input class="profileFormInput" id="profileEditUsername" type="text" placeholder="Enter username" />
+            </div>
+            <div class="profileFormActions">
+              <button class="profileBtnSave" id="profileBtnSave" type="button">Save</button>
+              <button class="profileBtnCancel" id="profileBtnCancel" type="button">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div
       class="previewOverlay"
       id="previewOverlay"
@@ -1813,6 +2069,7 @@
           const data = await resp.json();
           pinnedSet = new Set(Array.isArray(data.pins) ? data.pins : []);
           signedIn = true;
+          if (profileBtn) profileBtn.hidden = false; // show profile button when signed in
           renderDapps(allApps);
         } catch (e) {
           console.warn("Could not load pins:", e);
@@ -1840,6 +2097,122 @@
           console.warn("Could not load stats:", e);
         }
       }
+
+      // --- Profile panel ---
+      const profileBtn = document.getElementById("profileBtn");
+      const profileOverlay = document.getElementById("profileOverlay");
+      const profilePanelClose = document.getElementById("profilePanelClose");
+      const profileEditBtn = document.getElementById("profileEditBtn");
+      const profileBtnSave = document.getElementById("profileBtnSave");
+      const profileBtnCancel = document.getElementById("profileBtnCancel");
+      const profileViewMode = document.getElementById("profileViewMode");
+      const profileEditForm = document.getElementById("profileEditForm");
+      const profileUsername = document.getElementById("profileUsername");
+      const profileAccountAge = document.getElementById("profileAccountAge");
+      const profileTotalTxs = document.getElementById("profileTotalTxs");
+      const profileDappsUsed = document.getElementById("profileDappsUsed");
+      const profileEditUsername = document.getElementById("profileEditUsername");
+
+      let currentProfile = null;
+
+      function formatAccountAge(ms) {
+        if (!ms) return "No activity yet";
+        const now = Date.now();
+        const days = Math.floor((now - ms) / (1000 * 60 * 60 * 24));
+        if (days === 0) return "Today";
+        if (days === 1) return "1 day ago";
+        if (days < 30) return `${days} days ago`;
+        const months = Math.floor(days / 30);
+        if (months === 1) return "1 month ago";
+        if (months < 12) return `${months} months ago`;
+        const years = Math.floor(months / 12);
+        return years === 1 ? "1 year ago" : `${years} years ago`;
+      }
+
+      function closeProfilePanel() {
+        profileOverlay.classList.remove("open");
+        profileEditForm.hidden = true;
+        profileViewMode.hidden = false;
+      }
+
+      function showProfilePanel() {
+        profileOverlay.classList.add("open");
+      }
+
+      async function loadAndShowProfile() {
+        try {
+          const resp = await fetch("/api/user-profile", {
+            headers: pinHeaders(false),
+            cache: "no-store",
+          });
+          if (!resp.ok) {
+            console.warn("Could not load profile:", resp.status);
+            return;
+          }
+          currentProfile = await resp.json();
+          renderProfile();
+          showProfilePanel();
+        } catch (e) {
+          console.warn("Could not load profile:", e);
+        }
+      }
+
+      function renderProfile() {
+        if (!currentProfile) return;
+        profileUsername.textContent = currentProfile.username || "(no username)";
+        profileAccountAge.textContent = formatAccountAge(currentProfile.account_age_ms);
+        profileTotalTxs.textContent = currentProfile.total_transactions || 0;
+        profileDappsUsed.textContent = currentProfile.dapps_used || 0;
+      }
+
+      function toggleProfileEditForm() {
+        const isEditing = !profileEditForm.hidden;
+        if (isEditing) {
+          profileEditForm.hidden = true;
+          profileViewMode.hidden = false;
+        } else {
+          profileEditUsername.value = currentProfile?.username || "";
+          profileEditForm.hidden = false;
+          profileViewMode.hidden = true;
+          profileEditUsername.focus();
+        }
+      }
+
+      async function saveProfile() {
+        const newUsername = profileEditUsername.value.trim();
+        if (!newUsername) {
+          console.warn("Username cannot be empty");
+          return;
+        }
+        // TODO: Integrate with Usernode usernames contract to actually save the username.
+        // For now, just close the form and show a success state.
+        console.log("Saving username:", newUsername);
+        // In a full implementation, this would call usernode.sendTransaction() with the username update.
+        toggleProfileEditForm();
+        if (currentProfile) {
+          currentProfile.username = newUsername;
+          renderProfile();
+        }
+      }
+
+      if (profileBtn) {
+        profileBtn.addEventListener("click", loadAndShowProfile);
+      }
+      if (profilePanelClose) {
+        profilePanelClose.addEventListener("click", closeProfilePanel);
+      }
+      if (profileEditBtn) {
+        profileEditBtn.addEventListener("click", toggleProfileEditForm);
+      }
+      if (profileBtnSave) {
+        profileBtnSave.addEventListener("click", saveProfile);
+      }
+      if (profileBtnCancel) {
+        profileBtnCancel.addEventListener("click", toggleProfileEditForm);
+      }
+      profileOverlay.addEventListener("click", (e) => {
+        if (e.target === profileOverlay) closeProfilePanel();
+      });
 
       // --- Sort menu (now in hamburger) ---
       function updateSortUI() {
