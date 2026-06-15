@@ -534,6 +534,12 @@ function reconcileSubmissionPayments() {
     sub.status = "published";
     consumedTxIds.add(txId);
     dirty = true;
+
+    // Bind the submitter as the dapp's status owner. Fire-and-forget: a DB
+    // failure here must not block publication (the fee is already burned; the
+    // owner binding can be backfilled on first edit). Idempotent upsert.
+    upsertDappStatusOwner(sub.dapp.pubkey, sub.owner_user_id);
+
     console.log(`[submit] payment confirmed for ${sub.id} (${amount} tokens from ${sub.payer}) — published "${sub.dapp.name}"`);
   }
 
@@ -605,6 +611,21 @@ const SEED_PINS = [
   { user_id: "staging-demo-user-2", pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05" }, // Last One Wins
 ];
 
+// Allowed maintenance-status values. Mirrors the dapp_status CHECK constraint.
+const DAPP_STATUSES = ["operational", "under_maintenance", "unavailable"];
+
+// dapp_status is `staging:private` (see migration COMMENT) because each row ties
+// a Usernode identity (owner_user_id) to a dapp. The public status *value* is
+// reproduced into staging via this seed block rather than copied from prod, so
+// the badge colors, launch warning, and owner editor are all exercisable in a
+// staging preview. Echo Diagnostic is intentionally left unseeded to verify the
+// "no row ⇒ operational, no editor" default path.
+const SEED_DAPP_STATUS = [
+  { pubkey: "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms", status: "operational",       owner_user_id: "staging-demo-user-1" }, // Opinion Market
+  { pubkey: "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu", status: "under_maintenance", owner_user_id: "staging-demo-user-1" }, // Falling Sands
+  { pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05", status: "unavailable",       owner_user_id: "staging-demo-user-2" }, // Last One Wins
+];
+
 async function initPinsDb() {
   if (!PgPool) return;
   if (!DATABASE_URL) {
@@ -629,8 +650,28 @@ async function initPinsDb() {
     // staging:private — staging gets structure only, never prod rows.
     await pinsPool.query(`COMMENT ON TABLE dapp_pins IS 'staging:private'`);
 
+    // dapp_status — owner-declared maintenance status, keyed by dapp pubkey.
+    // dApps live in dapps.json (a committed file), not in Postgres, so the
+    // "status column" is implemented as a sibling table here. Absence of a row
+    // means `operational`. owner_user_id (the submitter's JWT id) is nullable so
+    // seed/legacy dApps simply have no one authorized to edit.
+    await pinsPool.query(`
+      CREATE TABLE IF NOT EXISTS dapp_status (
+        dapp_pubkey   TEXT        PRIMARY KEY,
+        status        TEXT        NOT NULL DEFAULT 'operational'
+                        CHECK (status IN ('operational', 'under_maintenance', 'unavailable')),
+        owner_user_id TEXT,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await pinsPool.query(
+      `CREATE INDEX IF NOT EXISTS dapp_status_owner_idx ON dapp_status (owner_user_id)`
+    );
+    // staging:private — a row links a Usernode identity to a dapp it owns.
+    await pinsPool.query(`COMMENT ON TABLE dapp_status IS 'staging:private'`);
+
     pinsReady = true;
-    console.log("[pins] dapp_pins table ready");
+    console.log("[pins] dapp_pins + dapp_status tables ready");
 
     if (IS_STAGING) {
       for (const p of SEED_PINS) {
@@ -642,6 +683,16 @@ async function initPinsDb() {
         );
       }
       console.log(`[pins] seeded ${SEED_PINS.length} staging demo pin(s)`);
+
+      for (const s of SEED_DAPP_STATUS) {
+        await pinsPool.query(
+          `INSERT INTO dapp_status (dapp_pubkey, status, owner_user_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (dapp_pubkey) DO NOTHING`,
+          [s.pubkey, s.status, s.owner_user_id]
+        );
+      }
+      console.log(`[pins] seeded ${SEED_DAPP_STATUS.length} staging demo status row(s)`);
     }
   } catch (e) {
     pinsReady = false;
@@ -784,6 +835,103 @@ async function handlePins(req, res, urlObj) {
   }
 }
 
+// ── dapp_status helpers ──────────────────────────────────────────────────────
+// Owner-declared maintenance status. Reads default to `operational` for any
+// pubkey without a row; every path degrades gracefully when the DB is absent.
+
+// Upsert an owner binding for a freshly-published dapp. Idempotent: never
+// clobbers an existing owner (COALESCE keeps the first one), and leaves any
+// status the owner may have already set untouched. Fire-and-forget safe.
+async function upsertDappStatusOwner(pubkey, ownerUserId) {
+  if (!pinsReady || !pinsPool || !pubkey) return;
+  try {
+    await pinsPool.query(
+      `INSERT INTO dapp_status (dapp_pubkey, status, owner_user_id)
+       VALUES ($1, 'operational', $2)
+       ON CONFLICT (dapp_pubkey)
+       DO UPDATE SET owner_user_id = COALESCE(dapp_status.owner_user_id, EXCLUDED.owner_user_id)`,
+      [pubkey, ownerUserId || null]
+    );
+  } catch (e) {
+    console.warn(`[status] could not bind owner for ${String(pubkey).slice(0, 16)}…: ${e.message}`);
+  }
+}
+
+// GET /api/dapp-status — public. Returns the non-default status map plus, when a
+// valid JWT is presented, the list of pubkeys the caller owns (so the frontend
+// can show the editor without ever learning another user's id).
+async function handleDappStatus(req, res, urlObj) {
+  if (req.method === "GET") {
+    if (!pinsReady || !pinsPool) {
+      return sendJson(res, 200, { statuses: {}, owned: [] });
+    }
+    const user = getUser(req);
+    try {
+      const { rows } = await pinsPool.query(
+        `SELECT dapp_pubkey, status, owner_user_id FROM dapp_status`
+      );
+      const statuses = {};
+      const owned = [];
+      const uid = user && user.id != null ? String(user.id) : null;
+      for (const r of rows) {
+        // Only surface non-default rows; the client treats any missing pubkey
+        // as operational.
+        if (r.status && r.status !== "operational") statuses[r.dapp_pubkey] = r.status;
+        if (uid && r.owner_user_id != null && String(r.owner_user_id) === uid) {
+          owned.push(r.dapp_pubkey);
+        }
+      }
+      return sendJson(res, 200, { statuses, owned });
+    } catch (e) {
+      console.warn(`[status] read error: ${e.message}`);
+      return sendJson(res, 200, { statuses: {}, owned: [] });
+    }
+  }
+
+  if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
+    const user = getUser(req);
+    if (!user || user.id == null) return sendJson(res, 401, { error: "auth required" });
+    if (!pinsReady || !pinsPool) return sendJson(res, 503, { error: "status store unavailable" });
+
+    return readJsonBody(req, 16 * 1024, async (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+      const pubkey = body && typeof body.pubkey === "string" ? body.pubkey.trim() : "";
+      const status = body && typeof body.status === "string" ? body.status.trim() : "";
+      if (!pubkey) return sendJson(res, 400, { error: "pubkey required" });
+      if (!DAPP_STATUSES.includes(status)) {
+        return sendJson(res, 400, { error: "status must be one of: " + DAPP_STATUSES.join(", ") });
+      }
+      if (!loadPubkeys().includes(pubkey)) {
+        return sendJson(res, 404, { error: "unknown dapp" });
+      }
+
+      const uid = String(user.id);
+      try {
+        const { rows } = await pinsPool.query(
+          `SELECT owner_user_id FROM dapp_status WHERE dapp_pubkey = $1`,
+          [pubkey]
+        );
+        const owner = rows.length ? rows[0].owner_user_id : null;
+        // Only the recorded owner may change status. A dapp with no recorded
+        // owner (seed/legacy) is not editable by anyone.
+        if (owner == null || String(owner) !== uid) {
+          return sendJson(res, 403, { error: "only the dapp owner can change its status" });
+        }
+        await pinsPool.query(
+          `UPDATE dapp_status SET status = $2, updated_at = now() WHERE dapp_pubkey = $1`,
+          [pubkey, status]
+        );
+        return sendJson(res, 200, { pubkey, status });
+      } catch (e) {
+        console.warn(`[status] write error: ${e.message}`);
+        return sendJson(res, 500, { error: "internal error" });
+      }
+    });
+  }
+
+  return sendJson(res, 405, { error: "method not allowed" });
+}
+
 // Kick off DB init (non-blocking — the homepage serves regardless).
 initPinsDb();
 
@@ -876,6 +1024,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname === "/api/dapp-status") {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    handleDappStatus(req, res, urlObj);
+    return;
+  }
+
   if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
     const body = JSON.stringify(statsCache);
     if (req.method === "HEAD") {
@@ -964,6 +1118,12 @@ const server = http.createServer((req, res) => {
     if (!COMMUNITY_FUND_RESERVE_ADDRESS) {
       return sendJson(res, 503, { error: "Submissions are not currently open (no Reserve address configured)." });
     }
+    // Optional: bind the submitter's Usernode identity (from the iframe JWT) so
+    // they — and only they — can later change this dapp's maintenance status.
+    // Anonymous submissions (no token) still work; they just have no owner.
+    const submitter = getUser(req);
+    const ownerUserId = submitter && submitter.id != null ? String(submitter.id) : null;
+
     return readJsonBody(req, 64 * 1024, (err, body) => {
       if (err) return sendJson(res, 400, { error: err.message });
       const v = validateSubmissionInput(body);
@@ -987,6 +1147,7 @@ const server = http.createServer((req, res) => {
         id,
         status: "awaiting_payment",
         dapp: v.dapp,
+        owner_user_id: ownerUserId,
         payer: null,
         payment_tx_hash: null,
         paid_amount: null,
