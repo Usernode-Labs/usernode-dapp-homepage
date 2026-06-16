@@ -23,12 +23,12 @@ COPY public ./public
 USER node
 
 ENV NODE_ENV=production
-ENV PORT=8000
+ENV PORT=3000
+EXPOSE 3000
 
-EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 || exit 1
 
-# Basic healthcheck (busybox provides wget on alpine).
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -qO- "http://127.0.0.1:${PORT}/" >/dev/null 2>&1 || exit 1
-
+# Drop to non-root user at runtime only (after build steps complete as root).
+USER node
 CMD ["node", "server.js"]

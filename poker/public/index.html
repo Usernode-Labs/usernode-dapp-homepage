@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Usernode Hold'em</title>
+  <script>
+    // usernode-dev-console@1
+    (function () {
+      if (window.__usernodeDevConsole) return;
+      window.__usernodeDevConsole = true;
+      var S = '__usernodeDevConsole';
+      function forward(level, args) {
+        try {
+          var payload = {
+            source: S, level: level,
+            message: Array.prototype.map.call(args, function (a) {
+              try { return typeof a === 'string' ? a : JSON.stringify(a); }
+              catch (e) { return String(a); }
+            }).join(' '),
+            ts: Date.now()
+          };
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(payload, '*');
+          }
+        } catch (e) {}
+      }
+      ['log', 'info', 'warn', 'error', 'debug'].forEach(function (lvl) {
+        var orig = console[lvl] ? console[lvl].bind(console) : function () {};
+        console[lvl] = function () { forward(lvl, arguments); orig.apply(null, arguments); };
+      });
+      window.addEventListener('error', function (e) { forward('error', [e.message + ' @ ' + (e.filename || '') + ':' + (e.lineno || '')]); });
+      window.addEventListener('unhandledrejection', function (e) { forward('error', ['unhandledrejection: ' + (e.reason && e.reason.message || e.reason)]); });
+    })();
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    * { -webkit-tap-highlight-color: transparent; }
+    body { background: #0b1220; color: #e5e7eb; }
+    .felt {
+      background: radial-gradient(ellipse at center, #15803d 0%, #14532d 70%, #0f3d22 100%);
+      border: 8px solid #3f2d18; border-radius: 48% / 60%;
+      box-shadow: inset 0 0 60px #00000066, 0 10px 40px #00000055;
+    }
+    .seat-spot { transition: box-shadow .2s, transform .2s, opacity .2s; }
+    .seat-actor { box-shadow: 0 0 0 3px #fbbf24, 0 0 22px #fbbf2488; z-index: 5; }
+    .seat-winner { box-shadow: 0 0 0 3px #fde047, 0 0 30px #fde047cc; animation: winpulse 1s ease-in-out infinite alternate; z-index: 6; }
+    .seat-folded { opacity: .45; }
+    @keyframes winpulse { from { box-shadow: 0 0 0 3px #fde047, 0 0 18px #fde04788; } to { box-shadow: 0 0 0 3px #fde047, 0 0 34px #fde047ee; } }
+    .card {
+      width: 42px; height: 60px; border-radius: 6px; background: #fff; color: #111;
+      display: inline-flex; align-items: center; justify-content: center; font-weight: 700;
+      box-shadow: 0 1px 3px #0008; font-size: 18px;
+    }
+    .card.back { background: linear-gradient(135deg, #1e3a8a, #1e40af); color: transparent; }
+    .card.red { color: #dc2626; }
+    .card.win { outline: 2px solid #fde047; outline-offset: 1px; }
+    @keyframes dealflip { from { transform: rotateY(90deg); opacity: 0; } to { transform: rotateY(0); opacity: 1; } }
+    .card.flip { animation: dealflip .35s ease-out both; }
+    /* Dealer / blind badges pinned to a seat */
+    .badge {
+      position: absolute; top: -8px; right: -8px; width: 22px; height: 22px;
+      border-radius: 50%; font-size: 11px; font-weight: 800; line-height: 22px;
+      text-align: center; box-shadow: 0 1px 4px #000a; z-index: 7;
+    }
+    .badge-d { background: #f8fafc; color: #0b1220; }
+    .badge-sb { background: #38bdf8; color: #082f49; right: auto; left: -8px; }
+    .badge-bb { background: #fb923c; color: #431407; right: auto; left: -8px; }
+    /* Action timer ring around the active seat */
+    .timer-ring { position: absolute; inset: -6px; border-radius: 14px; pointer-events: none; }
+    .phase-pill { background:#0b1220cc; border:1px solid #334155; }
+    .chip-pill { background:#0008; border:1px solid #ffffff22; }
+    @keyframes bannerpop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .banner-pop { animation: bannerpop .3s ease-out both; }
+    /* Action bar respects iOS/Android safe-area so buttons aren't clipped. */
+    .action-bar { padding-bottom: calc(.75rem + env(safe-area-inset-bottom)); }
+    @media (max-width: 720px) {
+      .felt { border-radius: 32px; }
+      .card { width: 34px; height: 48px; font-size: 15px; }
+    }
+    @media (max-width: 440px) {
+      /* Tighten seats so the outermost ones don't clip past the felt edge. */
+      .seat-spot { min-width: 74px !important; padding: 2px 4px; }
+      .badge { width: 18px; height: 18px; line-height: 18px; font-size: 9px; }
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div id="app" class="max-w-5xl mx-auto px-3 pb-40 pt-4"><p class="text-slate-400 mt-20 text-center">Loading…</p></div>
+  <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-44 z-50 hidden px-4 py-2 rounded-lg text-sm font-medium shadow-lg"></div>
+
+  <!-- Buy-in modal -->
+  <div id="buyinModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-40 p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5">
+      <h3 class="text-lg font-bold mb-1">Buy in</h3>
+      <p class="text-sm text-slate-400 mb-3">Pay an on-chain transfer to the table bank. Your chips are credited 1:1 once the deposit confirms (~a few seconds).</p>
+      <div id="buyinStep1">
+        <label class="block text-sm mb-1">Seat</label>
+        <div id="seatPicker" class="flex flex-wrap gap-2 mb-3"></div>
+        <label class="block text-sm mb-1">Amount (chips = tokens)</label>
+        <input id="buyinAmount" type="number" class="w-full bg-slate-800 rounded px-3 py-2 mb-1" />
+        <p id="buyinRange" class="text-xs text-slate-500 mb-3"></p>
+        <div id="buyinPwWrap" class="hidden mb-3">
+          <label class="block text-sm mb-1">🔒 Table password</label>
+          <input id="buyinPassword" type="password" autocomplete="off" class="w-full bg-slate-800 rounded px-3 py-2" placeholder="Leave blank if your wallet is whitelisted" />
+        </div>
+        <p id="buyinErr" class="text-sm text-rose-400 mb-2"></p>
+        <div class="flex gap-2">
+          <button id="buyinContinue" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded py-2 font-semibold">Continue to payment</button>
+          <button onclick="closeBuyin()" class="px-4 bg-slate-700 rounded py-2">Cancel</button>
+        </div>
+      </div>
+      <div id="buyinStep2" class="hidden">
+        <div class="text-sm space-y-2 mb-3">
+          <div>Pay to: <code id="payTo" class="text-xs break-all text-emerald-300"></code></div>
+          <div>Amount: <span id="payAmount" class="font-semibold"></span> tokens</div>
+          <div>Memo: <code id="payMemo" class="text-[10px] break-all text-slate-400"></code></div>
+        </div>
+        <div id="payStatus" class="mb-3 text-sm"></div>
+        <p class="text-xs text-slate-500 mb-3">Paid from your own wallet instead? As long as the amount and memo match, this is detected within ~30s.</p>
+        <div class="flex gap-2">
+          <button id="payWithWallet" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded py-2 font-semibold">Pay with wallet</button>
+          <button onclick="closeBuyin()" class="px-4 bg-slate-700 rounded py-2">Close</button>
+        </div>
+        <p id="payErr" class="text-sm text-red-400 mt-2"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create-table modal -->
+  <div id="createModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-40 p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 max-h-[88vh] overflow-auto">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-lg font-bold">Create a table</h3>
+        <button onclick="closeCreate()" class="text-slate-400">✕</button>
+      </div>
+      <label class="block text-sm mb-1">Name</label>
+      <input id="cName" class="w-full bg-slate-800 rounded px-3 py-2 mb-3" placeholder="No-Limit Hold'em" />
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="block text-sm mb-1">Seats (2–9)</label>
+          <input id="cSeats" type="number" min="2" max="9" value="6" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Action timer (s)</label>
+          <input id="cTimer" type="number" min="5" max="120" value="30" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Small blind</label>
+          <input id="cSb" type="number" min="1" value="25" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Big blind</label>
+          <input id="cBb" type="number" min="1" value="50" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Min buy-in</label>
+          <input id="cMin" type="number" min="1" value="1000" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Max buy-in</label>
+          <input id="cMax" type="number" min="1" value="10000" class="w-full bg-slate-800 rounded px-3 py-2" />
+        </div>
+      </div>
+      <label class="block text-sm mb-1">Visibility</label>
+      <select id="cVis" class="w-full bg-slate-800 rounded px-3 py-2 mb-3">
+        <option value="public">Public — listed in the lobby, anyone can join</option>
+        <option value="private">Private — locked; needs password or whitelist</option>
+      </select>
+      <div class="flex items-center justify-between mb-3">
+        <label for="cAllowSpec" class="text-sm">Allow spectators</label>
+        <input type="checkbox" id="cAllowSpec" checked class="w-4 h-4 rounded accent-emerald-500" />
+      </div>
+      <div class="flex items-center justify-between mb-2">
+        <label for="cAllowBots" class="text-sm">Allow AI bots</label>
+        <input type="checkbox" id="cAllowBots" class="w-4 h-4 rounded accent-blue-500" onchange="toggleBotDiff()" />
+      </div>
+      <div id="cBotDiffWrap" class="hidden mb-3">
+        <label class="block text-sm mb-1">Bot difficulty</label>
+        <select id="cBotDiff" class="w-full bg-slate-800 rounded px-3 py-2">
+          <option value="easy">Easy — plays loosely, mostly calls</option>
+          <option value="medium" selected>Medium — uses hand strength heuristics</option>
+          <option value="hard">Hard — pot odds, draws, position</option>
+        </select>
+      </div>
+      <div id="cPrivateWrap" class="hidden">
+        <label class="block text-sm mb-1">Password <span class="text-slate-500">(optional if whitelisting)</span></label>
+        <input id="cPassword" type="password" autocomplete="off" class="w-full bg-slate-800 rounded px-3 py-2 mb-3" placeholder="Set a join password" />
+        <label class="block text-sm mb-1">Wallet whitelist <span class="text-slate-500">(optional; one ut1… per line)</span></label>
+        <textarea id="cWhitelist" rows="3" class="w-full bg-slate-800 rounded px-3 py-2 mb-3 text-xs" placeholder="ut1...&#10;ut1..."></textarea>
+      </div>
+      <p id="cErr" class="text-sm text-rose-400 mb-2"></p>
+      <div class="flex gap-2">
+        <button id="cCreate" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded py-2 font-semibold">Create table</button>
+        <button onclick="closeCreate()" class="px-4 bg-slate-700 rounded py-2">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Verify modal -->
+  <div id="verifyModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-40 p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-5 max-h-[85vh] overflow-auto">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="text-lg font-bold">Verify this hand</h3>
+        <button onclick="document.getElementById('verifyModal').classList.add('hidden')" class="text-slate-400">✕</button>
+      </div>
+      <div id="verifyBody" class="text-sm space-y-2"></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const params = new URLSearchParams(location.search);
+    const TOKEN = params.get('token') || '';
+    let ME = null, CURRENT_TABLE = null, ES = null, LAST_VIEW = null, BUYIN = {};
+    // IS_SPECTATING is set before openTable() when the user enters via Watch.
+    // The authoritative flag is view.isSpectator (server-set), but we need this
+    // before the first SSE tick so intermediate states render correctly.
+    let IS_SPECTATING = false;
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ 'content-type': 'application/json' }, opts.headers || {});
+      if (TOKEN) headers['x-usernode-token'] = TOKEN;
+      const resp = await fetch(path, Object.assign({}, opts, { headers }));
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+      return data;
+    }
+
+    function suitColor(card) { return /[hd]/.test(card[1]) ? 'red' : ''; }
+    function cardHtml(card, faceDown, extra = '', flip = false) {
+      const fl = flip ? ' flip' : '';
+      if (faceDown || !card) return `<span class="card back${fl}">x</span>`;
+      const suit = { c: '♣', d: '♦', h: '♥', s: '♠' }[card[1]] || '';
+      return `<span class="card ${suitColor(card)} ${extra}${fl}">${card[0]}${suit}</span>`;
+    }
+
+    // ── Lobby ──────────────────────────────────────────────────────────────
+    async function _showLobby() {
+      stopStream();
+      $('app').innerHTML = '<p class="text-slate-400 mt-20 text-center">Loading tables…</p>';
+      try {
+        const data = await api('/api/tables');
+        ME = data.you || null;
+        const rows = data.tables.map((t) => {
+          const full = t.seated >= t.max_seats;
+          const lock = t.is_private ? '<span class="text-amber-300" title="Private table">🔒 </span>' : '';
+          const botBadge = t.allow_bots ? `<span class="text-[10px] uppercase tracking-wide text-blue-300/80 align-middle ml-1">🤖 Bots</span>` : '';
+          const watching = t.spectator_count > 0 ? ` · <span class="text-slate-400">${t.spectator_count} watching</span>` : '';
+          const watchBtn = (ME && t.allow_spectators)
+            ? `<button onclick="watchTable('${t.id}')" class="shrink-0 bg-slate-600 hover:bg-slate-500 rounded-lg px-3 py-2 text-sm font-medium">👁 Watch</button>`
+            : '';
+          return `
+          <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-semibold truncate">${lock}${escapeHtml(t.name)}${t.is_private ? ' <span class="text-[10px] uppercase tracking-wide text-amber-300/80 align-middle">Private</span>' : ''}${botBadge}</div>
+              <div class="text-sm text-slate-400">Blinds ${t.sb}/${t.bb} · Buy-in ${t.min_buyin}–${t.max_buyin} · ${t.max_seats}-max · <span class="${full ? 'text-amber-400' : 'text-emerald-300'}">${t.seated}/${t.max_seats} seated</span>${watching}</div>
+            </div>
+            <div class="flex gap-2 shrink-0">
+              ${watchBtn}
+              ${ME ? `<button onclick="openTable('${t.id}')" class="bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">${t.is_private ? 'Join' : 'Open'}</button>` : `<button onclick="openTable('${t.id}')" class="bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">Open</button>`}
+            </div>
+          </div>`;
+        }).join('');
+        const userLine = ME
+          ? `Signed in as <b>${escapeHtml(ME.username || 'guest')}</b>${ME.wallet ? '' : ' · <span class="text-amber-400">no wallet linked</span>'}`
+          : '<span class="text-amber-300">Open this app via Usernode to sign in and play.</span>';
+        $('app').innerHTML = `
+          <div class="flex items-center justify-between mb-4">
+            <h1 class="text-2xl font-bold">♠ Usernode Hold'em</h1>
+            ${ME ? `<button onclick="createTable()" class="bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-2 text-sm">+ Create table</button>` : ''}
+          </div>
+          <p class="text-sm text-slate-300 mb-3">${userLine}</p>
+          <div class="space-y-3">${rows || '<div class="bg-slate-800/40 border border-dashed border-slate-700 rounded-xl p-8 text-center text-slate-400">No open tables right now.</div>'}</div>`;
+      } catch (e) {
+        $('app').innerHTML = `
+          <div class="mt-16 text-center">
+            <div class="text-lg font-semibold text-rose-300 mb-1">Couldn't load tables</div>
+            <p class="text-sm text-slate-400 mb-4">${escapeHtml(e.message)}</p>
+            <button onclick="showLobby()" class="bg-slate-700 hover:bg-slate-600 rounded-lg px-4 py-2 text-sm">Retry</button>
+          </div>`;
+      }
+    }
+
+    // ── Create-table flow ──────────────────────────────────────────────────
+    function createTable() {
+      $('cErr').textContent = '';
+      $('cVis').value = 'public';
+      $('cPrivateWrap').classList.add('hidden');
+      $('createModal').classList.remove('hidden'); $('createModal').classList.add('flex');
+    }
+    function closeCreate() { $('createModal').classList.add('hidden'); $('createModal').classList.remove('flex'); }
+    function toggleBotDiff() { $('cBotDiffWrap').classList.toggle('hidden', !$('cAllowBots').checked); }
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'cVis') {
+        $('cPrivateWrap').classList.toggle('hidden', e.target.value !== 'private');
+      }
+    });
+    function bindCreate() {
+      const btn = $('cCreate');
+      if (!btn) return;
+      btn.onclick = async () => {
+        $('cErr').textContent = '';
+        const payload = {
+          name: $('cName').value,
+          max_seats: Number($('cSeats').value),
+          action_timer_seconds: Number($('cTimer').value),
+          sb: Number($('cSb').value),
+          bb: Number($('cBb').value),
+          min_buyin: Number($('cMin').value),
+          max_buyin: Number($('cMax').value),
+          visibility: $('cVis').value,
+          allow_spectators: $('cAllowSpec').checked,
+          allow_bots: $('cAllowBots').checked,
+          bot_difficulty: $('cBotDiff').value,
+          password: $('cVis').value === 'private' ? $('cPassword').value : '',
+          whitelist: $('cVis').value === 'private' ? $('cWhitelist').value : '',
+        };
+        btn.disabled = true; btn.textContent = 'Creating…';
+        try {
+          const r = await api('/api/tables', { method: 'POST', body: JSON.stringify(payload) });
+          closeCreate();
+          openTable(r.id);
+        } catch (e) { $('cErr').textContent = e.message; }
+        finally { btn.disabled = false; btn.textContent = 'Create table'; }
+      };
+    }
+    bindCreate();
+
+    // ── Table ──────────────────────────────────────────────────────────────
+    function openTable(id) {
+      CURRENT_TABLE = id;
+      stopStream();
+      $('app').innerHTML = IS_SPECTATING
+        ? '<p class="text-slate-400 mt-20 text-center">Connecting as spectator…</p>'
+        : '<p class="text-slate-400 mt-20 text-center">Joining table…</p>';
+      ES = new EventSource(`/api/tables/${id}/stream?token=${encodeURIComponent(TOKEN)}`);
+      ES.onmessage = (ev) => { try { renderTable(JSON.parse(ev.data)); } catch (_) {} };
+      // EventSource auto-reconnects; surface the gap quietly rather than freezing.
+      ES.onerror = () => { if (ES && ES.readyState === 0) toast('Reconnecting…', 'info'); };
+    }
+    async function watchTable(id) {
+      IS_SPECTATING = true;
+      $('app').innerHTML = '<p class="text-slate-400 mt-20 text-center">Connecting as spectator…</p>';
+      try {
+        await api(`/api/tables/${id}/spectate`, { method: 'POST', body: '{}' });
+        openTable(id);
+      } catch (e) {
+        IS_SPECTATING = false;
+        $('app').innerHTML = `
+          <div class="mt-16 text-center">
+            <p class="text-rose-300 mb-3">${escapeHtml(e.message)}</p>
+            <button onclick="showLobby()" class="bg-slate-700 hover:bg-slate-600 rounded-lg px-4 py-2 text-sm">← Back to lobby</button>
+          </div>`;
+      }
+    }
+    function stopStream() {
+      if (ES) { ES.close(); ES = null; }
+      if (TIMER_INT) { clearInterval(TIMER_INT); TIMER_INT = null; }
+    }
+    function showLobby() {
+      IS_SPECTATING = false;
+      _showLobby();
+    }
+
+    function seatPosition(i, n) {
+      // Distribute seats around an ellipse; viewer's seat is rotated to bottom.
+      const angle = Math.PI / 2 + (2 * Math.PI * i) / n;
+      const x = 50 + 42 * Math.cos(angle);
+      const y = 52 + 40 * Math.sin(angle);
+      return { x, y };
+    }
+
+    const PHASE_LABEL = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', complete: 'Showdown' };
+    let LAST_HAND_ID = null, LAST_BOARD_LEN = 0;
+
+    function renderTable(view) {
+      LAST_VIEW = view;
+      const t = view.table;
+      const isSpec = !!view.isSpectator; // server-authoritative spectator flag
+      IS_SPECTATING = isSpec;
+      const you = view.you.seat;
+      const seats = view.seats;
+      const n = seats.length;
+      const hand = view.hand;
+
+      // Set of winning seat numbers (for showdown highlight).
+      const winners = (hand && hand.result && hand.result.winners) || [];
+      const winSeats = new Set(winners.map((w) => w.seat));
+      const showdown = !!(hand && hand.complete && hand.result);
+
+      // Trigger the deal-flip animation only when a new hand starts or a new
+      // street's cards land — not on every SSE tick.
+      const boardLen = hand ? hand.board.length : 0;
+      const sameHand = hand && hand.id === LAST_HAND_ID;
+      const newHand = hand && !sameHand;
+      const prevBoardLen = sameHand ? LAST_BOARD_LEN : 0;
+      if (hand) { LAST_HAND_ID = hand.id; LAST_BOARD_LEN = boardLen; }
+      else { LAST_HAND_ID = null; LAST_BOARD_LEN = 0; }
+
+      // Rotate so the viewer sits at the bottom.
+      const order = [];
+      const base = you != null ? you : 0;
+      for (let k = 0; k < n; k++) order.push(seats[(base + k) % n]);
+
+      const seatEls = order.map((s, i) => {
+        const pos = seatPosition(i, n);
+        const isMe = s.isYou;
+        const isWinner = showdown && winSeats.has(s.seat_no);
+        const cards = (s.holeCards && s.holeCards.length)
+          ? s.holeCards.map((c) => cardHtml(c, false, isWinner ? 'win' : '', newHand || showdown)).join('')
+          : (s.holeCount ? cardHtml(null, true, '', newHand).repeat(s.holeCount) : '');
+        const occ = s.occupied;
+        const badges = hand ? [
+          hand.button === s.seat_no ? '<span class="badge badge-d" title="Dealer">D</span>' : '',
+          hand.sbSeat === s.seat_no ? '<span class="badge badge-sb" title="Small blind">SB</span>' : '',
+          hand.bbSeat === s.seat_no ? '<span class="badge badge-bb" title="Big blind">BB</span>' : '',
+        ].join('') : '';
+        const cls = [
+          'seat-spot absolute -translate-x-1/2 -translate-y-1/2 rounded-xl px-2 py-1',
+          isWinner ? 'seat-winner' : (s.isActor ? 'seat-actor' : ''),
+          s.folded ? 'seat-folded' : '',
+          occ ? 'bg-slate-900/85 border border-slate-600' : 'bg-slate-800/40 border border-dashed border-slate-700',
+        ].join(' ');
+        const ring = (s.isActor && !showdown) ? `<svg id="ring-${s.seat_no}" class="timer-ring" viewBox="0 0 100 100" preserveAspectRatio="none"><rect x="2" y="2" width="96" height="96" rx="12" fill="none" stroke="#fbbf24" stroke-width="3" pathLength="100" stroke-dasharray="100" stroke-dashoffset="0"/></svg>` : '';
+        return `<div class="${cls}" style="left:${pos.x}%;top:${pos.y}%;min-width:96px;text-align:center">
+            ${ring}${occ ? badges : ''}
+            ${occ ? `
+              <div class="text-xs font-semibold truncate ${isMe ? 'text-emerald-300' : s.is_bot ? 'text-blue-300' : ''}">${s.is_bot ? '🤖 ' : ''}${escapeHtml(s.username || '')}${isMe ? ' (you)' : ''}${s.is_bot && s.bot_difficulty ? `<span class="ml-1 text-[9px] text-blue-400/70 uppercase">${s.bot_difficulty}</span>` : ''}</div>
+              <div class="text-[11px] text-amber-300 chip-pill rounded px-1 inline-block mt-0.5">${s.stack}${s.folded ? ' · folded' : ''}${s.allIn ? ' · all-in' : ''}</div>
+              <div class="mt-1 flex gap-0.5 justify-center" style="transform:scale(.62);transform-origin:center">${cards}</div>
+              ${s.committed ? `<div class="text-[10px] text-slate-200 mt-0.5">bet ${s.committed}</div>` : ''}
+              ${s.is_bot && !isSpec ? `<button onclick="startBuyin(${s.seat_no})" class="text-[10px] text-slate-500 hover:text-blue-300 mt-0.5 w-full">Take seat</button>` : ''}
+            ` : (isSpec ? `<div class="py-3 text-xs text-slate-600 text-center">Empty</div>` : `<button onclick="startBuyin(${s.seat_no})" class="text-xs text-slate-400 hover:text-emerald-300 py-3 w-full">Sit here</button>`)}
+          </div>`;
+      }).join('');
+
+      const board = hand ? hand.board : [];
+      const boardEls = board.map((c, idx) => cardHtml(c, false, '', idx >= prevBoardLen)).join('')
+        || '<span class="text-slate-300 text-sm">Waiting for players to be seated…</span>';
+      const pot = hand && hand.pots && hand.pots.length ? hand.pots.reduce((a, p) => a + p.amount, 0) : 0;
+      const phase = hand ? (PHASE_LABEL[hand.street] || hand.street) : 'Lobby';
+
+      $('app').innerHTML = `
+        <div class="flex items-center justify-between mb-3">
+          <button onclick="showLobby()" class="text-sm text-slate-400 hover:text-white px-2 py-1">← Lobby</button>
+          <div class="text-sm text-slate-200 truncate px-2 flex items-center gap-2">
+            ${isSpec ? '<span class="text-xs bg-slate-700 border border-slate-500 rounded-full px-2 py-0.5 shrink-0">👁 Spectating</span>' : ''}
+            <span class="truncate">${escapeHtml(t.name)} · <span class="text-slate-400">${t.sb}/${t.bb}</span></span>
+            ${t.spectator_count > 0 ? `<span class="text-xs text-slate-500 shrink-0">${t.spectator_count} watching</span>` : ''}
+          </div>
+          ${isSpec ? '' : '<button onclick="cashOut()" class="text-sm bg-slate-700 hover:bg-slate-600 rounded px-3 py-1">Cash out</button>'}
+        </div>
+        <div class="flex items-center justify-center gap-2 mb-2">
+          <span class="phase-pill rounded-full px-3 py-0.5 text-xs font-semibold ${showdown ? 'text-amber-300' : 'text-emerald-300'}">${phase}</span>
+          ${hand ? `<span class="text-[11px] text-slate-400">Hand #${hand.handNo}</span>` : ''}
+        </div>
+        <div class="relative felt mx-auto" style="max-width:680px;height:380px">
+          <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center w-full px-4">
+            <div class="flex gap-1 justify-center mb-2 min-h-[60px] items-center">${boardEls}</div>
+            <div class="inline-block chip-pill rounded-full px-4 py-1 text-amber-300 font-bold text-lg">Pot ${pot}</div>
+            ${hand && hand.timer && hand.timer.paused ? `<div class="text-[11px] text-amber-200 mt-2">⏸ timer paused — confirming on-chain…</div>` : ''}
+            ${hand && hand.commitment ? `<div class="text-[10px] text-emerald-200/60 mt-1">provably-fair commit ${hand.commitment.slice(0, 12)}…</div>` : ''}
+          </div>
+          ${seatEls}
+        </div>
+        ${renderResultBanner(hand)}
+        <div id="historyWrap" class="mt-5"></div>`;
+
+      renderActionBar(view);
+      startTimerLoop(hand);
+      loadHistory(t.id);
+    }
+
+    function renderResultBanner(hand) {
+      if (!hand || !hand.result) return '';
+      const r = hand.result;
+      const w = r.winners || [];
+      if (r.uncontested && w.length) {
+        const x = w[0];
+        return `<div class="banner-pop mt-3 text-center bg-emerald-900/50 border border-emerald-600 rounded-xl py-3">
+          <div class="text-sm text-slate-300">Uncontested</div>
+          <div class="text-lg font-bold text-emerald-300">${escapeHtml(x.username || ('Seat ' + (x.seat + 1)))} wins ${x.amount}</div>
+        </div>`;
+      }
+      const lines = w.map((x) => `
+        <div class="text-lg font-bold text-amber-300">${escapeHtml(x.username || ('Seat ' + (x.seat + 1)))} wins ${x.amount}</div>
+        ${x.name ? `<div class="text-sm text-slate-200">${escapeHtml(x.name)}</div>` : ''}`).join('');
+      return `<div class="banner-pop mt-3 text-center bg-gradient-to-b from-amber-900/40 to-emerald-900/40 border border-amber-600/70 rounded-xl py-3">
+        <div class="text-xs uppercase tracking-wide text-amber-200/80 mb-1">Showdown</div>
+        ${lines || '<div class="text-base font-semibold">Hand complete</div>'}
+      </div>`;
+    }
+
+    // ── Action timer ring + countdown ──────────────────────────────────────
+    let TIMER_INT = null;
+    function startTimerLoop(hand) {
+      if (TIMER_INT) { clearInterval(TIMER_INT); TIMER_INT = null; }
+      if (!hand || hand.complete || !hand.timer) return;
+      const total = (hand.timer.seconds || 30) * 1000;
+      const actor = hand.actorSeat;
+      const update = () => {
+        const ring = actor != null ? $('ring-' + actor) ? $('ring-' + actor).querySelector('rect') : null : null;
+        if (hand.timer.paused || !hand.timer.deadline) {
+          if (ring) ring.setAttribute('stroke-dashoffset', '0');
+          return;
+        }
+        const remain = Math.max(0, hand.timer.deadline - Date.now());
+        const frac = Math.max(0, Math.min(1, remain / total));
+        if (ring) {
+          ring.setAttribute('stroke-dashoffset', String(100 - frac * 100));
+          ring.setAttribute('stroke', frac < 0.25 ? '#ef4444' : '#fbbf24');
+        }
+      };
+      update();
+      TIMER_INT = setInterval(update, 250);
+    }
+
+    // ── Action bar (fixed, thumb-reachable on mobile) ──────────────────────
+    function renderActionBar(view) {
+      const old = $('actionBar'); if (old) old.remove();
+      if (view.isSpectator) return; // spectators never get action controls
+      const hand = view.hand;
+      if (!hand || !hand.legal) return;
+      const L = hand.legal;
+      const bb = view.table.bb;
+      const bar = document.createElement('div');
+      bar.id = 'actionBar';
+      bar.className = 'action-bar fixed bottom-0 inset-x-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-3 pt-3 z-30';
+      const minTo = L.canRaise ? L.minRaiseTo : (L.canBet ? L.minBet : 0);
+      bar.innerHTML = `
+        <div class="max-w-3xl mx-auto">
+          <div class="flex items-center gap-2 mb-2 ${(L.canBet || L.canRaise) ? '' : 'hidden'}">
+            <input id="betSlider" type="range" min="${minTo}" max="${L.maxTo}" value="${minTo}" class="flex-1">
+            <input id="betInput" type="number" min="${minTo}" max="${L.maxTo}" value="${minTo}" class="w-24 bg-slate-800 rounded px-2 py-1 text-right">
+          </div>
+          <div class="flex gap-2">
+            <button onclick="act('fold')" class="flex-1 bg-rose-700 hover:bg-rose-600 rounded-lg py-3 font-semibold">Fold</button>
+            ${L.canCheck ? `<button onclick="act('check')" class="flex-1 bg-slate-600 hover:bg-slate-500 rounded-lg py-3 font-semibold">Check</button>` : ''}
+            ${L.canCall ? `<button onclick="act('call')" class="flex-1 bg-sky-700 hover:bg-sky-600 rounded-lg py-3 font-semibold">Call ${L.callAmount}</button>` : ''}
+            ${(L.canBet || L.canRaise) ? `<button onclick="actBet()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 rounded-lg py-3 font-semibold">${L.canRaise ? 'Raise' : 'Bet'}</button>` : ''}
+          </div>
+          <div class="flex gap-2 mt-2 ${(L.canBet || L.canRaise) ? '' : 'hidden'}">
+            <button onclick="quickBet(${minTo})" class="text-xs bg-slate-800 rounded px-2 py-1">Min</button>
+            <button onclick="quickBetPot(0.5)" class="text-xs bg-slate-800 rounded px-2 py-1">½ Pot</button>
+            <button onclick="quickBetPot(1)" class="text-xs bg-slate-800 rounded px-2 py-1">Pot</button>
+            <button onclick="quickBet(${L.maxTo})" class="text-xs bg-slate-800 rounded px-2 py-1">All-in (${L.maxTo})</button>
+          </div>
+        </div>`;
+      document.body.appendChild(bar);
+      const slider = $('betSlider'), input = $('betInput');
+      if (slider) { slider.oninput = () => input.value = slider.value; input.oninput = () => slider.value = input.value; }
+    }
+    function quickBet(v) { if ($('betSlider')) { $('betSlider').value = v; $('betInput').value = v; } }
+    function quickBetPot(frac) {
+      const pot = (LAST_VIEW.hand.pots || []).reduce((a, p) => a + p.amount, 0);
+      const L = LAST_VIEW.hand.legal;
+      let v = Math.max(L.minRaiseTo || L.minBet, Math.round((L.callAmount || 0) + pot * frac));
+      v = Math.min(v, L.maxTo); quickBet(v);
+    }
+    async function act(type) {
+      try { await api(`/api/tables/${CURRENT_TABLE}/action`, { method: 'POST', body: JSON.stringify({ type }) }); }
+      catch (e) { toast(e.message); }
+    }
+    async function actBet() {
+      const amount = Number($('betInput').value);
+      const L = LAST_VIEW.hand.legal;
+      try { await api(`/api/tables/${CURRENT_TABLE}/action`, { method: 'POST', body: JSON.stringify({ type: L.canRaise ? 'raise' : 'bet', amount }) }); }
+      catch (e) { toast(e.message); }
+    }
+
+    async function cashOut() {
+      if (!confirm('Leave the table and cash out your chips on-chain?')) return;
+      try { const r = await api(`/api/tables/${CURRENT_TABLE}/cashout`, { method: 'POST', body: '{}' }); toast('Cashing out ' + r.cashed_out + ' chips.', 'info'); }
+      catch (e) { toast(e.message); }
+    }
+
+    // ── Buy-in flow ────────────────────────────────────────────────────────
+    function startBuyin(seatNo) {
+      const t = LAST_VIEW.table;
+      BUYIN = { seat: seatNo };
+      $('buyinStep1').classList.remove('hidden');
+      $('buyinStep2').classList.add('hidden');
+      $('buyinErr').textContent = '';
+      $('seatPicker').innerHTML = `<span class="bg-emerald-700 rounded px-3 py-1 text-sm">Seat ${seatNo + 1}</span>`;
+      $('buyinRange').textContent = `Between ${t.min_buyin} and ${t.max_buyin}`;
+      $('buyinAmount').value = t.min_buyin;
+      // Private tables: surface a password field (whitelisted wallets may skip it).
+      $('buyinPwWrap').classList.toggle('hidden', !t.is_private);
+      if (t.is_private) $('buyinPassword').value = '';
+      $('buyinModal').classList.remove('hidden'); $('buyinModal').classList.add('flex');
+    }
+    function closeBuyin() { $('buyinModal').classList.add('hidden'); $('buyinModal').classList.remove('flex'); }
+
+    $('buyinContinue').onclick = async () => {
+      const amount = Number($('buyinAmount').value);
+      const body = { seat_no: BUYIN.seat, amount };
+      if (LAST_VIEW.table.is_private) body.password = $('buyinPassword').value || '';
+      try {
+        const r = await api(`/api/tables/${CURRENT_TABLE}/buyin`, { method: 'POST', body: JSON.stringify(body) });
+        BUYIN.sid = r.sid;
+        $('payTo').textContent = r.pay_to;
+        $('payAmount').textContent = r.amount;
+        $('payMemo').textContent = r.memo;
+        BUYIN.pay = r;
+        $('buyinStep1').classList.add('hidden');
+        $('buyinStep2').classList.remove('hidden');
+        $('payStatus').innerHTML = '<span class="text-amber-300">Awaiting payment…</span>';
+        pollSession(r.sid);
+      } catch (e) { $('buyinErr').textContent = e.message; }
+    };
+
+    // bridge.js exposes window.sendTransaction(pubkey, amount, memo) as a
+    // direct global — NOT as window.usernode.sendTransaction. The bridge
+    // also needs a postMessage handshake with the parent frame before
+    // window.usernode.isNative flips; poll until it's ready.
+    async function waitForBridge(ms = 5000) {
+      const deadline = Date.now() + ms;
+      while (Date.now() < deadline) {
+        if (typeof window.sendTransaction === 'function') return true;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      return false;
+    }
+
+    $('payWithWallet').onclick = async () => {
+      $('payErr').textContent = '';
+      const btn = $('payWithWallet');
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+      try {
+        const ready = await waitForBridge(5000);
+        if (!ready) { $('payErr').textContent = 'Wallet bridge unavailable — pay manually using the details above.'; return; }
+        await window.sendTransaction(BUYIN.pay.pay_to, BUYIN.pay.amount, BUYIN.pay.memo);
+        $('payStatus').innerHTML = '<span class="text-amber-300">Payment requested — waiting for confirmation…</span>';
+      } catch (e) { $('payErr').textContent = e.message || String(e); }
+      finally { btn.disabled = false; btn.textContent = 'Pay with wallet'; }
+    };
+
+    async function pollSession(sid) {
+      let delay = 3000;
+      async function tick() {
+        try {
+          const s = await api(`/api/tables/${CURRENT_TABLE}/session/${sid}`);
+          if (s.status === 'credited') {
+            $('payStatus').innerHTML = '<span class="text-emerald-400">Deposit confirmed — you are seated!</span>';
+            setTimeout(closeBuyin, 1200);
+            return;
+          }
+          if (s.status === 'expired') { $('payStatus').innerHTML = '<span class="text-rose-400">Session expired — no payment detected.</span>'; return; }
+        } catch (_) {}
+        delay = Math.min(delay + 1000, 15000);
+        setTimeout(tick, delay);
+      }
+      setTimeout(tick, delay);
+    }
+
+    // ── History + verify ──────────────────────────────────────────────────
+    async function loadHistory(tableId) {
+      try {
+        const data = await api(`/api/tables/${tableId}/hands`);
+        if (!data.hands.length) { $('historyWrap').innerHTML = '<h3 class="font-semibold mb-2">Hand history</h3><p class="text-sm text-slate-500">No completed hands yet.</p>'; return; }
+        const rows = data.hands.map((h) => {
+          const w = (h.result && h.result.winners) || [];
+          const wtxt = w.map((x) => `${escapeHtml(x.username || ('seat ' + x.seat))} +${x.amount}`).join(', ');
+          return `<div class="flex items-center justify-between bg-slate-800/50 rounded-lg px-3 py-2 text-sm">
+            <div>#${h.hand_no} · <span class="text-slate-400">${(h.board || []).join(' ')}</span> · ${wtxt}</div>
+            <button onclick="verifyHand('${h.id}')" class="text-xs bg-slate-700 hover:bg-slate-600 rounded px-2 py-1">Verify ✓</button>
+          </div>`;
+        }).join('');
+        $('historyWrap').innerHTML = `<h3 class="font-semibold mb-2">Hand history</h3><div class="space-y-1">${rows}</div>`;
+      } catch (_) {}
+    }
+
+    async function verifyHand(id) {
+      try {
+        const v = await api(`/api/hands/${id}/verify`);
+        const ok = v.verification && v.verification.ok;
+        $('verifyBody').innerHTML = `
+          <div class="rounded-lg p-2 ${ok ? 'bg-emerald-900/50 border border-emerald-700' : 'bg-rose-900/50 border border-rose-700'}">
+            ${ok ? '✓ Verified — the deck matches the commitment and the revealed seed.' : '✗ Verification failed: ' + (v.verification.reasons || []).join('; ')}
+          </div>
+          <div><b>Commitment</b><div class="text-xs break-all text-slate-400">${v.commitment || '—'}</div></div>
+          <div><b>Revealed seed</b><div class="text-xs break-all text-slate-400">${v.revealed_seed || '—'}</div></div>
+          <div><b>Player entropy nonces</b><div class="text-xs break-all text-slate-400">${(v.nonces || []).join(', ') || '—'}</div></div>
+          <div><b>Shuffle seed</b><div class="text-xs break-all text-slate-400">${v.shuffle_seed || '—'}</div></div>
+          <div><b>On-chain commit tx</b><div class="text-xs break-all text-slate-400">${v.commit_tx || '(not anchored)'}</div></div>
+          <div><b>On-chain reveal tx</b><div class="text-xs break-all text-slate-400">${v.reveal_tx || '(not anchored)'}</div></div>
+          <div><b>Dealt deck</b><div class="text-xs break-all text-slate-500">${(v.deck || []).join(' ')}</div></div>`;
+        $('verifyModal').classList.remove('hidden'); $('verifyModal').classList.add('flex');
+      } catch (e) { toast(e.message); }
+    }
+
+    function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    let TOAST_T = null;
+    function toast(msg, kind = 'error') {
+      const el = $('toast');
+      el.textContent = msg;
+      el.className = 'fixed left-1/2 -translate-x-1/2 bottom-44 z-50 px-4 py-2 rounded-lg text-sm font-medium shadow-lg ' +
+        (kind === 'error' ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white');
+      if (TOAST_T) clearTimeout(TOAST_T);
+      TOAST_T = setTimeout(() => { el.classList.add('hidden'); }, 3200);
+    }
+
+    showLobby();
+  </script>
+</body>
+</html>
