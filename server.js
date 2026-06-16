@@ -71,7 +71,6 @@ const DAPPS_PATH = (() => {
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
 const DATABASE_URL = process.env.DATABASE_URL || "";
-const IS_STAGING = process.env.USERNODE_ENV === "staging";
 
 // ── Submit-a-dapp config ──────────────────────────────────────────────────────
 // On-chain submission fee flow. All values are read from process.env with an
