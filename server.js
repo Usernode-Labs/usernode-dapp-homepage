@@ -1090,6 +1090,7 @@ function validateSubmissionInput(body) {
   if (!body || typeof body !== "object") return { ok: false, error: "Missing submission body." };
   const str = (v) => (typeof v === "string" ? v.trim() : "");
   const name = str(body.name);
+  const displayName = str(body.displayName);
   const description = str(body.description);
   const author = str(body.author);
   const url = str(body.url);
@@ -1099,6 +1100,7 @@ function validateSubmissionInput(body) {
 
   if (!name) return { ok: false, error: "Name is required." };
   if (name.length > 80) return { ok: false, error: "Name is too long (max 80 chars)." };
+  if (displayName.length > 80) return { ok: false, error: "Display name is too long (max 80 chars)." };
   if (!url) return { ok: false, error: "URL is required." };
   let parsed;
   try { parsed = new URL(url); } catch (_) { return { ok: false, error: "URL is not valid." }; }
@@ -1109,6 +1111,7 @@ function validateSubmissionInput(body) {
   if (logo && logo.length > 8000) return { ok: false, error: "Logo SVG is too large." };
 
   const dapp = { name, description, author: author || "unknown", url, pubkey };
+  if (displayName) dapp.displayName = displayName;
   if (category) dapp.category = category;
   if (logo) dapp.logo = logo;
   return { ok: true, dapp };
