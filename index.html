@@ -163,6 +163,47 @@
         justify-content: space-between;
         gap: 12px;
       }
+      /* Horizontal, horizontally-scrollable category filter tab bar. Sits at
+         the top of the card, directly above the brand/"DAPPS" header row. Each
+         tab narrows the list to a fixed set of dapps (matched by display name);
+         "All" shows everything. Filtering is client-side and instant. */
+      .categoryBar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+        flex: 0 0 auto;
+        position: sticky;
+        top: 0;
+        z-index: 11;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .categoryBar::-webkit-scrollbar { display: none; }
+      .categoryTab {
+        flex: 0 0 auto;
+        height: 30px;
+        padding: 0 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+      }
+      .categoryTab:hover { color: var(--fg); border-color: var(--accent); }
+      .categoryTab.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
       /* Brand lockup: Usernode logo mark + wordmark, linking back to the
          Usernode homepage, sitting left of the "Dapps" section title. Colors
          come from the shared theme variables so it recolors in light/dark. */
@@ -221,10 +262,10 @@
         color: var(--muted);
         line-height: 1.45;
       }
-      .headerActions {
+      .headerButtonRow {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
         flex: 0 0 auto;
       }
       .submitBtn {
@@ -1348,6 +1389,27 @@
         }
       }
 
+      /* ── Submit-a-dapp button + modal ─────────────────────────────────────── */
+      .submitBtn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--accent);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        appearance: none;
+        flex: 0 0 auto;
+      }
+      .submitBtn svg { width: 16px; height: 16px; }
+      .submitBtnLabel { display: none; }
+      .submitBtn:hover { filter: brightness(1.06); }
+
+
       .modalOverlay {
         position: fixed;
         inset: 0;
@@ -1486,6 +1548,12 @@
   <body>
     <main>
       <div class="card">
+        <nav class="categoryBar" id="categoryBar" aria-label="Filter dapps by category">
+          <button class="categoryTab active" type="button" data-category="All" aria-pressed="true">All</button>
+          <button class="categoryTab" type="button" data-category="Game" aria-pressed="false">Game</button>
+          <button class="categoryTab" type="button" data-category="Utility" aria-pressed="false">Utility</button>
+          <button class="categoryTab" type="button" data-category="Market" aria-pressed="false">Market</button>
+        </nav>
         <div class="header">
           <div class="headerRow">
             <div class="brand">
@@ -1497,7 +1565,7 @@
                 <span class="brandName">DAPPS</span>
               </a>
             </div>
-            <div class="headerActions">
+            <div class="headerButtonRow">
               <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span class="submitBtnLabel">Submit</span>
@@ -2277,16 +2345,41 @@
         return li;
       }
 
+      // Category filter: maps each tab to the exact dapp display names it
+      // shows. "All" is special-cased to show everything. Matching is by
+      // display name so the filter composes cleanly with sorting/search.
+      const CATEGORY_NAMES = {
+        Game: ["Falling Sands", "Last One Wins", "Mini Minecraft"],
+        Utility: ["Echo Diagnostic"],
+        Market: ["Opinion Market"],
+      };
+      let activeCategory = "All";
+
+      function filterByCategory(dapps) {
+        if (activeCategory === "All") return dapps;
+        const allowed = CATEGORY_NAMES[activeCategory];
+        if (!allowed) return dapps;
+        return dapps.filter((d) => allowed.includes((d.name || "").trim()));
+      }
+
       function renderDapps(dapps) {
         if (!list) return;
         clearList();
 
-        if (!Array.isArray(dapps) || dapps.length === 0) {
-          addRow("(no dapps configured)");
+        const categorized = filterByCategory(
+          Array.isArray(dapps) ? dapps : []
+        );
+
+        if (categorized.length === 0) {
+          addRow(
+            activeCategory === "All"
+              ? "(no dapps configured)"
+              : "(no dapps in this category)"
+          );
           return;
         }
 
-        const sorted = sortApps(dapps);
+        const sorted = sortApps(categorized);
 
         function buildLi(dapp) {
           if (currentView === "grid") return buildGridCard(dapp);
@@ -2401,6 +2494,24 @@
 
       updateSortUI();
 
+      // --- Category filter tabs ---
+      const categoryBar = document.getElementById("categoryBar");
+      if (categoryBar) {
+        categoryBar.addEventListener("click", (e) => {
+          const tab = e.target.closest(".categoryTab[data-category]");
+          if (!tab) return;
+          const next = tab.dataset.category;
+          if (next === activeCategory) return;
+          activeCategory = next;
+          categoryBar.querySelectorAll(".categoryTab").forEach((btn) => {
+            const active = btn.dataset.category === activeCategory;
+            btn.classList.toggle("active", active);
+            btn.setAttribute("aria-pressed", active ? "true" : "false");
+          });
+          renderDapps(allApps);
+        });
+      }
+
       // --- View-mode toggle (compact / detailed / grid) ---
       // Mirrors the sort control: persists to localStorage and re-renders
       // instantly with no reload. The container class drives the per-mode
@@ -2466,6 +2577,7 @@
       // paint already uses the correct layout.
       applyViewClass();
       updateViewUI();
+
 
       // ── Launch overlay ──────────────────────────────────────────────────────
       const _launchOverlay = document.getElementById("launchOverlay");

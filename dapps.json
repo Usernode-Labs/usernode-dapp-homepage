@@ -162,6 +162,19 @@
       ]
     },
     {
+      "name": "Usernode Hold'em",
+      "description": "On-chain 6-max No-Limit Texas Hold'em with a provably-fair deal.",
+      "longDescription": "Usernode Hold'em is a real-money 6-max No-Limit Texas Hold'em cash table running on the Usernode chain. Buy in with an on-chain transfer, play full betting rounds with all-in side pots and automatic showdown, and verify every deal yourself: each hand publishes a commitment before the cards are dealt and reveals its seed on-chain at the end, so the shuffle is provably fair and auditable per hand.",
+      "author": "Usernode Labs",
+      "developerUrl": "https://usernodelabs.org",
+      "url": "https://usernode-holdem.social-vibecoding.usernodelabs.org",
+      "pubkey": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az",
+      "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#15803d'/><path d='M20 9c-4 4-8 7-8 11a5 5 0 0 0 10 0c0 4-4 7-8 11h12c-4-4-8-7-8-11a5 5 0 0 0 10 0c0-4-4-7-8-11z' fill='#fff'/></svg>",
+      "category": "Game",
+      "version": "0.1.0",
+      "updated": "2026-06-13"
+    },
+    {
       "name": "Mini Minecraft",
       "description": "Place and break colored blocks in a tiny 2D voxel sandbox.",
       "longDescription": "Mini Minecraft is a lightweight, browser-based block sandbox. Explore a freshly generated 2D world of grass, dirt, stone, and trees, then reshape it however you like: pick a block from the hotbar and click to place it, right-click (or grab the pickaxe) to break. Your world is saved in your browser, and you can roll a brand new one any time.",
@@ -191,6 +204,39 @@
           "icon": "💾",
           "title": "Saved in your browser",
           "body": "Your creation persists between visits — or reset for a clean slate."
+        }
+      ]
+    },
+    {
+      "name": "Web3 Trivia Quiz",
+      "description": "Test your blockchain & Usernode knowledge — top scorers win a spot in the prize pool.",
+      "longDescription": "Web3 Trivia Quiz is a timed, multi-question game about blockchain fundamentals and Usernode. Each session pulls a fresh set of curated questions across Blockchain Basics, Wallets & Keys, Usernode, and Web3 Culture. Answers are graded server-side the instant you submit, your score lands on a global all-time leaderboard, and high scorers who add their Usernode wallet are flagged eligible for a reward from the prize pool. On-chain payouts are a later phase — this release tracks scores and eligibility.",
+      "author": "Usernode Community",
+      "url": "/trivia",
+      "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#7c3aed'/><path d='M20 9c-4 0-6.5 2.4-6.7 5.6h3.3c.2-1.6 1.4-2.6 3.3-2.6 1.9 0 3.2 1 3.2 2.5 0 1.3-.7 2-2.4 3-1.9 1.1-2.6 2.3-2.5 4.2v.7h3.2v-.5c0-1.2.5-1.8 2.2-2.8 1.9-1.1 3-2.6 3-4.6C29.8 11.3 26.9 9 20 9z' fill='#fff'/><circle cx='20' cy='29.5' r='2' fill='#fff'/></svg>",
+      "category": "Game",
+      "version": "1.0.0",
+      "updated": "2026-06-15",
+      "highlights": [
+        {
+          "icon": "🧠",
+          "title": "Curated Web3 questions",
+          "body": "Blockchain basics, wallets & keys, Usernode, and Web3 culture — fresh each round."
+        },
+        {
+          "icon": "⏱️",
+          "title": "Beat the clock",
+          "body": "Answer a timed run of questions; faster correct answers score a speed bonus."
+        },
+        {
+          "icon": "🏆",
+          "title": "Global leaderboard",
+          "body": "Your best score lands on an all-time board — replay to climb the ranks."
+        },
+        {
+          "icon": "⭐",
+          "title": "Prize-pool eligibility",
+          "body": "Top scorers who add a Usernode wallet are flagged eligible — payout in a later phase."
         }
       ]
     }
