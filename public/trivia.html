@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Web3 Trivia Quiz</title>
+    <script>
+    // usernode-dev-console@1
+    (function () {
+      if (window.__usernodeDevConsole) return;
+      window.__usernodeDevConsole = true;
+      var S = '__usernodeDevConsole';
+      function serialize(v, depth) {
+        depth = depth || 0;
+        try {
+          if (v === undefined) return 'undefined';
+          if (v === null) return 'null';
+          if (typeof v === 'string') return v;
+          if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+          if (typeof v === 'function') return '[Function ' + (v.name || 'anonymous') + ']';
+          if (v instanceof Error) return (v.stack || (v.name + ': ' + v.message));
+          if (depth > 3) return '[…]';
+          var seen = new WeakSet();
+          return JSON.stringify(v, function (k, val) {
+            if (typeof val === 'object' && val !== null) {
+              if (seen.has(val)) return '[Circular]';
+              seen.add(val);
+            }
+            if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
+            if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+            return val;
+          });
+        } catch (e) { try { return String(v); } catch (_) { return '[unserializable]'; } }
+      }
+      function post(level, args, meta) {
+        try {
+          var payload = {
+            sentinel: S,
+            level: level,
+            args: Array.prototype.slice.call(args).map(function (a) { return serialize(a); }),
+            ts: Date.now(),
+            url: location.href,
+          };
+          if (meta) for (var k in meta) payload[k] = meta[k];
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(payload, '*');
+          }
+        } catch (_) {}
+      }
+      ['log','info','warn','error','debug'].forEach(function (level) {
+        var orig = console[level] ? console[level].bind(console) : function () {};
+        console[level] = function () { post(level, arguments); orig.apply(null, arguments); };
+      });
+      window.addEventListener('error', function (e) {
+        var msg = (e.error && (e.error.stack || e.error.message)) || e.message || 'Error';
+        post('error', [msg], { source: e.filename || '', line: e.lineno || 0, col: e.colno || 0, kind: 'error' });
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        var msg = (r && (r.stack || r.message)) || String(r);
+        post('error', [msg], { kind: 'unhandledrejection' });
+      });
+      try { post('info', ['[dev-console ready]'], { kind: 'ready' }); } catch (_) {}
+    })();
+    </script>
+    <style>
+      :root {
+        --bg: #f7f8fb;
+        --fg: #0b1220;
+        --muted: #4b5568;
+        --card: #ffffff;
+        --card-2: #f1f4f9;
+        --border: rgba(15, 23, 42, 0.12);
+        --accent: #7c3aed;
+        --accent-fg: #ffffff;
+        --good: #16a34a;
+        --good-bg: rgba(22, 163, 74, 0.12);
+        --bad: #dc2626;
+        --bad-bg: rgba(220, 38, 38, 0.10);
+        --gold: #d97706;
+        --gold-bg: rgba(217, 119, 6, 0.14);
+      }
+      :root[data-theme="dark"] {
+        --bg: #0b0f16;
+        --fg: #e7edf7;
+        --muted: #a8b3c7;
+        --card: #141b26;
+        --card-2: #1b2433;
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #a78bfa;
+        --accent-fg: #0b0f16;
+        --good: #4ade80;
+        --good-bg: rgba(74, 222, 128, 0.14);
+        --bad: #f87171;
+        --bad-bg: rgba(248, 113, 113, 0.14);
+        --gold: #fbbf24;
+        --gold-bg: rgba(251, 191, 36, 0.16);
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+      }
+      .backLink {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 13px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 6px 11px;
+        white-space: nowrap;
+      }
+      .backLink:hover { color: var(--fg); border-color: var(--accent); }
+      .title { font-weight: 800; font-size: 16px; letter-spacing: 0.2px; flex: 1 1 auto; }
+      .themeBtn {
+        border: 1px solid var(--border);
+        background: var(--card-2);
+        color: var(--fg);
+        border-radius: 8px;
+        width: 34px; height: 32px;
+        cursor: pointer;
+        font-size: 15px;
+      }
+      .themeBtn:hover { border-color: var(--accent); }
+      main { max-width: 720px; margin: 0 auto; padding: 18px 14px 60px; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px;
+        margin-bottom: 16px;
+      }
+      h2 { margin: 0 0 6px; font-size: 19px; }
+      h3 { margin: 0 0 10px; font-size: 15px; color: var(--muted); font-weight: 600; }
+      p { color: var(--muted); line-height: 1.5; margin: 8px 0; }
+      .lead { color: var(--fg); }
+      label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 5px; }
+      input[type="text"] {
+        width: 100%;
+        padding: 11px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+        font-size: 15px;
+      }
+      input[type="text"]:focus { outline: none; border-color: var(--accent); }
+      .help { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
+      .rules {
+        display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px;
+      }
+      .pill {
+        font-size: 12.5px; padding: 5px 10px; border-radius: 999px;
+        background: var(--card-2); border: 1px solid var(--border); color: var(--fg);
+      }
+      .note {
+        margin-top: 14px; padding: 11px 12px; border-radius: 10px;
+        background: var(--gold-bg); color: var(--fg); font-size: 13px; line-height: 1.45;
+        border: 1px solid var(--border);
+      }
+      .btn {
+        appearance: none; border: 1px solid var(--accent);
+        background: var(--accent); color: var(--accent-fg);
+        font-weight: 700; font-size: 15px;
+        padding: 12px 18px; border-radius: 11px; cursor: pointer;
+        width: 100%; margin-top: 16px;
+      }
+      .btn:hover { filter: brightness(1.06); }
+      .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .btnGhost {
+        background: transparent; color: var(--fg);
+        border: 1px solid var(--border);
+      }
+      .err { color: var(--bad); font-size: 13.5px; margin-top: 10px; min-height: 1px; }
+      .hidden { display: none !important; }
+
+      /* Timer */
+      .timerWrap { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+      .qcount { font-size: 13px; color: var(--muted); white-space: nowrap; font-weight: 600; }
+      .timerBarOuter { flex: 1 1 auto; height: 8px; background: var(--card-2); border-radius: 999px; overflow: hidden; }
+      .timerBar { height: 100%; width: 100%; background: var(--accent); transition: width 0.9s linear; }
+      .timerBar.low { background: var(--bad); }
+      .timeLeft { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; white-space: nowrap; }
+
+      .qcat { font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--accent); font-weight: 700; }
+      .qtext { font-size: 18px; font-weight: 700; margin: 6px 0 14px; line-height: 1.4; }
+      .opt {
+        display: block; width: 100%; text-align: left;
+        padding: 13px 14px; margin: 8px 0;
+        border-radius: 11px; border: 1px solid var(--border);
+        background: var(--bg); color: var(--fg);
+        font-size: 15px; cursor: pointer;
+      }
+      .opt:hover { border-color: var(--accent); }
+      .opt.selected { border-color: var(--accent); background: var(--card-2); box-shadow: inset 0 0 0 1px var(--accent); }
+      .opt.correct { border-color: var(--good); background: var(--good-bg); }
+      .opt.wrong { border-color: var(--bad); background: var(--bad-bg); }
+      .navRow { display: flex; gap: 10px; margin-top: 14px; }
+      .navRow .btn { margin-top: 0; }
+
+      /* Results */
+      .scoreBig { font-size: 40px; font-weight: 800; letter-spacing: -0.5px; }
+      .scoreSub { color: var(--muted); font-size: 15px; }
+      .banner { padding: 13px 14px; border-radius: 11px; margin: 14px 0; font-size: 14px; line-height: 1.45; border: 1px solid var(--border); }
+      .banner.eligible { background: var(--gold-bg); }
+      .banner.neutral { background: var(--card-2); }
+      .rankLine { font-size: 14px; color: var(--fg); margin: 10px 0; }
+      .breakItem { padding: 11px 0; border-top: 1px solid var(--border); }
+      .breakItem:first-child { border-top: none; }
+      .breakQ { font-weight: 600; font-size: 14.5px; margin-bottom: 7px; }
+      .breakOpt { font-size: 13.5px; padding: 7px 10px; border-radius: 8px; margin: 4px 0; border: 1px solid transparent; }
+      .breakOpt.correct { background: var(--good-bg); border-color: var(--good); }
+      .breakOpt.wrong { background: var(--bad-bg); border-color: var(--bad); }
+      .tag { font-size: 11.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-left: 6px; }
+      .tag.ok { color: var(--good); background: var(--good-bg); }
+      .tag.no { color: var(--bad); background: var(--bad-bg); }
+
+      /* Leaderboard */
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 9px 8px; font-size: 13.5px; border-bottom: 1px solid var(--border); }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+      .rankCell { font-weight: 700; color: var(--muted); width: 36px; }
+      .nameCell { font-weight: 600; }
+      .walletMini { font-size: 11.5px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .badgeElig { font-size: 11px; font-weight: 700; color: var(--gold); background: var(--gold-bg); padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+      .lbEmpty { color: var(--muted); font-size: 13.5px; padding: 8px 2px; }
+      .me td { background: var(--card-2); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="backLink" href="/" title="Back to dapps">&larr; Dapps</a>
+      <div class="title">Web3 Trivia Quiz</div>
+      <button class="themeBtn" id="themeBtn" type="button" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+    </header>
+    <main>
+      <!-- START SCREEN -->
+      <section id="startScreen" class="card">
+        <h2>Test your Web3 knowledge</h2>
+        <p class="lead" id="introLine">Answer a timed run of curated questions about blockchain and Usernode. Score high, climb the global leaderboard, and become eligible for a reward from the prize pool.</p>
+        <div class="rules" id="rulesRow"></div>
+
+        <label for="displayName">Display name</label>
+        <input type="text" id="displayName" maxlength="32" placeholder="e.g. satoshi_fan" autocomplete="off" />
+
+        <label for="wallet">Usernode wallet <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+        <input type="text" id="wallet" placeholder="ut1…" autocomplete="off" spellcheck="false" />
+        <p class="help">Add your wallet to become eligible for a reward from the prize pool. You can play without it — you just won't be reward-eligible.</p>
+
+        <div class="note" id="prizeNote">Prize-pool rewards are coming soon. This release records your score and eligibility; on-chain payouts arrive in a later phase.</div>
+
+        <div class="err" id="startErr"></div>
+        <button class="btn" id="startBtn" type="button">Start quiz</button>
+      </section>
+
+      <!-- PLAY SCREEN -->
+      <section id="playScreen" class="card hidden">
+        <div class="timerWrap">
+          <span class="qcount" id="qCount">Question 1</span>
+          <div class="timerBarOuter"><div class="timerBar" id="timerBar"></div></div>
+          <span class="timeLeft" id="timeLeft">2:00</span>
+        </div>
+        <div class="qcat" id="qCat"></div>
+        <div class="qtext" id="qText"></div>
+        <div id="optList"></div>
+        <div class="navRow">
+          <button class="btn btnGhost" id="prevBtn" type="button" style="flex:0 0 auto;width:auto;">Back</button>
+          <button class="btn" id="nextBtn" type="button">Next</button>
+        </div>
+      </section>
+
+      <!-- RESULT SCREEN -->
+      <section id="resultScreen" class="card hidden">
+        <div class="scoreBig" id="scoreBig">0</div>
+        <div class="scoreSub" id="scoreSub">0 / 0 correct</div>
+        <div class="banner" id="eligBanner"></div>
+        <div class="rankLine" id="rankLine"></div>
+        <h3 style="margin-top:18px;">Review</h3>
+        <div id="breakdown"></div>
+        <button class="btn" id="againBtn" type="button">Play again</button>
+      </section>
+
+      <!-- LEADERBOARD -->
+      <section class="card" id="leaderboardCard">
+        <h2>Leaderboard</h2>
+        <h3 id="lbSub">Best score per player — all time</h3>
+        <div id="lbBody"><div class="lbEmpty">Loading…</div></div>
+      </section>
+    </main>
+
+    <script>
+      (function () {
+        "use strict";
+        var $ = function (id) { return document.getElementById(id); };
+
+        // ── Theme toggle ───────────────────────────────────────────────────────
+        var root = document.documentElement;
+        (function initTheme() {
+          var saved = null;
+          try { saved = localStorage.getItem("trivia:theme"); } catch (_) {}
+          var dark = saved ? saved === "dark"
+            : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          setTheme(dark ? "dark" : "light");
+        })();
+        function setTheme(t) {
+          root.setAttribute("data-theme", t);
+          $("themeBtn").textContent = t === "dark" ? "☀️" : "🌙";
+          try { localStorage.setItem("trivia:theme", t); } catch (_) {}
+        }
+        $("themeBtn").addEventListener("click", function () {
+          setTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+        });
+
+        // ── State ──────────────────────────────────────────────────────────────
+        var config = { questionsPerSession: 10, timeLimitSeconds: 120, eligibilityMinCorrect: 8, prizePoolAddress: null, pointsPerCorrect: 100 };
+        var session = null;     // { sessionId, questions:[], answers:{}, idx }
+        var timer = null;
+        var deadline = 0;
+        var submitting = false;
+
+        function show(which) {
+          ["startScreen", "playScreen", "resultScreen"].forEach(function (id) {
+            $(id).classList.toggle("hidden", id !== which);
+          });
+        }
+
+        function esc(s) {
+          return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+          });
+        }
+        function fmtTime(secs) {
+          secs = Math.max(0, secs | 0);
+          var m = Math.floor(secs / 60), s = secs % 60;
+          return m + ":" + (s < 10 ? "0" : "") + s;
+        }
+
+        // ── Load config + render rules ─────────────────────────────────────────
+        function loadConfig() {
+          return fetch("/api/quiz/config").then(function (r) { return r.json(); }).then(function (c) {
+            if (c && typeof c === "object") config = Object.assign(config, c);
+            var rules = $("rulesRow");
+            rules.innerHTML =
+              pill(config.questionsPerSession + " questions") +
+              pill(fmtTime(config.timeLimitSeconds) + " on the clock") +
+              pill(config.pointsPerCorrect + " pts / correct + speed bonus") +
+              pill("Eligible at " + config.eligibilityMinCorrect + "/" + config.questionsPerSession + " + wallet");
+            if (config.prizePoolAddress) {
+              $("prizeNote").innerHTML = "Prize-pool rewards are coming soon. Rewards will be paid from <span class=\"walletMini\">" + esc(config.prizePoolAddress) + "</span>. This release records your score and eligibility; on-chain payouts arrive in a later phase.";
+            }
+          }).catch(function () {});
+        }
+        function pill(t) { return '<span class="pill">' + esc(t) + "</span>"; }
+
+        // ── Leaderboard ────────────────────────────────────────────────────────
+        function loadLeaderboard(myName) {
+          return fetch("/api/quiz/leaderboard").then(function (r) { return r.json(); }).then(function (data) {
+            var rows = (data && data.players) || [];
+            var body = $("lbBody");
+            if (!rows.length) {
+              body.innerHTML = '<div class="lbEmpty">No scores yet — be the first to make the board!</div>';
+              return;
+            }
+            var html = '<table><thead><tr><th class="num">#</th><th>Player</th><th class="num">Correct</th><th class="num">Score</th></tr></thead><tbody>';
+            rows.forEach(function (p) {
+              var mine = myName && p.displayName && p.displayName.toLowerCase() === String(myName).toLowerCase();
+              html += '<tr class="' + (mine ? "me" : "") + '">' +
+                '<td class="num rankCell">' + p.rank + "</td>" +
+                "<td><span class=\"nameCell\">" + esc(p.displayName) + "</span>" +
+                (p.eligible ? ' <span class="badgeElig">⭐ Eligible</span>' : "") +
+                (p.walletMasked ? '<div class="walletMini">' + esc(p.walletMasked) + "</div>" : "") +
+                "</td>" +
+                '<td class="num">' + p.correct + "/" + p.total + "</td>" +
+                '<td class="num">' + p.score + "</td>" +
+                "</tr>";
+            });
+            html += "</tbody></table>";
+            body.innerHTML = html;
+          }).catch(function () {
+            $("lbBody").innerHTML = '<div class="lbEmpty">Could not load the leaderboard.</div>';
+          });
+        }
+
+        // ── Start ──────────────────────────────────────────────────────────────
+        $("startBtn").addEventListener("click", function () {
+          var name = $("displayName").value.trim();
+          var wallet = $("wallet").value.trim();
+          $("startErr").textContent = "";
+          if (!name) { $("startErr").textContent = "Please enter a display name."; return; }
+          if (wallet && wallet.indexOf("ut1") !== 0) {
+            $("startErr").textContent = "Wallet must be a Usernode address (starts with ut1), or leave it blank.";
+            return;
+          }
+          $("startBtn").disabled = true;
+          $("startBtn").textContent = "Starting…";
+          fetch("/api/quiz/start", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (res) {
+              if (!res.ok) throw new Error((res.j && res.j.error) || "Could not start the quiz.");
+              session = { sessionId: res.j.sessionId, questions: res.j.questions, answers: {}, idx: 0 };
+              startTimer(res.j.timeLimitSeconds);
+              show("playScreen");
+              renderQuestion();
+            })
+            .catch(function (e) { $("startErr").textContent = e.message; })
+            .then(function () { $("startBtn").disabled = false; $("startBtn").textContent = "Start quiz"; });
+        });
+
+        // ── Timer ──────────────────────────────────────────────────────────────
+        function startTimer(secs) {
+          deadline = Date.now() + secs * 1000;
+          var total = secs * 1000;
+          if (timer) clearInterval(timer);
+          tick();
+          timer = setInterval(tick, 1000);
+          function tick() {
+            var left = deadline - Date.now();
+            if (left <= 0) {
+              $("timeLeft").textContent = "0:00";
+              $("timerBar").style.width = "0%";
+              stopTimer();
+              submitQuiz(true);
+              return;
+            }
+            $("timeLeft").textContent = fmtTime(Math.ceil(left / 1000));
+            var pct = Math.max(0, Math.min(100, (left / total) * 100));
+            $("timerBar").style.width = pct + "%";
+            $("timerBar").classList.toggle("low", left <= 15000);
+          }
+        }
+        function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
+
+        // ── Question rendering ─────────────────────────────────────────────────
+        function renderQuestion() {
+          var q = session.questions[session.idx];
+          $("qCount").textContent = "Question " + (session.idx + 1) + " of " + session.questions.length;
+          $("qCat").textContent = (q.category || "") + (q.difficulty ? " · " + q.difficulty : "");
+          $("qText").textContent = q.question;
+          var list = $("optList");
+          list.innerHTML = "";
+          q.options.forEach(function (opt, i) {
+            var b = document.createElement("button");
+            b.type = "button";
+            b.className = "opt" + (session.answers[q.id] === i ? " selected" : "");
+            b.textContent = opt;
+            b.addEventListener("click", function () {
+              session.answers[q.id] = i;
+              Array.prototype.forEach.call(list.children, function (c, ci) {
+                c.classList.toggle("selected", ci === i);
+              });
+            });
+            list.appendChild(b);
+          });
+          $("prevBtn").style.visibility = session.idx === 0 ? "hidden" : "visible";
+          $("nextBtn").textContent = session.idx === session.questions.length - 1 ? "Finish" : "Next";
+        }
+        $("prevBtn").addEventListener("click", function () {
+          if (session.idx > 0) { session.idx--; renderQuestion(); }
+        });
+        $("nextBtn").addEventListener("click", function () {
+          if (session.idx < session.questions.length - 1) { session.idx++; renderQuestion(); }
+          else submitQuiz(false);
+        });
+
+        // ── Submit + results ───────────────────────────────────────────────────
+        function submitQuiz(auto) {
+          if (submitting || !session) return;
+          submitting = true;
+          stopTimer();
+          var payload = {
+            sessionId: session.sessionId,
+            answers: session.answers,
+            displayName: $("displayName").value.trim(),
+            wallet: $("wallet").value.trim() || undefined,
+          };
+          fetch("/api/quiz/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (res) {
+              if (!res.ok) throw new Error((res.j && res.j.error) || "Could not submit your answers.");
+              renderResult(res.j);
+              show("resultScreen");
+              window.scrollTo(0, 0);
+              loadLeaderboard(payload.displayName);
+            })
+            .catch(function (e) {
+              $("startErr").textContent = e.message + " Please start a new quiz.";
+              show("startScreen");
+            })
+            .then(function () { submitting = false; });
+        }
+
+        function renderResult(r) {
+          $("scoreBig").textContent = r.score + " pts";
+          $("scoreSub").textContent = r.correct + " / " + r.total + " correct" +
+            (r.expired ? " · time expired" : (r.secondsLeft ? " · +" + r.secondsLeft + " speed bonus" : ""));
+
+          var banner = $("eligBanner");
+          if (r.eligible) {
+            banner.className = "banner eligible";
+            banner.innerHTML = "🎉 <strong>You're eligible for a reward from the prize pool!</strong> Your wallet is recorded — payout comes in a later release.";
+          } else {
+            banner.className = "banner neutral";
+            banner.textContent = r.eligibilityReason || "Play again to climb the board.";
+          }
+
+          $("rankLine").innerHTML = "You're ranked <strong>#" + r.rank + "</strong> of " + r.totalPlayers + " player" + (r.totalPlayers === 1 ? "" : "s") + ".";
+
+          var bd = $("breakdown");
+          bd.innerHTML = "";
+          (r.breakdown || []).forEach(function (item, qi) {
+            var wrap = document.createElement("div");
+            wrap.className = "breakItem";
+            var q = document.createElement("div");
+            q.className = "breakQ";
+            q.innerHTML = (qi + 1) + ". " + esc(item.question) +
+              (item.correct ? ' <span class="tag ok">correct</span>' : ' <span class="tag no">wrong</span>');
+            wrap.appendChild(q);
+            (item.options || []).forEach(function (opt, oi) {
+              var row = document.createElement("div");
+              var cls = "breakOpt";
+              if (oi === item.correctAnswer) cls += " correct";
+              else if (oi === item.givenAnswer) cls += " wrong";
+              row.className = cls;
+              var prefix = oi === item.correctAnswer ? "✓ " : (oi === item.givenAnswer ? "✗ " : "");
+              row.textContent = prefix + opt;
+              wrap.appendChild(row);
+            });
+            bd.appendChild(wrap);
+          });
+        }
+
+        $("againBtn").addEventListener("click", function () {
+          session = null;
+          $("startErr").textContent = "";
+          show("startScreen");
+          window.scrollTo(0, 0);
+        });
+
+        // ── Boot ───────────────────────────────────────────────────────────────
+        loadConfig();
+        loadLeaderboard();
+      })();
+    </script>
+  </body>
+</html>

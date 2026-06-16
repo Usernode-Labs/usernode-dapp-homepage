@@ -2,6 +2,7 @@
 /**
  * Minimal Node server to host index.html on http://localhost:8000
  *
+ *
  * Run:
  *   node server.js              # production dapps.json
  *   node server.js --local-dev  # uses dapps.local.json (localnet URLs)
@@ -13,14 +14,14 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// `pg` is the app's single runtime dependency (see package.json). Require it
-// lazily/defensively so a stray local run without `npm install` still serves
-// the public homepage — pin routes degrade to 503 when the client is absent.
+// Optional Postgres driver — used by the micro-blog feed and per-user dapp pins.
+// Wrapped so a standalone checkout without `npm install` (or a deploy with no DB)
+// still boots the public homepage; pg-backed features degrade to 503.
 let PgPool = null;
 try {
   PgPool = require("pg").Pool;
 } catch (_) {
-  console.warn("[pins] 'pg' module not available — pin features disabled");
+  console.warn("[pg] module not available — feed and pin features disabled");
 }
 
 // ── .env loader ──────────────────────────────────────────────────────────────
@@ -39,12 +40,16 @@ try {
 })();
 
 const LOCAL_DEV = process.argv.includes("--local-dev");
+// Platform staging flag — gates the obviously-fake seed fixtures below. A strict
+// no-op in production (USERNODE_ENV=production) and in local/standalone runs.
+const IS_STAGING = process.env.USERNODE_ENV === "staging";
 const PORT = Number(process.env.PORT) || 8000;
 const INDEX_PATH = path.join(__dirname, "index.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
 const MINECRAFT_PATH = path.join(PUBLIC_DIR, "minecraft.html");
 const STUMBLE_GUYS_PATH = path.join(PUBLIC_DIR, "stumble-guys.html");
+const TRIVIA_PATH = path.join(PUBLIC_DIR, "trivia.html");
 
 // Static content-type lookup for screenshot assets served from public/.
 const STATIC_CONTENT_TYPES = {
@@ -68,7 +73,6 @@ const DAPPS_PATH = (() => {
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
 const DATABASE_URL = process.env.DATABASE_URL || "";
-const IS_STAGING = process.env.USERNODE_ENV === "staging";
 
 // ── Submit-a-dapp config ──────────────────────────────────────────────────────
 // On-chain submission fee flow. All values are read from process.env with an
@@ -90,6 +94,25 @@ const SUBMISSION_FEE = Number(process.env.SUBMISSION_FEE) || 1000;
 // How long an unpaid submission stays in `awaiting_payment` before it is swept
 // to `expired` (the UI stops polling). A real late payment is still credited.
 const SUBMISSION_TTL_HOURS = Number(process.env.SUBMISSION_TTL_HOURS) || 24;
+
+// ── Micro-blog feed config ────────────────────────────────────────────────────
+// Consumes JWT_SECRET and DATABASE_URL (declared above). When DATABASE_URL is
+// absent the feed degrades to an "unavailable" state and every existing public
+// surface keeps working unchanged.
+const POINTS_PER_POST = Number(process.env.POINTS_PER_POST) || 5;
+const POINTS_PER_LIKE = Number(process.env.POINTS_PER_LIKE) || 1;
+const POINTS_PER_TOKEN = Number(process.env.POINTS_PER_TOKEN) || 10;
+const MICROBLOG_MAX_POST_LEN = Number(process.env.MICROBLOG_MAX_POST_LEN) || 280;
+
+const pgPool = (PgPool && process.env.DATABASE_URL)
+  ? new PgPool({ connectionString: process.env.DATABASE_URL })
+  : null;
+const MICROBLOG_ENABLED = !!pgPool;
+if (pgPool) {
+  // A pool-level error (dropped backend connection, etc.) must not crash the
+  // process — log and let the next query re-establish.
+  pgPool.on("error", (e) => console.warn(`[microblog] pg pool error: ${e.message}`));
+}
 
 const EXPLORER_PROD_HOST = "testnet-explorer.usernodelabs.org";
 const EXPLORER_PROD_BASE = "/api";
@@ -145,7 +168,10 @@ function proxyExplorer(req, res, subPath) {
       }
     );
     upReq.on("error", (err) => {
-      send(res, 502, { "content-type": "text/plain" }, `Explorer proxy error: ${err.message}`);
+      // Log the technical detail server-side; return a generic body so the
+      // upstream error text never leaks to the client.
+      console.warn(`[explorer-proxy] upstream error: ${err.message}`);
+      send(res, 502, { "content-type": "text/plain" }, "Upstream explorer unavailable");
     });
     if (bodyBuf) upReq.write(bodyBuf);
     upReq.end();
@@ -162,6 +188,18 @@ const txCache = {};       // { [pubkey]: Transaction[] }
 const seenTxIds = {};     // { [pubkey]: Set }
 const lastHeight = {};    // { [pubkey]: number } — for from_height incremental
 let statsChainId = null;
+let lastPollCompletedAt = null;   // ms — stamped at the end of each pollAllStats pass
+let explorerReachable = null;     // null = not yet attempted, true/false afterwards
+
+// ── Health / reachability ────────────────────────────────────────────────────
+// Per-dapp reachability probe results, keyed by pubkey (or by url for keyless
+// listing entries such as the bundled Mini Minecraft page). Populated by
+// pollAllHealth() each tick and joined with on-chain activity by buildHealth().
+const healthCache = {};   // { [key]: { ok, http_status, latency_ms, last_checked, seeded? } }
+
+const PROBE_TIMEOUT_MS = Number(process.env.HEALTH_PROBE_TIMEOUT_MS) || 5000;
+const HEALTH_SLOW_MS = Number(process.env.HEALTH_SLOW_MS) || 2000;            // > this → degraded
+const HEALTH_STALE_MS = Number(process.env.HEALTH_STALE_MS) || 7 * 24 * 3600 * 1000; // no tx in 7d → degraded
 
 // Global usernames address — polled the same way as dapp pubkeys so we can
 // derive `username` / `has_set_username` per wallet for /user_activity.
@@ -175,6 +213,7 @@ const USERNAMES_PUBKEY =
 // flushed atomically (temp file + rename) on every mutation.
 
 let submissions = [];                 // array of submission records
+let submissionsVersion = 0;           // document-level version of submissions.json
 const consumedTxIds = new Set();      // tx_id -> already credited to a submission
 
 const SUBMIT_MEMO_APP = "dapp-homepage";
@@ -187,18 +226,56 @@ function atomicWriteJson(targetPath, value) {
   fs.renameSync(tmp, targetPath);
 }
 
+// ── Optimistic concurrency control (compare-and-swap on file documents) ────────
+// Re-reads `targetPath`, compares its document `version` to `expectedVersion`.
+//   • match    → runs mutate(doc) (edits doc in place), bumps `version`, stamps
+//                `updated_at`, atomic-writes, returns { ok:true, version }.
+//   • mismatch → does NOT write; returns { ok:false, conflict:true, current, version }.
+// A missing/legacy `version` is treated as 0 so legacy files normalize cleanly.
+function casWriteJson(targetPath, expectedVersion, mutate) {
+  const raw = fs.readFileSync(targetPath, "utf8");
+  const doc = JSON.parse(raw);
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    throw new Error(`${path.basename(targetPath)} is not a JSON object document`);
+  }
+  const currentVersion = typeof doc.version === "number" ? doc.version : 0;
+  if (currentVersion !== expectedVersion) {
+    return { ok: false, conflict: true, current: doc, version: currentVersion };
+  }
+  mutate(doc);
+  doc.version = currentVersion + 1;
+  doc.updated_at = Date.now();
+  atomicWriteJson(targetPath, doc);
+  return { ok: true, version: doc.version };
+}
+
+// Parse submissions.json supporting BOTH the legacy bare-array form and the
+// wrapped { version, updated_at, submissions:[] } form. Returns normalized
+// { submissions, version }.
+function parseSubmissionsDoc(data) {
+  if (Array.isArray(data)) return { submissions: data, version: 0 };
+  if (data && Array.isArray(data.submissions)) {
+    return { submissions: data.submissions, version: typeof data.version === "number" ? data.version : 0 };
+  }
+  return { submissions: [], version: 0 };
+}
+
 function loadSubmissions() {
   try {
     if (!fs.existsSync(SUBMISSIONS_PATH)) {
       submissions = [];
+      submissionsVersion = 0;
+      consumedTxIds.clear();
       return;
     }
     const raw = fs.readFileSync(SUBMISSIONS_PATH, "utf8");
-    const data = JSON.parse(raw);
-    submissions = Array.isArray(data) ? data : (Array.isArray(data.submissions) ? data.submissions : []);
+    const parsed = parseSubmissionsDoc(JSON.parse(raw));
+    submissions = parsed.submissions;
+    submissionsVersion = parsed.version;
   } catch (e) {
     console.warn(`[submit] could not read submissions.json: ${e.message}`);
     submissions = [];
+    submissionsVersion = 0;
   }
   // Re-seed the consumed-tx set so a restart can't double-credit a payment.
   consumedTxIds.clear();
@@ -207,9 +284,47 @@ function loadSubmissions() {
   }
 }
 
+// Bump a record's revision + timestamp on every server-side mutation.
+function touchSubmission(s) {
+  if (!s) return s;
+  s.rev = (typeof s.rev === "number" ? s.rev : 0) + 1;
+  s.updated_at = Date.now();
+  return s;
+}
+
+// Persist the in-memory submissions. Re-reads the on-disk document first and
+// merges by `id` (higher `rev` wins; in-memory wins ties) so a co-resident
+// writer's records are preserved rather than clobbered, then bumps the document
+// version. Single-process behavior is unchanged (nothing else writes the file).
+// Always writes the wrapped { version, updated_at, submissions } form, which
+// also migrates a legacy bare-array file on its first mutation.
 function saveSubmissions() {
   try {
-    atomicWriteJson(SUBMISSIONS_PATH, submissions);
+    let onDisk = [];
+    let onDiskVersion = submissionsVersion;
+    try {
+      if (fs.existsSync(SUBMISSIONS_PATH)) {
+        const parsed = parseSubmissionsDoc(JSON.parse(fs.readFileSync(SUBMISSIONS_PATH, "utf8")));
+        onDisk = parsed.submissions;
+        onDiskVersion = parsed.version;
+      }
+    } catch (_) { /* unreadable/corrupt on disk — fall back to in-memory only */ }
+
+    const byId = new Map();
+    for (const s of onDisk) if (s && s.id) byId.set(s.id, s);
+    for (const s of submissions) {
+      if (!s || !s.id) continue;
+      const existing = byId.get(s.id);
+      if (!existing || (s.rev || 0) >= (existing.rev || 0)) byId.set(s.id, s);
+    }
+    const merged = Array.from(byId.values());
+    submissions = merged;
+    submissionsVersion = Math.max(submissionsVersion, onDiskVersion) + 1;
+    atomicWriteJson(SUBMISSIONS_PATH, {
+      version: submissionsVersion,
+      updated_at: Date.now(),
+      submissions: merged,
+    });
   } catch (e) {
     console.warn(`[submit] could not write submissions.json: ${e.message}`);
   }
@@ -283,6 +398,7 @@ function explorerBaseUrl() {
 async function discoverStatsChainId() {
   try {
     const data = await httpJson("GET", `${explorerBaseUrl()}/active_chain`);
+    explorerReachable = true;
     if (data && data.chain_id) {
       if (statsChainId && statsChainId !== data.chain_id) {
         console.log(`[stats] chain_id changed: ${statsChainId} -> ${data.chain_id} — clearing all caches`);
@@ -296,6 +412,7 @@ async function discoverStatsChainId() {
       statsChainId = data.chain_id;
     }
   } catch (e) {
+    explorerReachable = false;
     console.warn(`[stats] could not discover chain ID: ${e.message}`);
   }
 }
@@ -390,7 +507,12 @@ const STATS_POLL_INTERVAL_MS = 30000;
 
 async function pollAllStats() {
   await discoverStatsChainId();
-  if (!statsChainId) return;
+
+  // Reachability probing is independent of chain availability — run it every
+  // tick so the health panel works even if the explorer is unreachable.
+  await pollAllHealth();
+
+  if (!statsChainId) { lastPollCompletedAt = Date.now(); return; }
 
   const pubkeys = loadPubkeys();
   const extra = [USERNAMES_PUBKEY];
@@ -403,6 +525,7 @@ async function pollAllStats() {
   // Credit confirmed submission payments and age out unpaid submissions.
   reconcileSubmissionPayments();
   expireStaleSubmissions();
+  lastPollCompletedAt = Date.now();
 }
 
 // ── /user_activity derivation ────────────────────────────────────────────────
@@ -483,6 +606,170 @@ function buildUserActivity() {
   return out;
 }
 
+// ── Health derivation ─────────────────────────────────────────────────────────
+// Reachability probing + per-dapp status classification. The reachability probe
+// is a server-side HTTP request to each dapp's own URL (no CORS to fight, unlike
+// a browser-side check), recorded in healthCache; buildHealth() then joins it
+// with on-chain activity recency (from txCache), the poller's sync state, and an
+// optional operator `status` field in dapps.json into a single status per dapp.
+
+// Read every listing entry (including keyless ones like the bundled Mini
+// Minecraft page) with the fields health needs. Distinct from loadDapps(), which
+// filters to pubkey-bearing entries for the stats poller.
+function loadDappsForHealth() {
+  try {
+    const data = JSON.parse(fs.readFileSync(DAPPS_PATH, "utf8"));
+    const apps = data.apps || data.items || [];
+    return apps.map((a) => ({
+      name: a.name || "(unnamed)",
+      pubkey: (a.pubkey || "").trim(),
+      url: (a.url || "").trim(),
+      status: (a.status || "").trim().toLowerCase(),
+    }));
+  } catch (e) {
+    console.warn(`[health] could not read dapps.json: ${e.message}`);
+    return [];
+  }
+}
+
+// Stable health key: prefer the on-chain pubkey, fall back to the url so keyless
+// entries still get a status.
+function healthKey(d) {
+  return d.pubkey || d.url || "";
+}
+
+// Probe a single dapp URL. HEAD with a short timeout, falling back to GET when a
+// host rejects HEAD (405/501). Any 2xx/3xx counts as reachable. Never rejects —
+// resolves a result object so one bad host can't blow up the pass.
+function probeDappUrl(url) {
+  return new Promise((resolve) => {
+    let parsed;
+    try { parsed = new URL(url); } catch (_) {
+      return resolve({ ok: false, http_status: null, latency_ms: null });
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return resolve({ ok: false, http_status: null, latency_ms: null });
+    }
+    const transport = parsed.protocol === "https:" ? https : http;
+    const start = Date.now();
+    let settled = false;
+    const finish = (r) => { if (!settled) { settled = true; resolve(r); } };
+
+    function attempt(method) {
+      const req = transport.request(
+        parsed,
+        { method, timeout: PROBE_TIMEOUT_MS, headers: { "user-agent": "usernode-dapp-homepage-healthcheck/1" } },
+        (res) => {
+          const status = res.statusCode;
+          res.resume(); // drain so the socket can be freed
+          if (method === "HEAD" && (status === 405 || status === 501)) {
+            return attempt("GET");
+          }
+          finish({ ok: status >= 200 && status < 400, http_status: status, latency_ms: Date.now() - start });
+        }
+      );
+      req.on("timeout", () => { req.destroy(); finish({ ok: false, http_status: null, latency_ms: Date.now() - start }); });
+      req.on("error", () => finish({ ok: false, http_status: null, latency_ms: Date.now() - start }));
+      req.end();
+    }
+    attempt("HEAD");
+  });
+}
+
+// Probe every listed dapp's URL in parallel (each call is independently timed, so
+// one slow host bounds the pass at PROBE_TIMEOUT_MS, not the sum). Relative URLs
+// (e.g. "/minecraft") are same-origin and marked operational without a round-trip.
+// Skipped entirely under IS_STAGING, where seedStagingHealth() owns healthCache.
+async function pollAllHealth() {
+  if (IS_STAGING) return;
+  const dapps = loadDappsForHealth();
+  await Promise.all(dapps.map(async (d) => {
+    const key = healthKey(d);
+    if (!key || !d.url) return;
+    if (d.url.startsWith("/")) {
+      healthCache[key] = { ok: true, http_status: 200, latency_ms: 0, last_checked: Date.now(), local: true };
+      return;
+    }
+    const r = await probeDappUrl(d.url);
+    healthCache[key] = { ok: r.ok, http_status: r.http_status, latency_ms: r.latency_ms, last_checked: Date.now() };
+  }));
+}
+
+// Most recent on-chain activity time (ms) seen for a key, or null. A staging seed
+// may stamp an explicit time on the health entry; otherwise derive from txCache
+// (skipping self-sends, mirroring buildUserActivity).
+function lastActivityForKey(key) {
+  const h = healthCache[key];
+  if (h && typeof h.seeded_activity_at === "number") return h.seeded_activity_at;
+  const txs = txCache[key] || [];
+  let max = null;
+  for (const tx of txs) {
+    const sender = tx.source || tx.from_pubkey || tx.from;
+    if (sender && sender === key) continue;
+    const t = typeof tx.timestamp_ms === "number" ? tx.timestamp_ms : 0;
+    if (t && (max == null || t > max)) max = t;
+  }
+  return max;
+}
+
+// Compose a single status for one dapp. Operator override wins; then reachability;
+// then latency/activity heuristics. See the spec's priority order.
+function classifyStatus(operatorStatus, h, lastActivityAt) {
+  if (operatorStatus === "deprecated") return "deprecated";
+  if (operatorStatus === "maintenance") return "maintenance";
+  if (!h || h.last_checked == null) return "checking";
+  if (!h.ok) return "offline";
+  const slow = typeof h.latency_ms === "number" && h.latency_ms > HEALTH_SLOW_MS;
+  const stale = lastActivityAt != null && (Date.now() - lastActivityAt) > HEALTH_STALE_MS;
+  if (slow || stale) return "degraded";
+  return "operational";
+}
+
+// Per-dapp health map: { [key]: { status, operator_status, reachable, ... } }.
+function buildHealth() {
+  const dapps = loadDappsForHealth();
+  const out = {};
+  for (const d of dapps) {
+    const key = healthKey(d);
+    if (!key) continue;
+    const h = healthCache[key] || null;
+    const operatorStatus = STAGING_OPERATOR_OVERRIDES[key] || d.status || "";
+    const lastActivityAt = lastActivityForKey(key);
+    const hasTxs = (txCache[key] || []).length > 0 || lastActivityAt != null;
+
+    let activity_state = "none";
+    if (lastActivityAt != null) {
+      activity_state = (Date.now() - lastActivityAt) > HEALTH_STALE_MS ? "idle" : "active";
+    } else if (hasTxs) {
+      activity_state = "active";
+    }
+
+    out[key] = {
+      status: classifyStatus(operatorStatus, h, lastActivityAt),
+      operator_status: operatorStatus || "operational",
+      reachable: h ? !!h.ok : null,
+      http_status: h ? (h.http_status == null ? null : h.http_status) : null,
+      latency_ms: h ? (h.latency_ms == null ? null : h.latency_ms) : null,
+      last_checked: h ? (h.last_checked == null ? null : h.last_checked) : null,
+      last_activity_at: lastActivityAt,
+      activity_state,
+      indexed: !!statsCache[key] || !!(h && h.seeded),
+    };
+  }
+  return out;
+}
+
+// Top-level health payload served at GET /api/health.
+function buildHealthResponse() {
+  return {
+    chain_id: statsChainId,
+    synced: !!statsChainId,
+    explorer_reachable: explorerReachable,
+    last_poll_at: lastPollCompletedAt,
+    dapps: buildHealth(),
+  };
+}
+
 // ── Submission payment reconciliation + auto-publish ──────────────────────────
 // Runs each poll tick after the Reserve address has been polled. Scans the
 // Reserve's inbound transfers for confirmed payments whose memo `sid` matches a
@@ -533,8 +820,15 @@ function reconcileSubmissionPayments() {
     sub.paid_amount = amount;
     sub.published_at = Date.now();
     sub.status = "published";
+    touchSubmission(sub);
     consumedTxIds.add(txId);
     dirty = true;
+
+    // Bind the submitter as the dapp's status owner. Fire-and-forget: a DB
+    // failure here must not block publication (the fee is already burned; the
+    // owner binding can be backfilled on first edit). Idempotent upsert.
+    upsertDappStatusOwner(sub.dapp.pubkey, sub.owner_user_id);
+
     console.log(`[submit] payment confirmed for ${sub.id} (${amount} tokens from ${sub.payer}) — published "${sub.dapp.name}"`);
   }
 
@@ -549,42 +843,239 @@ function expireStaleSubmissions() {
   for (const s of submissions) {
     if (s.status === "awaiting_payment" && typeof s.expires_at === "number" && now > s.expires_at) {
       s.status = "expired";
+      touchSubmission(s);
       dirty = true;
     }
   }
   if (dirty) saveSubmissions();
 }
 
+// Read dapps.json as a normalized document: ensures `apps` is an array and a
+// numeric `version` (legacy/missing → 0). Throws on read/parse failure.
+function readDappsDoc() {
+  const data = JSON.parse(fs.readFileSync(DAPPS_PATH, "utf8"));
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("dapps.json is not a JSON object document");
+  }
+  if (!Array.isArray(data.apps)) data.apps = data.items || [];
+  if (typeof data.version !== "number") data.version = 0;
+  return data;
+}
+
+// Current document version of dapps.json (0 if unreadable/legacy).
+function dappsVersion() {
+  try { return readDappsDoc().version; } catch (_) { return 0; }
+}
+
+function listingRowMatches(a, url, pubkey) {
+  return Boolean((url && a.url === url) || (pubkey && a.pubkey === pubkey));
+}
+
+// The full listing row matching a url/pubkey, or null. Rows are all public data.
+function findListingRow(url, pubkey) {
+  try {
+    return readDappsDoc().apps.find((a) => listingRowMatches(a, url, pubkey)) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Trim a listing row to the fields the conflict UI needs. Everything on a dapp
+// row is public anyway; this just keeps the response small and predictable.
+function publicListingRow(a) {
+  if (!a || typeof a !== "object") return null;
+  return {
+    name: a.name || "(unnamed)",
+    description: a.description || "",
+    author: a.author || "unknown",
+    url: a.url || "",
+    pubkey: a.pubkey || "",
+    category: a.category || null,
+    logo: a.logo || null,
+  };
+}
+
 // Append a published submission's dapp entry into dapps.json so the homepage
-// shows it and the poller tracks its pubkey on the next tick. Atomic write.
+// shows it and the poller tracks its pubkey on the next tick. Conflict-aware:
+// compare-and-swap on the document version, with bounded retry so a concurrent
+// rewrite (deploy / git merge / co-resident writer) cannot silently clobber the
+// row. Idempotent when the url/pubkey is already present (no write). Throws only
+// if it cannot converge after MAX_ATTEMPTS — callers leave the tx unconsumed and
+// retry on the next poll tick.
 function appendDappToListing(dapp) {
-  const raw = fs.readFileSync(DAPPS_PATH, "utf8");
-  const data = JSON.parse(raw);
-  if (!Array.isArray(data.apps)) data.apps = data.apps || data.items || [];
-  data.apps.push(dapp);
-  atomicWriteJson(DAPPS_PATH, data);
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const doc = readDappsDoc();
+    if (doc.apps.some((a) => listingRowMatches(a, dapp.url, dapp.pubkey))) {
+      return; // already applied — idempotent
+    }
+    const res = casWriteJson(DAPPS_PATH, doc.version, (d) => { d.apps.push(dapp); });
+    if (res.ok) return;
+    // Version moved under us → reload and reapply on the fresh document.
+  }
+  throw new Error("dapps.json changed concurrently; giving up after retries (will retry next tick)");
 }
 
 // True if a url/pubkey is already present in the live listing.
 function listingHas(url, pubkey) {
-  const dapps = loadDapps(); // {name, pubkey}
-  if (pubkey && dapps.some((d) => d.pubkey === pubkey)) return true;
-  // loadDapps drops url; re-read raw for a url check.
-  try {
-    const data = JSON.parse(fs.readFileSync(DAPPS_PATH, "utf8"));
-    const apps = data.apps || data.items || [];
-    return apps.some((a) => (url && a.url === url) || (pubkey && a.pubkey === pubkey));
-  } catch (_) {
-    return false;
-  }
+  return findListingRow(url, pubkey) != null;
 }
 
+// ── Staging seed fixtures ──────────────────────────────────────────────────────
+// Obviously-fake, idempotent rows so the conflict UI + reconciliation can be
+// exercised on a staging preview without real on-chain payments. A strict no-op
+// outside staging (gated on USERNODE_ENV=staging via IS_STAGING).
+const STAGING_LISTED_URL = "https://staging-demo-listed.example.com";
+const STAGING_LISTED_PUBKEY = "ut1stagingdemolisted0000000000000000000000000000000000000000";
+const STAGING_INPROGRESS_URL = "https://staging-demo-inprogress.example.com";
+const STAGING_INPROGRESS_PUBKEY = "ut1stagingdemoinprogress00000000000000000000000000000000000000";
+
+function seedStagingFixtures() {
+  if (!IS_STAGING) return;
+  const now = Date.now();
+  const DAY = 24 * 3600 * 1000;
+
+  // Seed submissions (wrapped form, per-record rev) — one per status. Idempotent
+  // by fixed id. The published one mirrors the listed dapps.json row below.
+  const seeds = [
+    {
+      id: "staging-demo-awaiting",
+      status: "awaiting_payment",
+      rev: 1,
+      dapp: {
+        name: "Staging Demo In-Progress Dapp",
+        description: "Staging demo — a submission still awaiting payment.",
+        author: "staging-demo-user",
+        url: STAGING_INPROGRESS_URL,
+        pubkey: STAGING_INPROGRESS_PUBKEY,
+        category: "Utility",
+      },
+      payer: null, payment_tx_hash: null, paid_amount: null,
+      fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS || STAGING_LISTED_PUBKEY,
+      created_at: now, updated_at: now, expires_at: now + DAY, published_at: null,
+    },
+    {
+      id: "staging-demo-published",
+      status: "published",
+      rev: 2,
+      dapp: {
+        name: "Staging Demo Listed Dapp",
+        description: "Staging demo — already published and live on the homepage.",
+        author: "staging-demo-user",
+        url: STAGING_LISTED_URL,
+        pubkey: STAGING_LISTED_PUBKEY,
+        category: "Game",
+      },
+      payer: "ut1stagingdemopayer000000000000000000000000000000000000000000",
+      payment_tx_hash: "staging-demo-tx-published",
+      paid_amount: SUBMISSION_FEE,
+      fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS || STAGING_LISTED_PUBKEY,
+      created_at: now - DAY, updated_at: now, expires_at: now - DAY + DAY, published_at: now,
+    },
+    {
+      id: "staging-demo-expired",
+      status: "expired",
+      rev: 2,
+      dapp: {
+        name: "Staging Demo Expired Dapp",
+        description: "Staging demo — a submission that expired unpaid.",
+        author: "staging-demo-user",
+        url: "https://staging-demo-expired.example.com",
+        pubkey: "ut1stagingdemoexpired00000000000000000000000000000000000000000",
+        category: "Utility",
+      },
+      payer: null, payment_tx_hash: null, paid_amount: null,
+      fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS || STAGING_LISTED_PUBKEY,
+      created_at: now - 2 * DAY, updated_at: now, expires_at: now - DAY, published_at: null,
+    },
+  ];
+  let seededSubs = false;
+  for (const seed of seeds) {
+    if (!submissions.some((s) => s && s.id === seed.id)) {
+      submissions.push(seed);
+      seededSubs = true;
+    }
+  }
+  if (seededSubs) saveSubmissions();
+
+  // Seed the matching listed row in dapps.json so submitting STAGING_LISTED_URL
+  // deterministically reproduces the already_listed 409. Version-aware append.
+  try {
+    if (!listingHas(STAGING_LISTED_URL, STAGING_LISTED_PUBKEY)) {
+      appendDappToListing({
+        name: "Staging Demo Listed Dapp",
+        description: "Staging demo — already on the homepage (used to demo the conflict flow).",
+        author: "staging-demo-user",
+        url: STAGING_LISTED_URL,
+        pubkey: STAGING_LISTED_PUBKEY,
+        category: "Game",
+      });
+    }
+  } catch (e) {
+    console.warn(`[staging] could not seed listed dapp: ${e.message}`);
+  }
+  console.log("[staging] seeded demo submissions + listed dapp for conflict testing");
+}
+
+// ── Staging health seed ───────────────────────────────────────────────────────
+// Health is derived live from HTTP probes + the chain poller, so a staging
+// preview (real hosts may be unreachable, txCache empty) would otherwise render
+// every dapp as offline/checking. Seed an obviously-synthetic spread covering all
+// status colors so the dots + panel are reviewable. pollAllHealth() short-circuits
+// under IS_STAGING so this seed is never clobbered. Strictly a no-op in prod.
+//
+// The maintenance example is applied as an operator override here rather than by
+// editing dapps.json (which would mark a live dapp under maintenance in prod too).
+const STAGING_OPERATOR_OVERRIDES = IS_STAGING
+  ? { "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05": "maintenance" } // Last One Wins
+  : {};
+
+function seedStagingHealth() {
+  const now = Date.now();
+  statsChainId = statsChainId || "staging-demo-chain";
+  explorerReachable = true;
+  lastPollCompletedAt = now;
+  const put = (key, entry, activityAgoMs, stat) => {
+    healthCache[key] = { last_checked: now, seeded: true, ...entry };
+    if (typeof activityAgoMs === "number") healthCache[key].seeded_activity_at = now - activityAgoMs;
+    if (stat) statsCache[key] = stat;
+  };
+  // Opinion Market — operational, fast, active minutes ago.
+  put("ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
+    { ok: true, http_status: 200, latency_ms: 180 }, 4 * 60 * 1000, { users: 42, txns: 318 });
+  // Falling Sands — reachable but slow → degraded.
+  put("ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu",
+    { ok: true, http_status: 200, latency_ms: 2400 }, 55 * 60 * 1000, { users: 17, txns: 96 });
+  // Last One Wins — maintenance (operator override), still reachable.
+  put("ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05",
+    { ok: true, http_status: 200, latency_ms: 240 }, 30 * 60 * 1000, { users: 23, txns: 140 });
+  // Echo Diagnostic — probe failed → offline.
+  put("ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh",
+    { ok: false, http_status: null, latency_ms: null }, null, null);
+  // Mini Minecraft — bundled local route, operational.
+  put("/minecraft", { ok: true, http_status: 200, latency_ms: 0, local: true }, 2 * 60 * 60 * 1000, null);
+  console.log("[health] seeded staging health spread (5 demo dapps)");
+}
+if (IS_STAGING) seedStagingHealth();
+
 // Start background polling
-loadSubmissions();
-(async function startStatsPoller() {
-  await pollAllStats();
-  setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
-})();
+function startBackground() {
+  loadSubmissions();
+  seedStagingFixtures();
+  (async function startStatsPoller() {
+    await pollAllStats();
+    setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
+  })();
+}
+
+// Bring up the micro-blog schema (and staging seed) if a database is configured.
+if (pgPool) {
+  microblogBootstrap()
+    .then(() => console.log(`[microblog] schema ready${IS_STAGING ? " (staging seed on)" : ""}`))
+    .catch((e) => console.warn(`[microblog] bootstrap failed: ${e.message}`));
+} else {
+  console.log("[microblog] DATABASE_URL not set — feed disabled (homepage unaffected)");
+}
 
 // ── Database (per-user dapp pins) ────────────────────────────────────────────
 // The homepage itself is public, but pinning a dapp is a per-user action, so it
@@ -604,6 +1095,21 @@ const SEED_PINS = [
   { user_id: "staging-demo-user-1", pubkey: "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms" }, // Opinion Market
   { user_id: "staging-demo-user-1", pubkey: "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu" }, // Falling Sands
   { user_id: "staging-demo-user-2", pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05" }, // Last One Wins
+];
+
+// Allowed maintenance-status values. Mirrors the dapp_status CHECK constraint.
+const DAPP_STATUSES = ["operational", "under_maintenance", "unavailable"];
+
+// dapp_status is `staging:private` (see migration COMMENT) because each row ties
+// a Usernode identity (owner_user_id) to a dapp. The public status *value* is
+// reproduced into staging via this seed block rather than copied from prod, so
+// the badge colors, launch warning, and owner editor are all exercisable in a
+// staging preview. Echo Diagnostic is intentionally left unseeded to verify the
+// "no row ⇒ operational, no editor" default path.
+const SEED_DAPP_STATUS = [
+  { pubkey: "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms", status: "operational",       owner_user_id: "staging-demo-user-1" }, // Opinion Market
+  { pubkey: "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu", status: "under_maintenance", owner_user_id: "staging-demo-user-1" }, // Falling Sands
+  { pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05", status: "unavailable",       owner_user_id: "staging-demo-user-2" }, // Last One Wins
 ];
 
 async function initPinsDb() {
@@ -630,8 +1136,28 @@ async function initPinsDb() {
     // staging:private — staging gets structure only, never prod rows.
     await pinsPool.query(`COMMENT ON TABLE dapp_pins IS 'staging:private'`);
 
+    // dapp_status — owner-declared maintenance status, keyed by dapp pubkey.
+    // dApps live in dapps.json (a committed file), not in Postgres, so the
+    // "status column" is implemented as a sibling table here. Absence of a row
+    // means `operational`. owner_user_id (the submitter's JWT id) is nullable so
+    // seed/legacy dApps simply have no one authorized to edit.
+    await pinsPool.query(`
+      CREATE TABLE IF NOT EXISTS dapp_status (
+        dapp_pubkey   TEXT        PRIMARY KEY,
+        status        TEXT        NOT NULL DEFAULT 'operational'
+                        CHECK (status IN ('operational', 'under_maintenance', 'unavailable')),
+        owner_user_id TEXT,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await pinsPool.query(
+      `CREATE INDEX IF NOT EXISTS dapp_status_owner_idx ON dapp_status (owner_user_id)`
+    );
+    // staging:private — a row links a Usernode identity to a dapp it owns.
+    await pinsPool.query(`COMMENT ON TABLE dapp_status IS 'staging:private'`);
+
     pinsReady = true;
-    console.log("[pins] dapp_pins table ready");
+    console.log("[pins] dapp_pins + dapp_status tables ready");
 
     if (IS_STAGING) {
       for (const p of SEED_PINS) {
@@ -643,6 +1169,16 @@ async function initPinsDb() {
         );
       }
       console.log(`[pins] seeded ${SEED_PINS.length} staging demo pin(s)`);
+
+      for (const s of SEED_DAPP_STATUS) {
+        await pinsPool.query(
+          `INSERT INTO dapp_status (dapp_pubkey, status, owner_user_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (dapp_pubkey) DO NOTHING`,
+          [s.pubkey, s.status, s.owner_user_id]
+        );
+      }
+      console.log(`[pins] seeded ${SEED_DAPP_STATUS.length} staging demo status row(s)`);
     }
   } catch (e) {
     pinsReady = false;
@@ -938,6 +1474,103 @@ async function handleScores(req, res) {
   return jsonRes(res, 405, { error: "method not allowed" });
 }
 
+// ── dapp_status helpers ──────────────────────────────────────────────────────
+// Owner-declared maintenance status. Reads default to `operational` for any
+// pubkey without a row; every path degrades gracefully when the DB is absent.
+
+// Upsert an owner binding for a freshly-published dapp. Idempotent: never
+// clobbers an existing owner (COALESCE keeps the first one), and leaves any
+// status the owner may have already set untouched. Fire-and-forget safe.
+async function upsertDappStatusOwner(pubkey, ownerUserId) {
+  if (!pinsReady || !pinsPool || !pubkey) return;
+  try {
+    await pinsPool.query(
+      `INSERT INTO dapp_status (dapp_pubkey, status, owner_user_id)
+       VALUES ($1, 'operational', $2)
+       ON CONFLICT (dapp_pubkey)
+       DO UPDATE SET owner_user_id = COALESCE(dapp_status.owner_user_id, EXCLUDED.owner_user_id)`,
+      [pubkey, ownerUserId || null]
+    );
+  } catch (e) {
+    console.warn(`[status] could not bind owner for ${String(pubkey).slice(0, 16)}…: ${e.message}`);
+  }
+}
+
+// GET /api/dapp-status — public. Returns the non-default status map plus, when a
+// valid JWT is presented, the list of pubkeys the caller owns (so the frontend
+// can show the editor without ever learning another user's id).
+async function handleDappStatus(req, res, urlObj) {
+  if (req.method === "GET") {
+    if (!pinsReady || !pinsPool) {
+      return sendJson(res, 200, { statuses: {}, owned: [] });
+    }
+    const user = getUser(req);
+    try {
+      const { rows } = await pinsPool.query(
+        `SELECT dapp_pubkey, status, owner_user_id FROM dapp_status`
+      );
+      const statuses = {};
+      const owned = [];
+      const uid = user && user.id != null ? String(user.id) : null;
+      for (const r of rows) {
+        // Only surface non-default rows; the client treats any missing pubkey
+        // as operational.
+        if (r.status && r.status !== "operational") statuses[r.dapp_pubkey] = r.status;
+        if (uid && r.owner_user_id != null && String(r.owner_user_id) === uid) {
+          owned.push(r.dapp_pubkey);
+        }
+      }
+      return sendJson(res, 200, { statuses, owned });
+    } catch (e) {
+      console.warn(`[status] read error: ${e.message}`);
+      return sendJson(res, 200, { statuses: {}, owned: [] });
+    }
+  }
+
+  if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
+    const user = getUser(req);
+    if (!user || user.id == null) return sendJson(res, 401, { error: "auth required" });
+    if (!pinsReady || !pinsPool) return sendJson(res, 503, { error: "status store unavailable" });
+
+    return readJsonBody(req, 16 * 1024, async (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+      const pubkey = body && typeof body.pubkey === "string" ? body.pubkey.trim() : "";
+      const status = body && typeof body.status === "string" ? body.status.trim() : "";
+      if (!pubkey) return sendJson(res, 400, { error: "pubkey required" });
+      if (!DAPP_STATUSES.includes(status)) {
+        return sendJson(res, 400, { error: "status must be one of: " + DAPP_STATUSES.join(", ") });
+      }
+      if (!loadPubkeys().includes(pubkey)) {
+        return sendJson(res, 404, { error: "unknown dapp" });
+      }
+
+      const uid = String(user.id);
+      try {
+        const { rows } = await pinsPool.query(
+          `SELECT owner_user_id FROM dapp_status WHERE dapp_pubkey = $1`,
+          [pubkey]
+        );
+        const owner = rows.length ? rows[0].owner_user_id : null;
+        // Only the recorded owner may change status. A dapp with no recorded
+        // owner (seed/legacy) is not editable by anyone.
+        if (owner == null || String(owner) !== uid) {
+          return sendJson(res, 403, { error: "only the dapp owner can change its status" });
+        }
+        await pinsPool.query(
+          `UPDATE dapp_status SET status = $2, updated_at = now() WHERE dapp_pubkey = $1`,
+          [pubkey, status]
+        );
+        return sendJson(res, 200, { pubkey, status });
+      } catch (e) {
+        console.warn(`[status] write error: ${e.message}`);
+        return sendJson(res, 500, { error: "internal error" });
+      }
+    });
+  }
+
+  return sendJson(res, 405, { error: "method not allowed" });
+}
+
 // Kick off DB init (non-blocking — the homepage serves regardless).
 initPinsDb();
 initScoresDb();
@@ -985,6 +1618,7 @@ function validateSubmissionInput(body) {
   if (!body || typeof body !== "object") return { ok: false, error: "Missing submission body." };
   const str = (v) => (typeof v === "string" ? v.trim() : "");
   const name = str(body.name);
+  const displayName = str(body.displayName);
   const description = str(body.description);
   const author = str(body.author);
   const url = str(body.url);
@@ -994,6 +1628,7 @@ function validateSubmissionInput(body) {
 
   if (!name) return { ok: false, error: "Name is required." };
   if (name.length > 80) return { ok: false, error: "Name is too long (max 80 chars)." };
+  if (displayName.length > 80) return { ok: false, error: "Display name is too long (max 80 chars)." };
   if (!url) return { ok: false, error: "URL is required." };
   let parsed;
   try { parsed = new URL(url); } catch (_) { return { ok: false, error: "URL is not valid." }; }
@@ -1004,10 +1639,652 @@ function validateSubmissionInput(body) {
   if (logo && logo.length > 8000) return { ok: false, error: "Logo SVG is too large." };
 
   const dapp = { name, description, author: author || "unknown", url, pubkey };
+  if (displayName) dapp.displayName = displayName;
   if (category) dapp.category = category;
   if (logo) dapp.logo = logo;
   return { ok: true, dapp };
 }
+// Resolve the authenticated user for micro-blog routes from ?token= or the
+// x-usernode-token header. Returns { id, username, usernode_pubkey } or null.
+function userFromReq(req, urlObj) {
+  const token =
+    (urlObj && urlObj.searchParams.get("token")) ||
+    req.headers["x-usernode-token"] ||
+    "";
+  const payload = verifyJwt(token);
+  if (!payload) return null;
+  const id = payload.id != null ? payload.id : (payload.sub != null ? payload.sub : null);
+  if (id == null) return null;
+  const username =
+    payload.username || payload.name || payload.preferred_username || `user_${String(id).slice(0, 8)}`;
+  return { id: String(id), username: String(username), usernode_pubkey: payload.usernode_pubkey || null };
+}
+
+// ── Micro-blog schema bootstrap + staging seed ───────────────────────────────
+// Idempotent on every boot (CREATE TABLE IF NOT EXISTS). microblog_conversions
+// is the only private table — it's the convertible-token ledger (financial data)
+// so it is copied schema-only to staging and seeded here under IS_STAGING.
+
+async function microblogBootstrap() {
+  if (!pgPool) return;
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS microblog_posts (
+      id BIGSERIAL PRIMARY KEY,
+      author_user_id TEXT NOT NULL,
+      author_username TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS microblog_likes (
+      id BIGSERIAL PRIMARY KEY,
+      post_id BIGINT NOT NULL REFERENCES microblog_posts(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (post_id, user_id)
+    )`);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS microblog_points (
+      user_id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      points_earned BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS microblog_conversions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      points_spent BIGINT NOT NULL,
+      tokens_credited BIGINT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  // Financial / convertible-balance ledger → private (schema-only to staging).
+  await pgPool.query(`COMMENT ON TABLE microblog_conversions IS 'staging:private'`);
+  await pgPool.query(`CREATE INDEX IF NOT EXISTS microblog_posts_id_desc_idx ON microblog_posts (id DESC)`);
+  if (IS_STAGING) await microblogSeedStaging();
+}
+
+// Seed a small, obviously-fake demo dataset so the feed, leaderboard, like
+// counts and balances render in a staging preview. Idempotent (fixed ids +
+// ON CONFLICT DO NOTHING); a strict no-op outside staging (guarded by caller).
+async function microblogSeedStaging() {
+  const authors = [
+    { id: "staging-demo-alice", points: 28 },
+    { id: "staging-demo-bob", points: 19 },
+    { id: "staging-demo-carol", points: 17 },
+    { id: "staging-demo-dave", points: 11 },
+  ];
+  // [fixed id, author id, body, age-ago interval]
+  const posts = [
+    [900001, "staging-demo-alice", "Staging demo: just shipped my first dapp on Usernode 🎉", "3 days"],
+    [900002, "staging-demo-bob", "Staging demo: gm builders, who's hacking this weekend?", "2 days 6 hours"],
+    [900003, "staging-demo-carol", "Staging demo: the new sort menu on the homepage is so clean", "2 days"],
+    [900004, "staging-demo-alice", "Staging demo: points for posting? I'm farming the leaderboard 😄", "30 hours"],
+    [900005, "staging-demo-dave", "Staging demo: first post here. hello feed!", "26 hours"],
+    [900006, "staging-demo-bob", "Staging demo: converted my points to tokens, felt great", "20 hours"],
+    [900007, "staging-demo-carol", "Staging demo: anyone tried Falling Sands? wild physics", "14 hours"],
+    [900008, "staging-demo-alice", "Staging demo: liking good posts is the whole vibe", "8 hours"],
+    [900009, "staging-demo-dave", "Staging demo: leaderboard szn ☀️", "5 hours"],
+    [900010, "staging-demo-bob", "Staging demo: short and sweet. that's microblogging.", "2 hours"],
+    [900011, "staging-demo-carol", "Staging demo: building in public on Usernode 🛠️", "40 minutes"],
+  ];
+  // Likes among demo users → non-uniform counts for an interesting leaderboard.
+  const likes = [
+    [900001, "staging-demo-bob"], [900001, "staging-demo-carol"], [900001, "staging-demo-dave"],
+    [900002, "staging-demo-alice"], [900002, "staging-demo-carol"],
+    [900003, "staging-demo-alice"], [900003, "staging-demo-bob"], [900003, "staging-demo-dave"],
+    [900004, "staging-demo-bob"], [900004, "staging-demo-carol"], [900004, "staging-demo-dave"],
+    [900006, "staging-demo-alice"],
+    [900007, "staging-demo-alice"], [900007, "staging-demo-bob"],
+    [900008, "staging-demo-carol"], [900008, "staging-demo-dave"],
+    [900010, "staging-demo-alice"], [900010, "staging-demo-carol"],
+  ];
+  try {
+    for (const a of authors) {
+      await pgPool.query(
+        `INSERT INTO microblog_points (user_id, username, points_earned)
+         VALUES ($1, $1, $2) ON CONFLICT (user_id) DO NOTHING`,
+        [a.id, a.points]
+      );
+    }
+    for (const [id, author, body, ago] of posts) {
+      await pgPool.query(
+        `INSERT INTO microblog_posts (id, author_user_id, author_username, body, created_at)
+         VALUES ($1, $2, $2, $3, now() - ($4)::interval) ON CONFLICT (id) DO NOTHING`,
+        [id, author, body, ago]
+      );
+    }
+    for (const [pid, uid] of likes) {
+      await pgPool.query(
+        `INSERT INTO microblog_likes (post_id, user_id) VALUES ($1, $2)
+         ON CONFLICT (post_id, user_id) DO NOTHING`,
+        [pid, uid]
+      );
+    }
+    // Private ledger row: alice converted 20 points → 2 tokens (rate default 10),
+    // so her available points show as 8 and token balance as 2 in staging.
+    await pgPool.query(
+      `INSERT INTO microblog_conversions (id, user_id, username, points_spent, tokens_credited)
+       VALUES (900001, 'staging-demo-alice', 'staging-demo-alice', 20, 2)
+       ON CONFLICT (id) DO NOTHING`
+    );
+    // Advance the serial sequences past our fixed demo ids so real inserts don't collide.
+    await pgPool.query(
+      `SELECT setval(pg_get_serial_sequence('microblog_posts', 'id'),
+        GREATEST((SELECT MAX(id) FROM microblog_posts), 1))`
+    );
+    await pgPool.query(
+      `SELECT setval(pg_get_serial_sequence('microblog_conversions', 'id'),
+        GREATEST((SELECT MAX(id) FROM microblog_conversions), 1))`
+    );
+    console.log("[microblog] staging seed applied");
+  } catch (e) {
+    console.warn(`[microblog] staging seed failed: ${e.message}`);
+  }
+}
+
+// ── Micro-blog API ───────────────────────────────────────────────────────────
+// GET  /api/microblog/feed         — public (reverse-chron posts + like counts)
+// GET  /api/microblog/leaderboard  — public (top users by points earned)
+// GET  /api/microblog/me           — auth (caller's points/token balances)
+// POST /api/microblog/posts        — auth (create post, +POINTS_PER_POST)
+// POST|DELETE /api/microblog/posts/:id/like — auth (toggle like; author earns)
+// POST /api/microblog/convert      — auth (simulated points → token conversion)
+
+function microblogRouter(req, res, pathname, urlObj) {
+  if (!MICROBLOG_ENABLED) {
+    return sendJson(res, 503, { error: "The feed is not available in this environment." });
+  }
+  const user = userFromReq(req, urlObj);
+  const method = req.method;
+
+  const run = (fn) => Promise.resolve()
+    .then(fn)
+    .catch((e) => {
+      console.warn(`[microblog] ${method} ${pathname}: ${e.message}`);
+      if (!res.headersSent) sendJson(res, 500, { error: "Internal error." });
+    });
+
+  if (pathname === "/api/microblog/feed" && method === "GET") {
+    return run(() => mbFeed(res, urlObj, user));
+  }
+  if (pathname === "/api/microblog/leaderboard" && method === "GET") {
+    return run(() => mbLeaderboard(res, urlObj));
+  }
+  if (pathname === "/api/microblog/me" && method === "GET") {
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+    return run(() => mbMe(res, user));
+  }
+  if (pathname === "/api/microblog/posts" && method === "POST") {
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+    return mbCreatePost(req, res, user);
+  }
+  const likeMatch = pathname.match(/^\/api\/microblog\/posts\/(\d+)\/like$/);
+  if (likeMatch && (method === "POST" || method === "DELETE")) {
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+    return run(() => mbLike(res, Number(likeMatch[1]), user, method === "POST"));
+  }
+  if (pathname === "/api/microblog/convert" && method === "POST") {
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+    return mbConvert(req, res, user);
+  }
+  return sendJson(res, 404, { error: "Not found" });
+}
+
+async function mbFeed(res, urlObj, user) {
+  const limit = Math.min(Math.max(parseInt(urlObj.searchParams.get("limit"), 10) || 30, 1), 100);
+  const before = parseInt(urlObj.searchParams.get("before"), 10);
+  const meId = user ? user.id : null;
+
+  const params = [];
+  const conds = [];
+  if (Number.isFinite(before)) { params.push(before); conds.push(`p.id < $${params.length}`); }
+  let likedExpr = "false";
+  if (meId) {
+    params.push(meId);
+    likedExpr = `EXISTS(SELECT 1 FROM microblog_likes l2 WHERE l2.post_id = p.id AND l2.user_id = $${params.length})`;
+  }
+  params.push(limit);
+  const limitIdx = params.length;
+  const whereSql = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+
+  const q = `
+    SELECT p.id, p.author_username, p.author_user_id, p.body, p.created_at,
+      (SELECT COUNT(*) FROM microblog_likes l WHERE l.post_id = p.id)::int AS like_count,
+      ${likedExpr} AS liked_by_me
+    FROM microblog_posts p
+    ${whereSql}
+    ORDER BY p.id DESC
+    LIMIT $${limitIdx}`;
+  const { rows } = await pgPool.query(q, params);
+  const posts = rows.map((r) => ({
+    id: String(r.id),
+    author: r.author_username,
+    author_user_id: r.author_user_id,
+    body: r.body,
+    created_at: r.created_at,
+    like_count: r.like_count,
+    liked_by_me: r.liked_by_me,
+    mine: meId != null && r.author_user_id === meId,
+  }));
+  return sendJson(res, 200, {
+    posts,
+    signed_in: !!user,
+    staging: IS_STAGING,
+    max_len: MICROBLOG_MAX_POST_LEN,
+  });
+}
+
+async function mbLeaderboard(res, urlObj) {
+  const limit = Math.min(Math.max(parseInt(urlObj.searchParams.get("limit"), 10) || 10, 1), 50);
+  const { rows } = await pgPool.query(
+    `SELECT username, points_earned::int AS points FROM microblog_points
+     WHERE points_earned > 0 ORDER BY points_earned DESC, username ASC LIMIT $1`,
+    [limit]
+  );
+  return sendJson(res, 200, { leaders: rows, staging: IS_STAGING });
+}
+
+async function mbMe(res, user) {
+  const pr = await pgPool.query(`SELECT points_earned::int AS earned FROM microblog_points WHERE user_id = $1`, [user.id]);
+  const earned = pr.rows.length ? pr.rows[0].earned : 0;
+  const cr = await pgPool.query(
+    `SELECT COALESCE(SUM(points_spent), 0)::int AS spent,
+            COALESCE(SUM(tokens_credited), 0)::int AS tokens
+     FROM microblog_conversions WHERE user_id = $1`,
+    [user.id]
+  );
+  const pc = await pgPool.query(`SELECT COUNT(*)::int AS c FROM microblog_posts WHERE author_user_id = $1`, [user.id]);
+  return sendJson(res, 200, {
+    username: user.username,
+    points_earned: earned,
+    points_available: earned - cr.rows[0].spent,
+    token_balance: cr.rows[0].tokens,
+    post_count: pc.rows[0].c,
+    rate: POINTS_PER_TOKEN,
+    points_per_post: POINTS_PER_POST,
+    points_per_like: POINTS_PER_LIKE,
+    staging: IS_STAGING,
+  });
+}
+
+function mbCreatePost(req, res, user) {
+  return readJsonBody(req, 64 * 1024, (err, body) => {
+    if (err) return sendJson(res, 400, { error: err.message });
+    const text = body && typeof body.body === "string" ? body.body.trim() : "";
+    if (!text) return sendJson(res, 400, { error: "Post cannot be empty." });
+    if (text.length > MICROBLOG_MAX_POST_LEN) {
+      return sendJson(res, 400, { error: `Post is too long (max ${MICROBLOG_MAX_POST_LEN} characters).` });
+    }
+    (async () => {
+      const client = await pgPool.connect();
+      try {
+        await client.query("BEGIN");
+        const ins = await client.query(
+          `INSERT INTO microblog_posts (author_user_id, author_username, body)
+           VALUES ($1, $2, $3) RETURNING id, created_at`,
+          [user.id, user.username, text]
+        );
+        await client.query(
+          `INSERT INTO microblog_points (user_id, username, points_earned, updated_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (user_id) DO UPDATE
+             SET points_earned = microblog_points.points_earned + $3,
+                 username = $2, updated_at = now()`,
+          [user.id, user.username, POINTS_PER_POST]
+        );
+        await client.query("COMMIT");
+        const row = ins.rows[0];
+        return sendJson(res, 201, {
+          id: String(row.id),
+          author: user.username,
+          author_user_id: user.id,
+          body: text,
+          created_at: row.created_at,
+          like_count: 0,
+          liked_by_me: false,
+          mine: true,
+        });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.warn(`[microblog] create post: ${e.message}`);
+        return sendJson(res, 500, { error: "Could not create post." });
+      } finally {
+        client.release();
+      }
+    })();
+  });
+}
+
+async function mbLike(res, postId, user, isLike) {
+  const client = await pgPool.connect();
+  try {
+    await client.query("BEGIN");
+    const pr = await client.query(
+      `SELECT author_user_id, author_username FROM microblog_posts WHERE id = $1`,
+      [postId]
+    );
+    if (!pr.rows.length) {
+      await client.query("ROLLBACK");
+      return sendJson(res, 404, { error: "Post not found." });
+    }
+    const authorId = pr.rows[0].author_user_id;
+    const authorName = pr.rows[0].author_username;
+    let changed = false;
+
+    if (isLike) {
+      const r = await client.query(
+        `INSERT INTO microblog_likes (post_id, user_id) VALUES ($1, $2)
+         ON CONFLICT (post_id, user_id) DO NOTHING`,
+        [postId, user.id]
+      );
+      changed = r.rowCount > 0;
+      // Self-likes are allowed but award no points (anti points-farming).
+      if (changed && authorId !== user.id) {
+        await client.query(
+          `INSERT INTO microblog_points (user_id, username, points_earned, updated_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (user_id) DO UPDATE
+             SET points_earned = microblog_points.points_earned + $3, updated_at = now()`,
+          [authorId, authorName, POINTS_PER_LIKE]
+        );
+      }
+    } else {
+      const r = await client.query(
+        `DELETE FROM microblog_likes WHERE post_id = $1 AND user_id = $2`,
+        [postId, user.id]
+      );
+      changed = r.rowCount > 0;
+      if (changed && authorId !== user.id) {
+        await client.query(
+          `UPDATE microblog_points
+             SET points_earned = GREATEST(points_earned - $2, 0), updated_at = now()
+           WHERE user_id = $1`,
+          [authorId, POINTS_PER_LIKE]
+        );
+      }
+    }
+    const cnt = await client.query(`SELECT COUNT(*)::int AS c FROM microblog_likes WHERE post_id = $1`, [postId]);
+    await client.query("COMMIT");
+    return sendJson(res, 200, { liked: isLike, like_count: cnt.rows[0].c, changed });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.warn(`[microblog] like: ${e.message}`);
+    return sendJson(res, 500, { error: "Could not update like." });
+  } finally {
+    client.release();
+  }
+}
+
+function mbConvert(req, res, user) {
+  return readJsonBody(req, 16 * 1024, (err, body) => {
+    if (err) return sendJson(res, 400, { error: err.message });
+    const points = Number(body && body.points);
+    if (!Number.isInteger(points) || points <= 0) {
+      return sendJson(res, 400, { error: "Enter a positive whole number of points." });
+    }
+    (async () => {
+      const client = await pgPool.connect();
+      try {
+        await client.query("BEGIN");
+        // Lock the user's points row so two tabs can't double-spend the same points.
+        const pr = await client.query(
+          `SELECT points_earned::int AS earned FROM microblog_points WHERE user_id = $1 FOR UPDATE`,
+          [user.id]
+        );
+        const earned = pr.rows.length ? pr.rows[0].earned : 0;
+        const sr = await client.query(
+          `SELECT COALESCE(SUM(points_spent), 0)::int AS spent FROM microblog_conversions WHERE user_id = $1`,
+          [user.id]
+        );
+        const available = earned - sr.rows[0].spent;
+        const tokens = Math.floor(points / POINTS_PER_TOKEN);
+        if (tokens < 1) {
+          await client.query("ROLLBACK");
+          return sendJson(res, 400, { error: `You need at least ${POINTS_PER_TOKEN} points to get 1 token.` });
+        }
+        const spend = tokens * POINTS_PER_TOKEN;
+        if (spend > available) {
+          await client.query("ROLLBACK");
+          return sendJson(res, 400, { error: "Not enough points available to convert." });
+        }
+        await client.query(
+          `INSERT INTO microblog_conversions (user_id, username, points_spent, tokens_credited)
+           VALUES ($1, $2, $3, $4)`,
+          [user.id, user.username, spend, tokens]
+        );
+        const tot = await client.query(
+          `SELECT COALESCE(SUM(points_spent), 0)::int AS spent,
+                  COALESCE(SUM(tokens_credited), 0)::int AS tokens
+           FROM microblog_conversions WHERE user_id = $1`,
+          [user.id]
+        );
+        await client.query("COMMIT");
+        return sendJson(res, 200, {
+          converted_points: spend,
+          tokens_credited: tokens,
+          points_earned: earned,
+          points_available: earned - tot.rows[0].spent,
+          token_balance: tot.rows[0].tokens,
+        });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.warn(`[microblog] convert: ${e.message}`);
+        return sendJson(res, 500, { error: "Could not convert points." });
+      } finally {
+        client.release();
+      }
+    })();
+  });
+}
+
+// ── Trivia Quiz ───────────────────────────────────────────────────────────────
+// A public, server-graded trivia game. The question bank ships in
+// quiz-questions.json (curated content, committed). Sessions live in memory
+// (ephemeral — a restart only voids in-flight quizzes). Scores persist to
+// quiz-scores.json, file-backed and atomic just like submissions.json, keeping
+// one best record per player and capped at QUIZ_SCORE_CAP rows.
+
+const QUIZ_QUESTIONS_PATH = process.env.QUIZ_QUESTIONS_JSON_PATH
+  ? path.resolve(process.env.QUIZ_QUESTIONS_JSON_PATH)
+  : path.join(__dirname, "quiz-questions.json");
+
+const QUIZ_SCORES_PATH = process.env.QUIZ_SCORES_JSON_PATH
+  ? path.resolve(process.env.QUIZ_SCORES_JSON_PATH)
+  : path.join(__dirname, "quiz-scores.json");
+
+const QUIZ_QUESTIONS_PER_SESSION = Number(process.env.QUIZ_QUESTIONS_PER_SESSION) || 10;
+const QUIZ_TIME_LIMIT_SECONDS = Number(process.env.QUIZ_TIME_LIMIT_SECONDS) || 120;
+const QUIZ_ELIGIBILITY_MIN_CORRECT = Number(process.env.QUIZ_ELIGIBILITY_MIN_CORRECT) || 8;
+const QUIZ_PRIZE_POOL_ADDRESS = (process.env.QUIZ_PRIZE_POOL_ADDRESS || "").trim();
+
+const QUIZ_POINTS_PER_CORRECT = 100;
+const QUIZ_SCORE_CAP = 500;            // bound quiz-scores.json
+const QUIZ_LEADERBOARD_LIMIT = 50;     // rows returned by /api/quiz/leaderboard
+const QUIZ_SESSION_GRACE_MS = 5000;    // slack on top of the time limit for the round-trip
+const QUIZ_DISPLAY_NAME_MAX = 32;
+
+let quizBank = [];                     // [{ id, category, difficulty, question, options[4], answer }]
+const quizBankById = new Map();
+const quizSessions = new Map();        // sessionId -> { questionIds, startedAt, expiresAt, used, result? }
+let quizScores = [];                   // persisted best-per-player records
+
+function loadQuizBank() {
+  try {
+    const raw = fs.readFileSync(QUIZ_QUESTIONS_PATH, "utf8");
+    const data = JSON.parse(raw);
+    const list = Array.isArray(data) ? data : (Array.isArray(data.questions) ? data.questions : []);
+    quizBank = list.filter(
+      (q) =>
+        q && typeof q.id === "string" &&
+        typeof q.question === "string" &&
+        Array.isArray(q.options) && q.options.length >= 2 &&
+        Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length
+    );
+    quizBankById.clear();
+    for (const q of quizBank) quizBankById.set(q.id, q);
+    console.log(`[quiz] loaded ${quizBank.length} question(s) from ${QUIZ_QUESTIONS_PATH}`);
+  } catch (e) {
+    console.warn(`[quiz] could not read quiz-questions.json: ${e.message}`);
+    quizBank = [];
+    quizBankById.clear();
+  }
+}
+
+function loadQuizScores() {
+  try {
+    if (!fs.existsSync(QUIZ_SCORES_PATH)) {
+      quizScores = [];
+    } else {
+      const raw = fs.readFileSync(QUIZ_SCORES_PATH, "utf8");
+      const data = JSON.parse(raw);
+      quizScores = Array.isArray(data) ? data : (Array.isArray(data.scores) ? data.scores : []);
+    }
+  } catch (e) {
+    console.warn(`[quiz] could not read quiz-scores.json: ${e.message}`);
+    quizScores = [];
+  }
+  // Populate a fresh staging board so the leaderboard isn't empty in previews.
+  // In-memory only — never written back to disk, never runs in production.
+  if (IS_STAGING && quizScores.length === 0) {
+    quizScores = stagingSeedScores();
+    console.log(`[quiz] staging: seeded ${quizScores.length} demo leaderboard rows (in-memory)`);
+  }
+}
+
+function saveQuizScores() {
+  // Don't persist the in-memory staging seed; it re-seeds on each boot.
+  if (IS_STAGING) return;
+  try {
+    atomicWriteJson(QUIZ_SCORES_PATH, quizScores);
+  } catch (e) {
+    console.warn(`[quiz] could not write quiz-scores.json: ${e.message}`);
+  }
+}
+
+// Obviously-fake demo rows for staging — mix of eligible/not and with/without
+// wallets so the leaderboard UI exercises every badge state.
+function stagingSeedScores() {
+  const now = Date.now();
+  const mk = (i, displayName, score, correct, wallet) => ({
+    id: `staging-demo-${i}`,
+    displayName,
+    displayNameKey: displayName.toLowerCase(),
+    wallet: wallet || null,
+    score,
+    correct,
+    total: 10,
+    durationMs: 60000,
+    eligible: correct >= QUIZ_ELIGIBILITY_MIN_CORRECT && !!wallet,
+    eligibilityReason:
+      correct >= QUIZ_ELIGIBILITY_MIN_CORRECT && !!wallet
+        ? "Scored at or above the eligibility threshold with a linked wallet."
+        : (correct >= QUIZ_ELIGIBILITY_MIN_CORRECT
+            ? "Add a Usernode wallet to become reward-eligible."
+            : "Score higher to become reward-eligible."),
+    created_at: now - i * 60000,
+  });
+  return [
+    mk(1, "satoshi_fan", 1180, 10, "ut1qzdemostagingseedwalletaaaaaaaaaaaaaaaaaaaaaak3a9"),
+    mk(2, "block_ninja", 1095, 9, "ut1pfdemostagingseedwalletbbbbbbbbbbbbbbbbbbbbbbm2c7"),
+    mk(3, "gwei_whisperer", 980, 9, null),
+    mk(4, "merkle_mary", 940, 8, "ut1rrdemostagingseedwalletcccccccccccccccccccccc8h2d"),
+    mk(5, "hodl_hannah", 720, 7, "ut1aademostagingseedwalletdddddddddddddddddddddd91x0"),
+    mk(6, "nonce_sense", 690, 7, null),
+    mk(7, "gas_goblin", 540, 6, "ut1ttdemostagingseedwalleteeeeeeeeeeeeeeeeeeeeeeff34"),
+    mk(8, "cold_storage_carl", 510, 5, null),
+    mk(9, "degen_dave", 300, 4, "ut1uudemostagingseedwalletffffffffffffffffffffff00ab"),
+    mk(10, "newbie_nina", 180, 2, null),
+  ];
+}
+
+// Stable ordering: higher score, then faster, then earlier.
+function compareScores(a, b) {
+  if (b.score !== a.score) return b.score - a.score;
+  const ad = typeof a.durationMs === "number" ? a.durationMs : Infinity;
+  const bd = typeof b.durationMs === "number" ? b.durationMs : Infinity;
+  if (ad !== bd) return ad - bd;
+  return (a.created_at || 0) - (b.created_at || 0);
+}
+
+function quizIdentityKey(rec) {
+  return rec.wallet ? `w:${rec.wallet}` : `n:${rec.displayNameKey}`;
+}
+
+// One best record per identity (wallet if present, else lowercased name),
+// sorted, capped to QUIZ_SCORE_CAP.
+function rankedQuizScores() {
+  const best = new Map();
+  for (const rec of quizScores) {
+    const key = quizIdentityKey(rec);
+    const prev = best.get(key);
+    if (!prev || compareScores(rec, prev) < 0) best.set(key, rec);
+  }
+  return Array.from(best.values()).sort(compareScores);
+}
+
+// Mask a ut1 address to "ut1xxxx…xxxx" for display.
+function maskWallet(wallet) {
+  if (!wallet || typeof wallet !== "string") return null;
+  if (wallet.length <= 12) return wallet;
+  return `${wallet.slice(0, 7)}…${wallet.slice(-4)}`;
+}
+
+function quizLeaderboardRows(limit) {
+  const ranked = rankedQuizScores();
+  const out = [];
+  for (let i = 0; i < ranked.length && i < limit; i++) {
+    const r = ranked[i];
+    out.push({
+      rank: i + 1,
+      displayName: r.displayName,
+      walletMasked: maskWallet(r.wallet),
+      score: r.score,
+      correct: r.correct,
+      total: r.total,
+      eligible: !!r.eligible,
+    });
+  }
+  return out;
+}
+
+// Validate + normalize the submitter-supplied fields. Returns { ok, displayName,
+// wallet } or { ok:false, error }.
+function validateQuizPlayer(body) {
+  const str = (v) => (typeof v === "string" ? v.trim() : "");
+  let displayName = str(body && body.displayName).replace(/[\u0000-\u001f]/g, "");
+  if (!displayName) return { ok: false, error: "Display name is required." };
+  if (displayName.length > QUIZ_DISPLAY_NAME_MAX) displayName = displayName.slice(0, QUIZ_DISPLAY_NAME_MAX);
+
+  let wallet = str(body && body.wallet);
+  if (wallet) {
+    if (!wallet.startsWith(TX_PREFIX)) {
+      return { ok: false, error: "Wallet must be a Usernode address (starts with ut1)." };
+    }
+    if (wallet.length < 10 || wallet.length > 120) {
+      return { ok: false, error: "Wallet address looks invalid." };
+    }
+  } else {
+    wallet = null;
+  }
+  return { ok: true, displayName, wallet };
+}
+
+// Pick N distinct random questions from the bank (Fisher–Yates partial shuffle).
+function pickQuizQuestions(n) {
+  const arr = quizBank.slice();
+  const count = Math.min(n, arr.length);
+  for (let i = 0; i < count; i++) {
+    const j = i + Math.floor(Math.random() * (arr.length - i));
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+  return arr.slice(0, count);
+}
+
+loadQuizBank();
+loadQuizScores();
+
 // ── HTTP server ──────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
@@ -1038,8 +2315,31 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname === "/api/dapp-status") {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    handleDappStatus(req, res, urlObj);
+    return;
+  }
+
   if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
     const body = JSON.stringify(statsCache);
+    if (req.method === "HEAD") {
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+        "cache-control": "no-store",
+      });
+      return res.end();
+    }
+    return send(res, 200, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+    }, body);
+  }
+
+  if (pathname === "/api/health" && (req.method === "GET" || req.method === "HEAD")) {
+    const body = JSON.stringify(buildHealthResponse());
     if (req.method === "HEAD") {
       res.writeHead(200, {
         "content-type": "application/json",
@@ -1118,6 +2418,7 @@ const server = http.createServer((req, res) => {
       enabled: !!COMMUNITY_FUND_RESERVE_ADDRESS,
       fee: SUBMISSION_FEE,
       reserve_address: COMMUNITY_FUND_RESERVE_ADDRESS || null,
+      dapps_version: dappsVersion(),
     });
   }
 
@@ -1126,21 +2427,56 @@ const server = http.createServer((req, res) => {
     if (!COMMUNITY_FUND_RESERVE_ADDRESS) {
       return sendJson(res, 503, { error: "Submissions are not currently open (no Reserve address configured)." });
     }
+    // Optional: bind the submitter's Usernode identity (from the iframe JWT) so
+    // they — and only they — can later change this dapp's maintenance status.
+    // Anonymous submissions (no token) still work; they just have no owner.
+    const submitter = getUser(req);
+    const ownerUserId = submitter && submitter.id != null ? String(submitter.id) : null;
+
     return readJsonBody(req, 64 * 1024, (err, body) => {
-      if (err) return sendJson(res, 400, { error: err.message });
+      if (err) {
+        // Log the parse detail server-side; return a fixed, generic message.
+        console.warn(`[submit] invalid request body: ${err.message}`);
+        return sendJson(res, 400, { error: "Invalid request body." });
+      }
       const v = validateSubmissionInput(body);
       if (!v.ok) return sendJson(res, 400, { error: v.error });
 
-      // Pre-payment duplicate gate — block before the user spends tokens.
-      if (listingHas(v.dapp.url, v.dapp.pubkey)) {
-        return sendJson(res, 409, { error: "A dapp with this URL or pubkey is already listed." });
+      const latestDappsVersion = dappsVersion();
+
+      // Optimistic-concurrency conflict gate — caught BEFORE any fee is charged,
+      // so a clash never costs tokens. Returns a structured 409 (code:"conflict")
+      // the frontend can branch on, instead of a flat error string.
+      //
+      // already_listed: the dapp got listed underneath this submitter (another
+      // submission published it, or a deploy/manual edit added it) — possibly
+      // while their seen_dapps_version was stale. We hand back the live row so
+      // the form can say "already on the homepage, no payment needed".
+      const listedRow = findListingRow(v.dapp.url, v.dapp.pubkey);
+      if (listedRow) {
+        return sendJson(res, 409, {
+          code: "conflict",
+          reason: "already_listed",
+          message: "This dapp is already on the homepage — no payment is needed.",
+          latest_dapps_version: latestDappsVersion,
+          listed: true,
+          dapp: publicListingRow(listedRow),
+        });
       }
+      // submission_in_progress: someone else is mid-flow for the same url/pubkey.
       const dupe = submissions.find(
         (s) => isLiveSubmission(s) && s.dapp &&
           (s.dapp.url === v.dapp.url || s.dapp.pubkey === v.dapp.pubkey)
       );
       if (dupe) {
-        return sendJson(res, 409, { error: "A submission for this URL or pubkey is already in progress." });
+        return sendJson(res, 409, {
+          code: "conflict",
+          reason: "submission_in_progress",
+          message: "A submission for this URL or pubkey is already in progress.",
+          latest_dapps_version: latestDappsVersion,
+          listed: false,
+          dapp: null,
+        });
       }
 
       const now = Date.now();
@@ -1148,12 +2484,15 @@ const server = http.createServer((req, res) => {
       const record = {
         id,
         status: "awaiting_payment",
+        rev: 1,
         dapp: v.dapp,
+        owner_user_id: ownerUserId,
         payer: null,
         payment_tx_hash: null,
         paid_amount: null,
         fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS,
         created_at: now,
+        updated_at: now,
         expires_at: now + SUBMISSION_TTL_HOURS * 3600 * 1000,
         published_at: null,
       };
@@ -1166,6 +2505,7 @@ const server = http.createServer((req, res) => {
         memo: submitMemoString(id),
         status: record.status,
         expires_at: record.expires_at,
+        dapps_version: latestDappsVersion,
       });
     });
   }
@@ -1176,6 +2516,166 @@ const server = http.createServer((req, res) => {
     const sub = findSubmission(id);
     if (!sub) return sendJson(res, 404, { error: "Submission not found." });
     return sendJson(res, 200, publicSubmissionView(sub));
+  }
+
+  // ── Micro-blog feed API ────────────────────────────────────────────────────
+  // Handled before the GET/HEAD-only guard below since posts/likes/convert are
+  // POST/DELETE. Reads are public; writes require a verified platform token.
+  if (pathname.startsWith("/api/microblog/")) {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    return microblogRouter(req, res, pathname, urlObj);
+  }
+
+  // ── Trivia Quiz API (all public, no auth — matches the app's posture) ───────
+
+  // Public config the page needs to render copy + rules.
+  if (pathname === "/api/quiz/config" && req.method === "GET") {
+    return sendJson(res, 200, {
+      questionsPerSession: Math.min(QUIZ_QUESTIONS_PER_SESSION, quizBank.length),
+      timeLimitSeconds: QUIZ_TIME_LIMIT_SECONDS,
+      eligibilityMinCorrect: QUIZ_ELIGIBILITY_MIN_CORRECT,
+      prizePoolAddress: QUIZ_PRIZE_POOL_ADDRESS || null,
+      rewardsEnabled: false,
+      pointsPerCorrect: QUIZ_POINTS_PER_CORRECT,
+    });
+  }
+
+  // Top best-per-player rows.
+  if (pathname === "/api/quiz/leaderboard" && req.method === "GET") {
+    return sendJson(res, 200, {
+      players: quizLeaderboardRows(QUIZ_LEADERBOARD_LIMIT),
+      eligibilityMinCorrect: QUIZ_ELIGIBILITY_MIN_CORRECT,
+    });
+  }
+
+  // Begin a session → returns N questions WITHOUT the answer key + a sessionId.
+  if (pathname === "/api/quiz/start" && req.method === "POST") {
+    if (quizBank.length === 0) {
+      return sendJson(res, 503, { error: "The quiz is not available right now." });
+    }
+    const picked = pickQuizQuestions(QUIZ_QUESTIONS_PER_SESSION);
+    const now = Date.now();
+    const sessionId = crypto.randomUUID();
+    quizSessions.set(sessionId, {
+      questionIds: picked.map((q) => q.id),
+      startedAt: now,
+      expiresAt: now + QUIZ_TIME_LIMIT_SECONDS * 1000 + QUIZ_SESSION_GRACE_MS,
+      used: false,
+      result: null,
+    });
+    return sendJson(res, 201, {
+      sessionId,
+      timeLimitSeconds: QUIZ_TIME_LIMIT_SECONDS,
+      questions: picked.map((q) => ({
+        id: q.id,
+        category: q.category,
+        difficulty: q.difficulty,
+        question: q.question,
+        options: q.options, // answer index intentionally omitted
+      })),
+    });
+  }
+
+  // Grade a session server-side, record the score, return the breakdown.
+  if (pathname === "/api/quiz/submit" && req.method === "POST") {
+    return readJsonBody(req, 64 * 1024, (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+
+      const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+      const session = quizSessions.get(sessionId);
+      if (!session) {
+        return sendJson(res, 404, { error: "Session expired or not found. Please start a new quiz." });
+      }
+      // Single-use: a second submit returns the original result.
+      if (session.used) {
+        if (session.result) return sendJson(res, 200, session.result);
+        return sendJson(res, 409, { error: "This quiz session was already submitted." });
+      }
+
+      const player = validateQuizPlayer(body);
+      if (!player.ok) return sendJson(res, 400, { error: player.error });
+
+      const now = Date.now();
+      const expired = now > session.expiresAt;
+      const answers = body && typeof body.answers === "object" && body.answers ? body.answers : {};
+
+      // Grade only the session's questions; missing/extra keys are wrong.
+      let correct = 0;
+      const breakdown = session.questionIds.map((qid) => {
+        const q = quizBankById.get(qid);
+        const givenRaw = answers[qid];
+        const given = Number.isInteger(givenRaw) ? givenRaw : (typeof givenRaw === "string" && givenRaw !== "" ? Number(givenRaw) : null);
+        const isCorrect = q != null && given === q.answer;
+        if (isCorrect) correct++;
+        return {
+          id: qid,
+          question: q ? q.question : "(unknown)",
+          options: q ? q.options : [],
+          correctAnswer: q ? q.answer : null,
+          givenAnswer: given == null || Number.isNaN(given) ? null : given,
+          correct: isCorrect,
+        };
+      });
+
+      const total = session.questionIds.length;
+      const durationMs = Math.max(0, now - session.startedAt);
+      // Speed bonus: 1 pt per whole second left, zero if the round expired.
+      const secondsLeft = expired
+        ? 0
+        : Math.max(0, Math.floor((QUIZ_TIME_LIMIT_SECONDS * 1000 - durationMs) / 1000));
+      const score = correct * QUIZ_POINTS_PER_CORRECT + secondsLeft;
+
+      const meetsThreshold = correct >= QUIZ_ELIGIBILITY_MIN_CORRECT;
+      const eligible = meetsThreshold && !!player.wallet;
+      const eligibilityReason = eligible
+        ? "Scored at or above the eligibility threshold with a linked wallet."
+        : meetsThreshold
+          ? "Add a Usernode wallet next time to become reward-eligible."
+          : `Answer at least ${QUIZ_ELIGIBILITY_MIN_CORRECT} of ${total} correctly to become reward-eligible.`;
+
+      const record = {
+        id: crypto.randomUUID(),
+        displayName: player.displayName,
+        displayNameKey: player.displayName.toLowerCase(),
+        wallet: player.wallet,
+        score,
+        correct,
+        total,
+        durationMs,
+        eligible,
+        eligibilityReason,
+        created_at: now,
+      };
+      quizScores.push(record);
+
+      // Keep one best record per identity, sorted, capped to QUIZ_SCORE_CAP.
+      quizScores = rankedQuizScores().slice(0, QUIZ_SCORE_CAP);
+      saveQuizScores();
+
+      // Rank of this player's identity on the deduped board.
+      const ranked = rankedQuizScores();
+      const myKey = quizIdentityKey(record);
+      let rank = ranked.findIndex((r) => quizIdentityKey(r) === myKey) + 1;
+      if (rank === 0) rank = ranked.length; // fell outside the cap
+
+      const result = {
+        score,
+        correct,
+        total,
+        durationMs,
+        secondsLeft,
+        eligible,
+        eligibilityReason,
+        rank,
+        totalPlayers: ranked.length,
+        expired,
+        breakdown,
+      };
+
+      session.used = true;
+      session.result = result;
+      return sendJson(res, 200, result);
+    });
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -1277,6 +2777,29 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  // Web3 Trivia Quiz — self-contained quiz page (same pattern as /minecraft).
+  if (pathname === "/trivia" || pathname === "/trivia.html") {
+    return fs.readFile(TRIVIA_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read trivia.html: ${err.message}\n`
+        );
+      }
+      const headers = {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      };
+      if (req.method === "HEAD") {
+        res.writeHead(200, { ...headers, "content-length": buf.length });
+        return res.end();
+      }
+      return send(res, 200, headers, buf);
+    });
+  }
+
   if (pathname === "/dapps.json") {
     return fs.readFile(DAPPS_PATH, (err, buf) => {
       if (err) {
@@ -1288,11 +2811,14 @@ const server = http.createServer((req, res) => {
         );
       }
 
+      const dappsVer = String(dappsVersion());
       if (req.method === "HEAD") {
         res.writeHead(200, {
           "content-type": "application/json; charset=utf-8",
           "content-length": buf.length,
           "cache-control": "no-store",
+          "x-dapps-version": dappsVer,
+          "access-control-expose-headers": "x-dapps-version",
         });
         return res.end();
       }
@@ -1303,6 +2829,8 @@ const server = http.createServer((req, res) => {
         {
           "content-type": "application/json; charset=utf-8",
           "cache-control": "no-store",
+          "x-dapps-version": dappsVer,
+          "access-control-expose-headers": "x-dapps-version",
         },
         buf
       );
@@ -1340,10 +2868,50 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Serving ${INDEX_PATH}`);
-  console.log(`Dapps config: ${DAPPS_PATH}${LOCAL_DEV ? " (local-dev)" : ""}`);
-  console.log(`Explorer proxy: ${EXPLORER_USE_HTTP ? "http" : "https"}://${EXPLORER_UPSTREAM}${EXPLORER_UPSTREAM_BASE}`);
-  console.log(`Stats poller: every ${STATS_POLL_INTERVAL_MS / 1000}s → GET /api/stats, GET /api/transactions?pubkey=..., GET /user_activity`);
-  console.log(`Listening on http://localhost:${PORT}`);
-});
+function startServer() {
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Serving ${INDEX_PATH}`);
+    console.log(`Dapps config: ${DAPPS_PATH}${LOCAL_DEV ? " (local-dev)" : ""}`);
+    console.log(`Explorer proxy: ${EXPLORER_USE_HTTP ? "http" : "https"}://${EXPLORER_UPSTREAM}${EXPLORER_UPSTREAM_BASE}`);
+    console.log(`Stats poller: every ${STATS_POLL_INTERVAL_MS / 1000}s → GET /api/stats, GET /api/transactions?pubkey=..., GET /user_activity`);
+    console.log(`Listening on http://localhost:${PORT}`);
+  });
+}
+
+// Only boot the poller + HTTP listener when run directly. When required as a
+// module (e.g. from the test suite) nothing auto-starts, so tests can point the
+// store env vars at temp fixtures and drive the exported functions / server.
+if (require.main === module) {
+  startBackground();
+  startServer();
+}
+
+module.exports = {
+  server,
+  startBackground,
+  startServer,
+  // OCC + store internals (exercised by test/occ.test.js)
+  atomicWriteJson,
+  casWriteJson,
+  parseSubmissionsDoc,
+  loadSubmissions,
+  saveSubmissions,
+  touchSubmission,
+  readDappsDoc,
+  dappsVersion,
+  findListingRow,
+  publicListingRow,
+  listingHas,
+  appendDappToListing,
+  reconcileSubmissionPayments,
+  expireStaleSubmissions,
+  validateSubmissionInput,
+  // state accessors for assertions
+  _getSubmissions: () => submissions,
+  _getSubmissionsVersion: () => submissionsVersion,
+  _setSubmissions: (arr, ver) => { submissions = arr; if (typeof ver === "number") submissionsVersion = ver; },
+  _addConsumedTx: (id) => consumedTxIds.add(id),
+  _txCache: txCache,
+  PATHS: { DAPPS_PATH, SUBMISSIONS_PATH },
+  CONFIG: { SUBMISSION_FEE, COMMUNITY_FUND_RESERVE_ADDRESS },
+};
