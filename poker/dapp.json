@@ -3,7 +3,7 @@
   "secrets": [
     {
       "key": "TREASURY_ADDRESS",
-      "description": "Public Usernode address (ut1…) of the custodial table treasury / pooled bank. Buy-ins are paid here and payouts + on-chain commit/reveal audit writes are signed from it. When unset, buy-ins are disabled.",
+      "description": "Public Usernode address (ut1…) of the custodial table treasury / pooled bank. Buy-ins are paid here and payouts + on-chain commit/reveal audit writes are signed from it. Public on-chain address.",
       "required": false,
       "private": false,
       "default": "",
@@ -21,36 +21,40 @@
       "description": "Small blind in chips (= token base units).",
       "required": false,
       "private": false,
-      "default": "24",
-      "staging_default": "24"
+      "default": "25",
+      "staging_default": "25"
     },
     {
       "key": "BIG_BLIND",
       "description": "Big blind in chips (= token base units).",
       "required": false,
       "private": false,
-      "default": "50"
+      "default": "50",
+      "staging_default": "50"
     },
     {
       "key": "MIN_BUYIN",
       "description": "Minimum buy-in in chips.",
       "required": false,
       "private": false,
-      "default": "1000"
+      "default": "1000",
+      "staging_default": "1000"
     },
     {
       "key": "MAX_BUYIN",
       "description": "Maximum buy-in in chips.",
       "required": false,
       "private": false,
-      "default": "10000"
+      "default": "10000",
+      "staging_default": "10000"
     },
     {
       "key": "ACTION_TIMER_SECONDS",
       "description": "Shot-clock per action in seconds. The timer pauses while a player's action transaction is pending/confirming on-chain.",
       "required": false,
       "private": false,
-      "default": "30"
+      "default": "30",
+      "staging_default": "30"
     },
     {
       "key": "NODE_RPC_URL",
@@ -58,38 +62,6 @@
       "required": false,
       "private": false,
       "default": "http://usernode-node:3001"
-    },
-    {
-      "key": "QUIZ_PRIZE_POOL_ADDRESS",
-      "description": "Usernode address (ut1…) shown on the Trivia Quiz page as the source of future reward payouts. Display-only this phase (no on-chain payout yet). Public on-chain address.",
-      "required": false,
-      "private": false,
-      "default": "",
-      "staging_default": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az"
-    },
-    {
-      "key": "QUIZ_QUESTIONS_PER_SESSION",
-      "description": "How many questions each Trivia Quiz session contains (capped to the question bank size).",
-      "required": false,
-      "private": false,
-      "default": "10",
-      "staging_default": "10"
-    },
-    {
-      "key": "QUIZ_TIME_LIMIT_SECONDS",
-      "description": "Per-session countdown for the Trivia Quiz, in seconds. When it hits zero the quiz auto-submits.",
-      "required": false,
-      "private": false,
-      "default": "120",
-      "staging_default": "120"
-    },
-    {
-      "key": "QUIZ_ELIGIBILITY_MIN_CORRECT",
-      "description": "Minimum correct answers required (together with a valid ut1 wallet) for a result to be flagged reward-eligible.",
-      "required": false,
-      "private": false,
-      "default": "8",
-      "staging_default": "8"
     }
   ]
 }
