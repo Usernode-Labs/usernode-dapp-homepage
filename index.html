@@ -387,7 +387,9 @@
         flex-direction: column;
         gap: 4px;
       }
-      .hamMenuSection.theme {
+      .hamMenuSection.theme,
+      .hamMenuSection.actions,
+      .hamMenuSection.views {
         border-bottom: 1px solid var(--border);
         padding-bottom: 8px;
       }
@@ -2053,25 +2055,6 @@
               </a>
             </div>
             <div class="headerButtonRow">
-              <a class="navBtn" id="goExplorerBtn" href="#/explorer" title="Open the block explorer">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
-                <span class="navBtnLabel">Explorer</span>
-              </a>
-              <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span class="submitBtnLabel">Submit</span>
-              </button>
-              <div class="viewWrap" id="viewWrap" role="group" aria-label="Display mode">
-                <button class="viewBtn" type="button" data-view="compact" aria-pressed="false" aria-label="Compact view" title="Compact view">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                </button>
-                <button class="viewBtn" type="button" data-view="detailed" aria-pressed="false" aria-label="Detailed view" title="Detailed view">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>
-                </button>
-                <button class="viewBtn" type="button" data-view="grid" aria-pressed="false" aria-label="Grid view" title="Grid view">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-                </button>
-              </div>
               <div class="hamMenuWrap">
                 <button class="hamBtn" id="hamBtn" type="button" aria-label="Menu" title="Menu">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -2084,6 +2067,35 @@
                         <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
                       </button>
                       <span id="themeLabel">Light</span>
+                    </button>
+                  </div>
+                  <div class="hamMenuSection actions">
+                    <div class="hamMenuLabel">Actions</div>
+                    <a class="hamMenuOption" id="goExplorerBtn" href="#/explorer" title="Open the block explorer">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                      <span>Explorer</span>
+                    </a>
+                    <button class="hamMenuOption" id="openSubmitBtn" type="button" title="Submit your dapp">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      <span>Submit</span>
+                    </button>
+                  </div>
+                  <div class="hamMenuSection views">
+                    <div class="hamMenuLabel">Display</div>
+                    <button class="hamMenuOption" type="button" data-view="compact" title="Compact view">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                      <span>Compact</span>
+                      <span class="hamMenuCheckmark">✓</span>
+                    </button>
+                    <button class="hamMenuOption" type="button" data-view="detailed" title="Detailed view">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>
+                      <span>Detailed</span>
+                      <span class="hamMenuCheckmark">✓</span>
+                    </button>
+                    <button class="hamMenuOption" type="button" data-view="grid" title="Grid view">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                      <span>Grid</span>
+                      <span class="hamMenuCheckmark">✓</span>
                     </button>
                   </div>
                   <div class="hamMenuSection sort">
@@ -2447,8 +2459,6 @@
       let currentView = VIEW_MODES.includes(localStorage.getItem(VIEW_KEY))
         ? localStorage.getItem(VIEW_KEY)
         : "detailed";
-
-      const viewWrap = document.getElementById("viewWrap");
 
       // --- Pins / auth ---
       const USERNODE_TOKEN = (() => {
@@ -3096,11 +3106,10 @@
       }
 
       function updateViewUI() {
-        if (!viewWrap) return;
-        viewWrap.querySelectorAll(".viewBtn").forEach((btn) => {
+        hamMenuDropdown.querySelectorAll(".views .hamMenuOption[data-view]").forEach((btn) => {
           const active = btn.dataset.view === currentView;
           btn.classList.toggle("active", active);
-          btn.setAttribute("aria-pressed", active ? "true" : "false");
+          btn.setAttribute("aria-selected", active ? "true" : "false");
         });
       }
 
@@ -3138,13 +3147,14 @@
         }, 130);
       }
 
-      if (viewWrap) {
-        viewWrap.addEventListener("click", (e) => {
-          const btn = e.target.closest(".viewBtn");
-          if (!btn) return;
-          setView(btn.dataset.view);
-        });
-      }
+      hamMenuDropdown.addEventListener("click", (e) => {
+        const viewBtn = e.target.closest(".views .hamMenuOption[data-view]");
+        if (viewBtn) {
+          setView(viewBtn.dataset.view);
+          closeHamMenu();
+          return;
+        }
+      });
 
       // Apply the persisted mode before the first render so the initial
       // paint already uses the correct layout.
