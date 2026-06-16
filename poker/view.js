@@ -7,7 +7,7 @@
 
 const { legalActions } = require("./engine/holdem");
 
-function buildTableView(runtime, viewerUserId) {
+function buildTableView(runtime, viewerUserId, isSpectator = false) {
   const t = runtime.table;
   const hand = runtime.hand;
   const engine = hand ? hand.engineState : null;
@@ -40,8 +40,11 @@ function buildTableView(runtime, viewerUserId) {
     };
     if (ep && ep.holeCards.length) {
       out.holeCount = ep.holeCards.length;
-      const own = s && s.userId === viewerUserId;
-      if (own || revealed[n]) out.holeCards = (revealed[n] || ep.holeCards).slice();
+      // Spectators never see hole cards — not even at showdown (server-enforced,
+      // not just hidden client-side). Seated players see their own cards always,
+      // and opponents' cards at showdown once the engine marks them revealed.
+      const own = !isSpectator && s && s.userId === viewerUserId;
+      if (own || (!isSpectator && revealed[n])) out.holeCards = (revealed[n] || ep.holeCards).slice();
     }
     seats.push(out);
   }
@@ -58,9 +61,12 @@ function buildTableView(runtime, viewerUserId) {
       action_timer_seconds: t.action_timer_seconds,
       visibility: t.visibility || "public",
       is_private: (t.visibility || "public") === "private",
+      allow_spectators: runtime.table.allow_spectators !== false,
+      spectator_count: runtime.spectators ? runtime.spectators.size : 0,
     },
     seats,
     hand: null,
+    isSpectator,
     you: { seat: youSeat(runtime, viewerUserId) },
   };
 

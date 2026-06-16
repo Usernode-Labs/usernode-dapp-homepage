@@ -241,7 +241,7 @@ async function loadRuntime(tableId) {
       access.whitelist = Array.isArray(a.rows[0].whitelist) ? a.rows[0].whitelist : [];
     }
   }
-  const runtime = { table, seats, access, hand: null, lastHandNo: 0, button: -1, starting: false };
+  const runtime = { table, seats, access, spectators: new Set(), hand: null, lastHandNo: 0, button: -1, starting: false };
   runtimes.set(tableId, runtime);
   return runtime;
 }
@@ -292,6 +292,7 @@ app.get("/api/tables", async (req, res) => {
   for (const t of rows.rows) {
     const seatRows = await pool.query(
       `SELECT count(*)::int AS n FROM seats WHERE table_id=$1 AND user_id IS NOT NULL`, [t.id]);
+    const rt = runtimes.get(t.id);
     out.push({
       id: t.id,
       name: t.name,
@@ -303,7 +304,9 @@ app.get("/api/tables", async (req, res) => {
       action_timer_seconds: t.action_timer_seconds,
       visibility: t.visibility || "public",
       is_private: (t.visibility || "public") === "private",
+      allow_spectators: t.allow_spectators !== false,
       seated: seatRows.rows[0].n,
+      spectator_count: rt ? rt.spectators.size : 0,
     });
   }
   const you = req.user
@@ -327,6 +330,7 @@ app.post("/api/tables", async (req, res) => {
   const maxBuyin = intIn(b.max_buyin, MAX_BUYIN);
   const timer = intIn(b.action_timer_seconds, ACTION_TIMER_SECONDS);
   const visibility = b.visibility === "private" ? "private" : "public";
+  const allowSpectators = b.allow_spectators !== false; // default true
 
   // Validate the settings so a malformed table can't break the engine.
   if (maxSeats < MIN_SEATS_ALLOWED || maxSeats > MAX_SEATS_ALLOWED)
@@ -349,9 +353,9 @@ app.post("/api/tables", async (req, res) => {
     return res.status(400).json({ error: "a private table needs a password or a wallet whitelist" });
 
   await pool.query(
-    `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by, visibility)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9,$10)`,
-    [id, name, sb, bb, minBuyin, maxBuyin, maxSeats, timer, req.user.id, visibility]
+    `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by, visibility, allow_spectators)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9,$10,$11)`,
+    [id, name, sb, bb, minBuyin, maxBuyin, maxSeats, timer, req.user.id, visibility, allowSpectators]
   );
   if (visibility === "private") {
     let hash = null, salt = null;
@@ -362,13 +366,14 @@ app.post("/api/tables", async (req, res) => {
       [id, hash, salt, JSON.stringify(whitelist)]
     );
   }
-  res.status(201).json({ id, visibility });
+  res.status(201).json({ id, visibility, allow_spectators: allowSpectators });
 });
 
 app.get("/api/tables/:id", async (req, res) => {
   const rt = await loadRuntime(req.params.id);
   if (!rt) return res.status(404).json({ error: "table not found" });
-  res.json(buildTableView(rt, req.user.id));
+  const isSeated = [...rt.seats.values()].some((s) => s.userId === req.user.id);
+  res.json(buildTableView(rt, req.user.id, !isSeated));
 });
 
 // ── Buy-in: create a pending session + on-chain pay instructions ─────────────
@@ -557,36 +562,70 @@ app.get("/api/hands/:id/verify", async (req, res) => {
   });
 });
 
+// ── Spectate: join as a watcher (no chips, all hole cards permanently redacted) ─
+app.post("/api/tables/:id/spectate", async (req, res) => {
+  const rt = await loadRuntime(req.params.id);
+  if (!rt) return res.status(404).json({ error: "table not found" });
+  if (rt.table.allow_spectators === false)
+    return res.status(403).json({ error: "spectators are not allowed at this table" });
+  // Seated players watch from their seat; they don't need to call this.
+  const isSeated = [...rt.seats.values()].some((s) => s.userId === req.user.id);
+  if (isSeated) return res.status(409).json({ error: "you are already seated — watch from your seat" });
+  rt.spectators.add(req.user.id);
+  res.json({ ok: true });
+});
+
 // ── SSE table stream (redacted per viewer) ───────────────────────────────────
 app.get("/api/tables/:id/stream", async (req, res) => {
   const rt = await loadRuntime(req.params.id);
   if (!rt) return res.status(404).json({ error: "table not found" });
+
+  // Determine if this connection is from a spectator or a seated player.
+  const isSeated = [...rt.seats.values()].some((s) => s.userId === req.user.id);
+  const isSpectator = !isSeated;
+  if (isSpectator && rt.table.allow_spectators === false)
+    return res.status(403).json({ error: "spectators are not allowed at this table" });
+  // Track in the in-memory spectator set so the lobby shows an accurate count.
+  if (isSpectator) rt.spectators.add(req.user.id);
+
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-store",
     connection: "keep-alive",
   });
   res.write(": connected\n\n");
-  const entry = { res, userId: req.user.id };
+  const entry = { res, userId: req.user.id, isSpectator };
   if (!sseClients.has(req.params.id)) sseClients.set(req.params.id, new Set());
   sseClients.get(req.params.id).add(entry);
   // Initial snapshot.
-  res.write(`data: ${JSON.stringify(buildTableView(rt, req.user.id))}\n\n`);
+  res.write(`data: ${JSON.stringify(buildTableView(rt, req.user.id, isSpectator))}\n\n`);
   const ka = setInterval(() => res.write(": ka\n\n"), 20000);
   req.on("close", () => {
     clearInterval(ka);
     const set = sseClients.get(req.params.id);
     if (set) set.delete(entry);
+    // Remove from spectator set when disconnected (accurate count for lobby).
+    if (isSpectator) {
+      const stillConnected = set && [...set].some((e) => e.userId === req.user.id && e.isSpectator);
+      if (!stillConnected) rt.spectators.delete(req.user.id);
+    }
   });
 });
 
 function broadcast(rt) {
   const set = sseClients.get(rt.table.id);
   if (!set) return;
-  for (const entry of set) {
-    try {
-      entry.res.write(`data: ${JSON.stringify(buildTableView(rt, entry.userId))}\n\n`);
-    } catch (_) {}
+  // Broadcast to seated players first (they see the reveal), then spectators
+  // (permanently redacted). Order matters at showdown so seated viewers get
+  // hole cards in the same tick that the hand completes.
+  const entries = [...set];
+  const seated = entries.filter((e) => !e.isSpectator);
+  const watching = entries.filter((e) => e.isSpectator);
+  for (const entry of seated) {
+    try { entry.res.write(`data: ${JSON.stringify(buildTableView(rt, entry.userId, false))}\n\n`); } catch (_) {}
+  }
+  for (const entry of watching) {
+    try { entry.res.write(`data: ${JSON.stringify(buildTableView(rt, entry.userId, true))}\n\n`); } catch (_) {}
   }
 }
 
@@ -916,7 +955,12 @@ async function main() {
   // second human player. The timer tick auto-acts for the seeded demo seats.
   if (IS_STAGING) {
     const demoRt = await loadRuntime(DEMO_TABLE_ID);
-    if (demoRt) maybeStartHand(demoRt).catch(() => {});
+    if (demoRt) {
+      // Seed 2 fake spectators so the spectator count shows in the lobby.
+      demoRt.spectators.add("staging-demo-spectator-1");
+      demoRt.spectators.add("staging-demo-spectator-2");
+      maybeStartHand(demoRt).catch(() => {});
+    }
   }
   setInterval(() => pollChain().catch(() => {}), 30000);
   pollChain().catch(() => {});

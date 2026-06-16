@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS tables (
 -- to join. The access SECRET (password hash + whitelist) lives in the private
 -- table_access table below, never on this public row.
 ALTER TABLE tables ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
+-- Whether spectators may watch the table live. When false the stream endpoint
+-- returns 403 to non-seated viewers and the lobby hides the Watch button.
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS allow_spectators BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- Private access material for a table: salted password hash and/or an allowed
 -- wallet whitelist. Marked staging:private — auth material must never leak from

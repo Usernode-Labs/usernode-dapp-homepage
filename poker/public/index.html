@@ -169,6 +169,10 @@
         <option value="public">Public — listed in the lobby, anyone can join</option>
         <option value="private">Private — locked; needs password or whitelist</option>
       </select>
+      <div class="flex items-center justify-between mb-3">
+        <label for="cAllowSpec" class="text-sm">Allow spectators</label>
+        <input type="checkbox" id="cAllowSpec" checked class="w-4 h-4 rounded accent-emerald-500" />
+      </div>
       <div id="cPrivateWrap" class="hidden">
         <label class="block text-sm mb-1">Password <span class="text-slate-500">(optional if whitelisting)</span></label>
         <input id="cPassword" type="password" autocomplete="off" class="w-full bg-slate-800 rounded px-3 py-2 mb-3" placeholder="Set a join password" />
@@ -199,6 +203,10 @@
     const params = new URLSearchParams(location.search);
     const TOKEN = params.get('token') || '';
     let ME = null, CURRENT_TABLE = null, ES = null, LAST_VIEW = null, BUYIN = {};
+    // IS_SPECTATING is set before openTable() when the user enters via Watch.
+    // The authoritative flag is view.isSpectator (server-set), but we need this
+    // before the first SSE tick so intermediate states render correctly.
+    let IS_SPECTATING = false;
 
     async function api(path, opts = {}) {
       const headers = Object.assign({ 'content-type': 'application/json' }, opts.headers || {});
@@ -218,7 +226,7 @@
     }
 
     // ── Lobby ──────────────────────────────────────────────────────────────
-    async function showLobby() {
+    async function _showLobby() {
       stopStream();
       $('app').innerHTML = '<p class="text-slate-400 mt-20 text-center">Loading tables…</p>';
       try {
@@ -227,13 +235,20 @@
         const rows = data.tables.map((t) => {
           const full = t.seated >= t.max_seats;
           const lock = t.is_private ? '<span class="text-amber-300" title="Private table">🔒 </span>' : '';
+          const watching = t.spectator_count > 0 ? ` · <span class="text-slate-400">${t.spectator_count} watching</span>` : '';
+          const watchBtn = (ME && t.allow_spectators)
+            ? `<button onclick="watchTable('${t.id}')" class="shrink-0 bg-slate-600 hover:bg-slate-500 rounded-lg px-3 py-2 text-sm font-medium">👁 Watch</button>`
+            : '';
           return `
           <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-3">
             <div class="min-w-0">
               <div class="font-semibold truncate">${lock}${escapeHtml(t.name)}${t.is_private ? ' <span class="text-[10px] uppercase tracking-wide text-amber-300/80 align-middle">Private</span>' : ''}</div>
-              <div class="text-sm text-slate-400">Blinds ${t.sb}/${t.bb} · Buy-in ${t.min_buyin}–${t.max_buyin} · ${t.max_seats}-max · <span class="${full ? 'text-amber-400' : 'text-emerald-300'}">${t.seated}/${t.max_seats} seated</span></div>
+              <div class="text-sm text-slate-400">Blinds ${t.sb}/${t.bb} · Buy-in ${t.min_buyin}–${t.max_buyin} · ${t.max_seats}-max · <span class="${full ? 'text-amber-400' : 'text-emerald-300'}">${t.seated}/${t.max_seats} seated</span>${watching}</div>
             </div>
-            <button onclick="openTable('${t.id}')" class="shrink-0 bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">${t.is_private ? 'Join' : 'Open'}</button>
+            <div class="flex gap-2 shrink-0">
+              ${watchBtn}
+              ${ME ? `<button onclick="openTable('${t.id}')" class="bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">${t.is_private ? 'Join' : 'Open'}</button>` : `<button onclick="openTable('${t.id}')" class="bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 font-semibold">Open</button>`}
+            </div>
           </div>`;
         }).join('');
         const userLine = ME
@@ -283,6 +298,7 @@
           min_buyin: Number($('cMin').value),
           max_buyin: Number($('cMax').value),
           visibility: $('cVis').value,
+          allow_spectators: $('cAllowSpec').checked,
           password: $('cVis').value === 'private' ? $('cPassword').value : '',
           whitelist: $('cVis').value === 'private' ? $('cWhitelist').value : '',
         };
@@ -301,15 +317,36 @@
     function openTable(id) {
       CURRENT_TABLE = id;
       stopStream();
-      $('app').innerHTML = '<p class="text-slate-400 mt-20 text-center">Joining table…</p>';
+      $('app').innerHTML = IS_SPECTATING
+        ? '<p class="text-slate-400 mt-20 text-center">Connecting as spectator…</p>'
+        : '<p class="text-slate-400 mt-20 text-center">Joining table…</p>';
       ES = new EventSource(`/api/tables/${id}/stream?token=${encodeURIComponent(TOKEN)}`);
       ES.onmessage = (ev) => { try { renderTable(JSON.parse(ev.data)); } catch (_) {} };
       // EventSource auto-reconnects; surface the gap quietly rather than freezing.
       ES.onerror = () => { if (ES && ES.readyState === 0) toast('Reconnecting…', 'info'); };
     }
+    async function watchTable(id) {
+      IS_SPECTATING = true;
+      $('app').innerHTML = '<p class="text-slate-400 mt-20 text-center">Connecting as spectator…</p>';
+      try {
+        await api(`/api/tables/${id}/spectate`, { method: 'POST', body: '{}' });
+        openTable(id);
+      } catch (e) {
+        IS_SPECTATING = false;
+        $('app').innerHTML = `
+          <div class="mt-16 text-center">
+            <p class="text-rose-300 mb-3">${escapeHtml(e.message)}</p>
+            <button onclick="showLobby()" class="bg-slate-700 hover:bg-slate-600 rounded-lg px-4 py-2 text-sm">← Back to lobby</button>
+          </div>`;
+      }
+    }
     function stopStream() {
       if (ES) { ES.close(); ES = null; }
       if (TIMER_INT) { clearInterval(TIMER_INT); TIMER_INT = null; }
+    }
+    function showLobby() {
+      IS_SPECTATING = false;
+      _showLobby();
     }
 
     function seatPosition(i, n) {
@@ -326,6 +363,8 @@
     function renderTable(view) {
       LAST_VIEW = view;
       const t = view.table;
+      const isSpec = !!view.isSpectator; // server-authoritative spectator flag
+      IS_SPECTATING = isSpec;
       const you = view.you.seat;
       const seats = view.seats;
       const n = seats.length;
@@ -377,7 +416,7 @@
               <div class="text-[11px] text-amber-300 chip-pill rounded px-1 inline-block mt-0.5">${s.stack}${s.folded ? ' · folded' : ''}${s.allIn ? ' · all-in' : ''}</div>
               <div class="mt-1 flex gap-0.5 justify-center" style="transform:scale(.62);transform-origin:center">${cards}</div>
               ${s.committed ? `<div class="text-[10px] text-slate-200 mt-0.5">bet ${s.committed}</div>` : ''}
-            ` : `<button onclick="startBuyin(${s.seat_no})" class="text-xs text-slate-400 hover:text-emerald-300 py-3 w-full">Sit here</button>`}
+            ` : (isSpec ? `<div class="py-3 text-xs text-slate-600 text-center">Empty</div>` : `<button onclick="startBuyin(${s.seat_no})" class="text-xs text-slate-400 hover:text-emerald-300 py-3 w-full">Sit here</button>`)}
           </div>`;
       }).join('');
 
@@ -390,8 +429,12 @@
       $('app').innerHTML = `
         <div class="flex items-center justify-between mb-3">
           <button onclick="showLobby()" class="text-sm text-slate-400 hover:text-white px-2 py-1">← Lobby</button>
-          <div class="text-sm text-slate-200 truncate px-2">${escapeHtml(t.name)} · <span class="text-slate-400">${t.sb}/${t.bb}</span></div>
-          <button onclick="cashOut()" class="text-sm bg-slate-700 hover:bg-slate-600 rounded px-3 py-1">Cash out</button>
+          <div class="text-sm text-slate-200 truncate px-2 flex items-center gap-2">
+            ${isSpec ? '<span class="text-xs bg-slate-700 border border-slate-500 rounded-full px-2 py-0.5 shrink-0">👁 Spectating</span>' : ''}
+            <span class="truncate">${escapeHtml(t.name)} · <span class="text-slate-400">${t.sb}/${t.bb}</span></span>
+            ${t.spectator_count > 0 ? `<span class="text-xs text-slate-500 shrink-0">${t.spectator_count} watching</span>` : ''}
+          </div>
+          ${isSpec ? '' : '<button onclick="cashOut()" class="text-sm bg-slate-700 hover:bg-slate-600 rounded px-3 py-1">Cash out</button>'}
         </div>
         <div class="flex items-center justify-center gap-2 mb-2">
           <span class="phase-pill rounded-full px-3 py-0.5 text-xs font-semibold ${showdown ? 'text-amber-300' : 'text-emerald-300'}">${phase}</span>
@@ -461,6 +504,7 @@
     // ── Action bar (fixed, thumb-reachable on mobile) ──────────────────────
     function renderActionBar(view) {
       const old = $('actionBar'); if (old) old.remove();
+      if (view.isSpectator) return; // spectators never get action controls
       const hand = view.hand;
       if (!hand || !hand.legal) return;
       const L = hand.legal;
