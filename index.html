@@ -2284,6 +2284,8 @@
           <p class="modalNote">List your dapp on the Usernode homepage. Submitting burns a one-time on-chain fee to the Community Fund Reserve. The fee is non-refundable. Once the payment is confirmed on-chain, your dapp is published to the homepage automatically — no review step.</p>
           <label class="fieldLabel" for="f_name">Name *</label>
           <input class="fieldInput" id="f_name" maxlength="80" placeholder="My Cool Dapp" />
+          <label class="fieldLabel" for="f_display_name">Display name <span style="font-weight:400;opacity:.7">(optional)</span></label>
+          <input class="fieldInput" id="f_display_name" maxlength="80" placeholder="Friendlier name shown on the homepage" />
           <label class="fieldLabel" for="f_desc">Description</label>
           <textarea class="fieldTextarea" id="f_desc" maxlength="280" placeholder="One line about what it does."></textarea>
           <label class="fieldLabel" for="f_author">Author</label>
@@ -2511,7 +2513,7 @@
       }
 
       function fallbackBadge(dapp) {
-        const name = (dapp.name || "").trim();
+        const name = dappDisplayName(dapp);
         const badge = document.createElement("div");
         badge.className = "dappLogoFallback";
         badge.style.background = fallbackColor(name || "?");
@@ -2556,11 +2558,17 @@
 
       // Case-insensitive substring match across the visible/searchable text of
       // each dapp. Returns the list unchanged when there's no active query.
+      // Returns the string to display for a dapp's name: displayName when set,
+      // falling back to name. Use this everywhere names appear in the UI.
+      function dappDisplayName(dapp) {
+        return (dapp.displayName || dapp.name || "").trim() || "(unnamed)";
+      }
+
       function filterApps(apps) {
         const q = searchQuery.trim().toLowerCase();
         if (!q) return apps;
         return apps.filter((d) => {
-          const hay = [d.name, d.description, d.author, d.category]
+          const hay = [d.displayName, d.name, d.description, d.author, d.category]
             .filter(Boolean)
             .join(" ")
             .toLowerCase();
@@ -2575,7 +2583,7 @@
           const sb = statsMap[b.pubkey] || { users: 0, txns: 0 };
           switch (currentSort) {
             case "alpha":
-              return (a.name || "").localeCompare(b.name || "", undefined, {
+              return dappDisplayName(a).localeCompare(dappDisplayName(b), undefined, {
                 sensitivity: "base",
               });
             case "users":
@@ -2610,7 +2618,7 @@
         link.href = dapp.url;
         link.target = "_blank";
         link.rel = "noopener";
-        link.setAttribute("aria-label", `Preview ${dapp.name || "dapp"}`);
+        link.setAttribute("aria-label", `Preview ${dappDisplayName(dapp)}`);
         link.addEventListener("keydown", (e) => {
           if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
             e.preventDefault();
@@ -2630,7 +2638,7 @@
 
         const name = document.createElement("div");
         name.className = "name";
-        name.textContent = dapp.name || "(unnamed)";
+        name.textContent = dappDisplayName(dapp);
         nameGroup.appendChild(name);
         return nameGroup;
       }
@@ -2689,7 +2697,7 @@
         launchBtn.textContent = "Launch";
         launchBtn.setAttribute("role", "button");
         launchBtn.setAttribute("tabindex", "0");
-        launchBtn.setAttribute("aria-label", `Launch ${dapp.name || "dapp"}`);
+        launchBtn.setAttribute("aria-label", `Launch ${dappDisplayName(dapp)}`);
         launchBtn.addEventListener("keydown", (e) => {
           if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
             e.preventDefault();
@@ -2836,7 +2844,7 @@
 
         const name = document.createElement("div");
         name.className = "name cardName";
-        name.textContent = dapp.name || "(unnamed)";
+        name.textContent = dappDisplayName(dapp);
         body.appendChild(name);
 
         const tagRow = makeTagRow(dapp);
@@ -2869,21 +2877,11 @@
         return li;
       }
 
-      // Category filter: maps each tab to the exact dapp display names it
-      // shows. "All" is special-cased to show everything. Matching is by
-      // display name so the filter composes cleanly with sorting/search.
-      const CATEGORY_NAMES = {
-        Game: ["Falling Sands", "Last One Wins", "Mini Minecraft"],
-        Utility: ["Echo Diagnostic"],
-        Market: ["Opinion Market"],
-      };
       let activeCategory = "All";
 
       function filterByCategory(dapps) {
         if (activeCategory === "All") return dapps;
-        const allowed = CATEGORY_NAMES[activeCategory];
-        if (!allowed) return dapps;
-        return dapps.filter((d) => allowed.includes((d.name || "").trim()));
+        return dapps.filter((d) => (d.category || "").trim() === activeCategory);
       }
 
       function renderDapps(dapps) {
@@ -3328,7 +3326,7 @@
         previewShowcase.hidden = false;
         previewShowcase.setAttribute(
           "aria-label",
-          `${dapp.name || "dapp"} feature highlights`
+          `${dappDisplayName(dapp)} feature highlights`
         );
 
         const reduced = prefersReducedMotion();
@@ -3590,7 +3588,7 @@
           originEl ||
           document.activeElement;
 
-        previewNameEl.textContent = dapp.name || "(unnamed)";
+        previewNameEl.textContent = dappDisplayName(dapp);
 
         previewLogo.textContent = "";
         previewLogo.appendChild(makeLogo(dapp));
@@ -3859,7 +3857,7 @@
               if (downTarget.closest(".launchBtn")) {
                 // Tapped the Launch button → open the hosted dapp.
                 launchDapp(dapp);
-                showLaunchOverlay(dapp.name || "");
+                showLaunchOverlay(dappDisplayName(dapp));
               } else {
                 // Tapped anywhere else on the card → open the preview.
                 openPreview(dapp, li);
@@ -3982,6 +3980,7 @@
 
         continueBtn.addEventListener("click", async () => {
           showError(errForm, "");
+          const displayNameVal = F("f_display_name").value.trim();
           const body = {
             name: F("f_name").value.trim(),
             description: F("f_desc").value.trim(),
@@ -3990,6 +3989,7 @@
             pubkey: F("f_pubkey").value.trim(),
             category: F("f_category").value.trim(),
           };
+          if (displayNameVal) body.displayName = displayNameVal;
           if (!body.name) return showError(errForm, "Name is required.");
           if (!/^https:\/\//i.test(body.url)) return showError(errForm, "URL must start with https://");
           if (!body.pubkey.startsWith("ut1")) return showError(errForm, "Pubkey must start with ut1.");
@@ -4106,7 +4106,7 @@
         function showAlreadyListed(dapp) {
           current = { _reloadOnClose: true };
           const safe = (s) => String(s == null ? "" : s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
-          const name = dapp && dapp.name ? safe(dapp.name) : "This dapp";
+          const name = dapp ? safe(dappDisplayName(dapp)) : "This dapp";
           const link = dapp && dapp.url
             ? `<p class="modalNote"><a href="${safe(dapp.url)}" target="_blank" rel="noopener">Open ${name} ↗</a></p>`
             : "";
