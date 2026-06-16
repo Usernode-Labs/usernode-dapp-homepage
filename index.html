@@ -149,7 +149,7 @@
         min-height: 0;
       }
       .header {
-        padding: 18px 18px 12px;
+        padding: 18px 18px 0;
         border-bottom: 1px solid var(--border);
         background: var(--card);
         flex: 0 0 auto;
@@ -163,10 +163,10 @@
         justify-content: space-between;
         gap: 12px;
       }
-      /* Horizontal, horizontally-scrollable category filter tab bar. Sits at
-         the top of the card, directly above the brand/"DAPPS" header row. Each
-         tab narrows the list to a fixed set of dapps (matched by display name);
-         "All" shows everything. Filtering is client-side and instant. */
+      /* Horizontal, horizontally-scrollable category filter tab bar. Sits in
+         the secondary filter bar below the primary header. Each tab narrows
+         the list to a fixed set of dapps (matched by display name); "All"
+         shows everything. Filtering is client-side and instant. */
       .categoryBar {
         display: flex;
         align-items: center;
@@ -176,8 +176,8 @@
         background: var(--card);
         flex: 0 0 auto;
         position: sticky;
-        top: 0;
-        z-index: 11;
+        top: 125px;
+        z-index: 9;
         overflow-x: auto;
         overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
@@ -649,7 +649,10 @@
         position: relative;
         display: flex;
         align-items: center;
-        padding: 10px 12px 4px;
+        padding: 0 12px;
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+        flex: 0 0 auto;
       }
       .searchIcon {
         position: absolute;
@@ -669,9 +672,10 @@
         background: var(--bg);
         border: 1px solid var(--border);
         border-radius: 8px;
-        padding: 8px 32px 8px 32px;
+        padding: 9px 32px 9px 32px;
         outline: none;
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        margin: 10px 0;
       }
       .searchInput::placeholder {
         color: var(--muted);
@@ -1794,7 +1798,9 @@
         display: flex;
         align-items: center;
         gap: 6px;
-        margin-top: 12px;
+        flex: 1 1 auto;
+        justify-content: center;
+        order: 0;
       }
       .viewTab {
         appearance: none;
@@ -2042,6 +2048,11 @@
                 <span class="brandName">DAPPS</span>
               </a>
             </div>
+            <div class="viewTabs" role="tablist" aria-label="Views">
+              <button class="viewTab active" id="tabDapps" type="button" role="tab" aria-selected="true">Dapps</button>
+              <button class="viewTab" id="tabFeed" type="button" role="tab" aria-selected="false">Feed</button>
+              <span class="stagingBadge" id="stagingBadge" hidden title="You are viewing staging mock data">Staging</span>
+            </div>
             <div class="headerButtonRow">
               <a class="navBtn" id="goExplorerBtn" href="#/explorer" title="Open the block explorer">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
@@ -2098,11 +2109,6 @@
                 </div>
               </div>
             </div>
-          </div>
-          <div class="viewTabs" role="tablist" aria-label="Views">
-            <button class="viewTab active" id="tabDapps" type="button" role="tab" aria-selected="true">Dapps</button>
-            <button class="viewTab" id="tabFeed" type="button" role="tab" aria-selected="false">Feed</button>
-            <span class="stagingBadge" id="stagingBadge" hidden title="You are viewing staging mock data">Staging</span>
           </div>
         </div>
         <div class="searchBar">
