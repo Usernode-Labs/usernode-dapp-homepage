@@ -49,6 +49,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
 const MINECRAFT_PATH = path.join(PUBLIC_DIR, "minecraft.html");
 const TRIVIA_PATH = path.join(PUBLIC_DIR, "trivia.html");
+const STUMBLE_PATH = path.join(PUBLIC_DIR, "stumble.html");
 
 // Static content-type lookup for screenshot assets served from public/.
 const STATIC_CONTENT_TYPES = {
@@ -107,6 +108,11 @@ const pgPool = (PgPool && process.env.DATABASE_URL)
   ? new PgPool({ connectionString: process.env.DATABASE_URL })
   : null;
 const MICROBLOG_ENABLED = !!pgPool;
+// Stumble game high-score leaderboard (Postgres-backed, public reads, auth
+// writes). Shares the same DATABASE_URL gating as the micro-blog feed.
+const STUMBLE_ENABLED = !!pgPool;
+const STUMBLE_LEADERBOARD_LIMIT = Number(process.env.STUMBLE_LEADERBOARD_LIMIT) || 10;
+const STUMBLE_MAX_SCORE = Number(process.env.STUMBLE_MAX_SCORE) || 10000000;
 if (pgPool) {
   // A pool-level error (dropped backend connection, etc.) must not crash the
   // process — log and let the next query re-establish.
@@ -841,6 +847,9 @@ if (pgPool) {
   microblogBootstrap()
     .then(() => console.log(`[microblog] schema ready${IS_STAGING ? " (staging seed on)" : ""}`))
     .catch((e) => console.warn(`[microblog] bootstrap failed: ${e.message}`));
+  stumbleBootstrap()
+    .then(() => console.log(`[stumble] schema ready${IS_STAGING ? " (staging seed on)" : ""}`))
+    .catch((e) => console.warn(`[stumble] bootstrap failed: ${e.message}`));
 } else {
   console.log("[microblog] DATABASE_URL not set — feed disabled (homepage unaffected)");
 }
@@ -1551,6 +1560,184 @@ function mbConvert(req, res, user) {
   });
 }
 
+// ── Stumble game leaderboard ─────────────────────────────────────────────────
+// A real-time high-scores board for the Stumble game. Backed by a single public
+// Postgres table (stumble_scores), one best-score row per player keyed on the
+// platform user id. Reads (GET /api/stumble/leaderboard) are public; writes
+// (POST /api/stumble/score) require a verified platform token. The submit is an
+// upsert that keeps the max, so a lower score can never overwrite a higher one.
+// Shares the micro-blog's DATABASE_URL gating — disabled (503) when no DB.
+
+async function stumbleBootstrap() {
+  if (!pgPool) return;
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS stumble_scores (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      username TEXT NOT NULL,
+      best_score INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  // Public table (an in-app-visible leaderboard) — no 'staging:private' marker.
+  await pgPool.query(
+    `CREATE INDEX IF NOT EXISTS stumble_scores_best_idx ON stumble_scores (best_score DESC, updated_at ASC)`
+  );
+  if (IS_STAGING) await stumbleSeedStaging();
+}
+
+// Seed an obviously-fake top-10 so the leaderboard renders in staging previews
+// (the table is created empty by the boot migration). Idempotent via fixed
+// user_ids + ON CONFLICT DO NOTHING; a strict no-op outside staging (caller-gated).
+async function stumbleSeedStaging() {
+  const rows = [
+    ["staging-demo-1", "staging-demo-satoshi_fan", 9420],
+    ["staging-demo-2", "staging-demo-block_ninja", 8730],
+    ["staging-demo-3", "staging-demo-gwei_whisperer", 7980],
+    ["staging-demo-4", "staging-demo-merkle_mary", 7110],
+    ["staging-demo-5", "staging-demo-hodl_hannah", 6240],
+    ["staging-demo-6", "staging-demo-nonce_sense", 5300],
+    ["staging-demo-7", "staging-demo-gas_goblin", 4180],
+    ["staging-demo-8", "staging-demo-cold_storage_carl", 3050],
+    ["staging-demo-9", "staging-demo-degen_dave", 1620],
+    ["staging-demo-10", "staging-demo-newbie_nina", 410],
+  ];
+  try {
+    for (const [uid, uname, score] of rows) {
+      await pgPool.query(
+        `INSERT INTO stumble_scores (user_id, username, best_score)
+         VALUES ($1, $2, $3) ON CONFLICT (user_id) DO NOTHING`,
+        [uid, uname, score]
+      );
+    }
+    console.log("[stumble] staging seed applied");
+  } catch (e) {
+    console.warn(`[stumble] staging seed failed: ${e.message}`);
+  }
+}
+
+// ── Pure helpers (unit-tested; no DB) ─────────────────────────────────────────
+
+// The score that should be stored after a submit — never lowers an existing best.
+function stumbleBestScore(existing, incoming) {
+  const a = Number.isFinite(existing) ? existing : 0;
+  const b = Number.isFinite(incoming) ? incoming : 0;
+  return Math.max(a, b);
+}
+
+// Normalize a client-reported score → a clamped non-negative integer, or null
+// when it isn't a usable number. Caps at STUMBLE_MAX_SCORE.
+function normalizeStumbleScore(raw) {
+  const n =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string" && raw.trim() !== ""
+        ? Number(raw)
+        : NaN;
+  if (!Number.isFinite(n)) return null;
+  const int = Math.floor(n);
+  if (int < 0) return null;
+  return Math.min(int, STUMBLE_MAX_SCORE);
+}
+
+// Rank best-per-player rows into the leaderboard display shape. Ordering:
+// best_score DESC, then earliest updated_at (whoever reached the score first),
+// then username for a fully stable order. Assigns 1-based ranks.
+function rankStumbleRows(rows, limit) {
+  const sorted = (rows || []).slice().sort((a, b) => {
+    const bs = (b.best_score || 0) - (a.best_score || 0);
+    if (bs !== 0) return bs;
+    const at = new Date(a.updated_at || 0).getTime();
+    const bt = new Date(b.updated_at || 0).getTime();
+    if (at !== bt) return at - bt;
+    return String(a.username || "").localeCompare(String(b.username || ""));
+  });
+  const max = typeof limit === "number" && limit > 0 ? limit : sorted.length;
+  const out = [];
+  for (let i = 0; i < sorted.length && i < max; i++) {
+    out.push({ rank: i + 1, username: sorted[i].username, score: sorted[i].best_score });
+  }
+  return out;
+}
+
+// ── Stumble API ───────────────────────────────────────────────────────────────
+// GET  /api/stumble/leaderboard — public (top players by best score)
+// POST /api/stumble/score       — auth (upsert keeping the max; returns best+rank)
+
+function stumbleRouter(req, res, pathname, urlObj) {
+  if (!STUMBLE_ENABLED) {
+    return sendJson(res, 503, { error: "The leaderboard is not available in this environment." });
+  }
+  const user = userFromReq(req, urlObj);
+  const method = req.method;
+
+  const run = (fn) => Promise.resolve()
+    .then(fn)
+    .catch((e) => {
+      console.warn(`[stumble] ${method} ${pathname}: ${e.message}`);
+      if (!res.headersSent) sendJson(res, 500, { error: "Internal error." });
+    });
+
+  if (pathname === "/api/stumble/leaderboard" && method === "GET") {
+    return run(() => stumbleLeaderboard(res, urlObj));
+  }
+  if (pathname === "/api/stumble/score" && method === "POST") {
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+    return stumbleSubmitScore(req, res, user);
+  }
+  return sendJson(res, 404, { error: "Not found" });
+}
+
+async function stumbleLeaderboard(res, urlObj) {
+  const limit = Math.min(
+    Math.max(parseInt(urlObj.searchParams.get("limit"), 10) || STUMBLE_LEADERBOARD_LIMIT, 1),
+    50
+  );
+  const { rows } = await pgPool.query(
+    `SELECT username, best_score, updated_at FROM stumble_scores
+     ORDER BY best_score DESC, updated_at ASC LIMIT $1`,
+    [limit]
+  );
+  return sendJson(res, 200, { players: rankStumbleRows(rows, limit), staging: IS_STAGING });
+}
+
+function stumbleSubmitScore(req, res, user) {
+  return readJsonBody(req, 16 * 1024, (err, body) => {
+    if (err) return sendJson(res, 400, { error: err.message });
+    const score = normalizeStumbleScore(body && body.score);
+    if (score == null) {
+      return sendJson(res, 400, { error: "Score must be a non-negative integer." });
+    }
+    Promise.resolve()
+      .then(async () => {
+        // Keep the max; only bump updated_at when the best actually improves so
+        // ties keep "first to reach the score" ahead.
+        const { rows } = await pgPool.query(
+          `INSERT INTO stumble_scores (user_id, username, best_score, updated_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (user_id) DO UPDATE
+             SET best_score = GREATEST(stumble_scores.best_score, EXCLUDED.best_score),
+                 username = EXCLUDED.username,
+                 updated_at = CASE WHEN EXCLUDED.best_score > stumble_scores.best_score
+                                   THEN now() ELSE stumble_scores.updated_at END
+           RETURNING best_score`,
+          [user.id, user.username, score]
+        );
+        const best = rows[0] ? rows[0].best_score : score;
+        const rk = await pgPool.query(
+          `SELECT COUNT(*)::int AS ahead FROM stumble_scores WHERE best_score > $1`,
+          [best]
+        );
+        const rank = (rk.rows[0] ? rk.rows[0].ahead : 0) + 1;
+        return sendJson(res, 200, { best_score: best, rank });
+      })
+      .catch((e) => {
+        console.warn(`[stumble] POST score: ${e.message}`);
+        if (!res.headersSent) sendJson(res, 500, { error: "Internal error." });
+      });
+  });
+}
+
 // ── Trivia Quiz ───────────────────────────────────────────────────────────────
 // A public, server-graded trivia game. The question bank ships in
 // quiz-questions.json (curated content, committed). Sessions live in memory
@@ -1961,6 +2148,14 @@ const server = http.createServer((req, res) => {
     return microblogRouter(req, res, pathname, urlObj);
   }
 
+  // ── Stumble leaderboard API ─────────────────────────────────────────────────
+  // Handled before the GET/HEAD-only guard since score submit is a POST. Reads
+  // are public; the score write requires a verified platform token.
+  if (pathname.startsWith("/api/stumble/")) {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    return stumbleRouter(req, res, pathname, urlObj);
+  }
+
   // ── Trivia Quiz API (all public, no auth — matches the app's posture) ───────
 
   // Public config the page needs to render copy + rules.
@@ -2212,6 +2407,31 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  // Stumble game — self-contained page (same pattern as /minecraft, /trivia).
+  // Gameplay is a later phase; this page wires the score-submission integration
+  // point against POST /api/stumble/score so the leaderboard is exercisable.
+  if (pathname === "/stumble" || pathname === "/stumble.html") {
+    return fs.readFile(STUMBLE_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read stumble.html: ${err.message}\n`
+        );
+      }
+      const headers = {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      };
+      if (req.method === "HEAD") {
+        res.writeHead(200, { ...headers, "content-length": buf.length });
+        return res.end();
+      }
+      return send(res, 200, headers, buf);
+    });
+  }
+
   if (pathname === "/dapps.json") {
     return fs.readFile(DAPPS_PATH, (err, buf) => {
       if (err) {
@@ -2318,6 +2538,10 @@ module.exports = {
   reconcileSubmissionPayments,
   expireStaleSubmissions,
   validateSubmissionInput,
+  // Stumble leaderboard pure helpers (exercised by test/stumble.test.js)
+  stumbleBestScore,
+  normalizeStumbleScore,
+  rankStumbleRows,
   // state accessors for assertions
   _getSubmissions: () => submissions,
   _getSubmissionsVersion: () => submissionsVersion,

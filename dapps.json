@@ -243,6 +243,35 @@
           "body": "Top scorers who add a Usernode wallet are flagged eligible — payout in a later phase."
         }
       ]
+    },
+    {
+      "name": "Stumble",
+      "description": "A fast reflex game — keep your footing and rack up the highest score.",
+      "longDescription": "Stumble is a quick-reflex arcade game. Finish a run and your best score lands on a global, real-time leaderboard. Check the standings any time straight from the directory: a ranking icon next to the Launch button opens the current high scores, refreshed live while you watch.",
+      "author": "Usernode Community",
+      "url": "/stumble",
+      "leaderboardKey": "stumble",
+      "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#f59e0b'/><path d='M20 8l3.2 6.5 7.2 1-5.2 5.1 1.2 7.2L20 24.4l-6.6 3.4 1.2-7.2-5.2-5.1 7.2-1z' fill='#fff'/></svg>",
+      "category": "Game",
+      "version": "1.0.0",
+      "updated": "2026-06-16",
+      "highlights": [
+        {
+          "icon": "🏆",
+          "title": "Real-time leaderboard",
+          "body": "Top players' usernames, high scores, and ranks — updated live while open."
+        },
+        {
+          "icon": "⚡",
+          "title": "Instant standings",
+          "body": "A ranking icon next to Launch opens the current high scores without leaving the directory."
+        },
+        {
+          "icon": "🥇",
+          "title": "Best score wins",
+          "body": "Only your personal best is kept, so the board always shows top form."
+        }
+      ]
     }
   ]
 }

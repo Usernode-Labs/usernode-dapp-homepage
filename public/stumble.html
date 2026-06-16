@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stumble</title>
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: radial-gradient(120% 120% at 50% 0%, #fef3c7 0%, #fff7ed 40%, #fffbeb 100%);
+        color: #1f2937;
+        padding: 24px;
+      }
+      .card {
+        width: 100%;
+        max-width: 460px;
+        background: #fff;
+        border: 1px solid #f3e8d0;
+        border-radius: 20px;
+        box-shadow: 0 18px 50px rgba(245, 158, 11, 0.18);
+        padding: 28px;
+        text-align: center;
+      }
+      .logo {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 12px;
+        display: block;
+      }
+      h1 { margin: 0 0 4px; font-size: 26px; }
+      .sub { margin: 0 0 20px; color: #6b7280; font-size: 14px; }
+      .score {
+        font-size: 52px;
+        font-weight: 800;
+        color: #f59e0b;
+        margin: 8px 0 16px;
+        font-variant-numeric: tabular-nums;
+      }
+      button {
+        font: inherit;
+        font-weight: 600;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 18px;
+        cursor: pointer;
+        margin: 4px;
+      }
+      .primary { background: #f59e0b; color: #fff; }
+      .primary:hover { background: #d97706; }
+      .ghost { background: #f3f4f6; color: #374151; }
+      .ghost:hover { background: #e5e7eb; }
+      .status {
+        margin-top: 16px;
+        min-height: 20px;
+        font-size: 14px;
+        color: #6b7280;
+      }
+      .status.ok { color: #15803d; }
+      .status.err { color: #b91c1c; }
+      .note {
+        margin-top: 18px;
+        font-size: 12px;
+        color: #9ca3af;
+        line-height: 1.5;
+      }
+      a.back { color: #b45309; text-decoration: none; }
+      a.back:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <svg class="logo" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+        <rect width="40" height="40" rx="10" fill="#f59e0b" />
+        <path d="M20 8l3.2 6.5 7.2 1-5.2 5.1 1.2 7.2L20 24.4l-6.6 3.4 1.2-7.2-5.2-5.1 7.2-1z" fill="#fff" />
+      </svg>
+      <h1>Stumble</h1>
+      <p class="sub">Early access — full gameplay is on the way.</p>
+
+      <div class="score" id="score">0</div>
+      <div>
+        <button class="ghost" id="rollBtn" type="button">Take a run</button>
+        <button class="primary" id="submitBtn" type="button">Submit score</button>
+      </div>
+      <div class="status" id="status"></div>
+
+      <p class="note">
+        Your best run lands on the global, real-time leaderboard — open it any
+        time from the ranking icon next to <strong>Launch</strong> on the
+        directory. <a class="back" href="/">← Back to apps</a>
+      </p>
+    </div>
+
+    <script>
+      // The platform injects the session token as ?token= on the iframe load;
+      // we forward it on writes via the x-usernode-token header (same mechanism
+      // as the directory's micro-blog composer). Reads need no token.
+      const TOKEN = new URLSearchParams(location.search).get("token") || "";
+
+      const scoreEl = document.getElementById("score");
+      const statusEl = document.getElementById("status");
+      let current = 0;
+
+      function setStatus(msg, kind) {
+        statusEl.textContent = msg || "";
+        statusEl.className = "status" + (kind ? " " + kind : "");
+      }
+
+      // Placeholder "gameplay": roll a score for a run until real Stumble ships.
+      document.getElementById("rollBtn").addEventListener("click", () => {
+        current = Math.floor(Math.random() * 9500) + 100;
+        scoreEl.textContent = current.toLocaleString();
+        setStatus("Nice run! Submit it to the leaderboard.", "");
+      });
+
+      document.getElementById("submitBtn").addEventListener("click", async () => {
+        if (!current) {
+          setStatus("Take a run first to get a score.", "err");
+          return;
+        }
+        if (!TOKEN) {
+          setStatus("Sign in on Usernode to record your score.", "err");
+          return;
+        }
+        setStatus("Submitting…", "");
+        try {
+          const res = await fetch("/api/stumble/score", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-usernode-token": TOKEN,
+            },
+            body: JSON.stringify({ score: current }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setStatus(data.error || "Could not submit score.", "err");
+            return;
+          }
+          setStatus(
+            `Saved! Best score ${Number(data.best_score).toLocaleString()} — rank #${data.rank}.`,
+            "ok"
+          );
+        } catch (e) {
+          setStatus("Network error submitting score.", "err");
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -762,6 +762,82 @@
         filter: brightness(1.12);
         box-shadow: 0 0 18px rgba(167, 139, 250, 0.75);
       }
+      /* Ranking icon — opens the Stumble high-scores modal. Sits next to Launch. */
+      .rankIcon {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        margin-left: 6px;
+        border-radius: 6px;
+        color: #b45309;
+        background: rgba(245, 158, 11, 0.14);
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease;
+      }
+      .rankIcon svg { width: 15px; height: 15px; }
+      .rankIcon:hover,
+      .rankIcon:focus-visible {
+        background: rgba(245, 158, 11, 0.28);
+        color: #92400e;
+        outline: none;
+      }
+      html.dark .rankIcon { color: #fbbf24; background: rgba(245, 158, 11, 0.18); }
+      html.dark .rankIcon:hover,
+      html.dark .rankIcon:focus-visible { background: rgba(245, 158, 11, 0.32); color: #fcd34d; }
+      /* Stumble leaderboard modal list */
+      .stumbleHead {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .stumbleLive {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .stumbleLive .liveDot { position: static; }
+      .stumbleList { list-style: none; margin: 8px 0 0; padding: 0; }
+      .stumbleRow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      .stumbleRow:last-child { border-bottom: none; }
+      .stumbleRank {
+        flex: 0 0 auto;
+        width: 26px;
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-size: 12px;
+        font-weight: 700;
+        background: var(--border);
+        color: var(--fg);
+      }
+      .stumbleRow.top1 .stumbleRank { background: #fbbf24; color: #1f2937; }
+      .stumbleRow.top2 .stumbleRank { background: #cbd5e1; color: #1f2937; }
+      .stumbleRow.top3 .stumbleRank { background: #d8a777; color: #1f2937; }
+      .stumbleName {
+        flex: 1 1 auto;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .stumbleScore { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-weight: 700; color: #b45309; }
+      html.dark .stumbleScore { color: #fbbf24; }
+      .stumbleEmpty, .stumbleUnavailable { color: var(--muted); font-size: 14px; padding: 14px 4px; text-align: center; }
       .tagRow {
         display: flex;
         align-items: center;
@@ -2354,6 +2430,24 @@
       </div>
     </div>
 
+    <!-- Stumble high-scores leaderboard (opened by the ranking icon). -->
+    <div class="modalOverlay" id="stumbleModal" hidden role="dialog" aria-modal="true" aria-label="Stumble high scores">
+      <div class="modalCard">
+        <div class="modalHead">
+          <div class="modalTitle">Stumble — High scores</div>
+          <button class="modalClose" id="stumbleClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="modalBody">
+          <div class="stumbleHead">
+            <span class="stumbleLive" id="stumbleLive" hidden><span class="liveDot"></span>Live</span>
+          </div>
+          <ol class="stumbleList" id="stumbleList"></ol>
+          <div class="stumbleEmpty" id="stumbleEmpty" hidden>No scores yet — be the first to stumble!</div>
+          <div class="stumbleUnavailable" id="stumbleUnavailable" hidden>The leaderboard is unavailable in this environment.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Centrally-hosted Usernode bridge (used to request the fee transfer).
          The server verifies payment from chain state, so a manual transfer
          works too if the bridge is unavailable. -->
@@ -2708,6 +2802,45 @@
         return launchBtn;
       }
 
+      // Ranking icon shown only on rows that opt in via dapps.json
+      // (leaderboardKey === "stumble"). Opens the high-scores modal. The list's
+      // pointer handler swallows native clicks, so taps are routed in end()
+      // below; keyboard activation is handled here.
+      function makeRankIcon(dapp) {
+        if (!dapp || dapp.leaderboardKey !== "stumble") return null;
+        if (stumbleAvailable === false) return null;
+        const btn = document.createElement("span");
+        btn.className = "rankIcon";
+        btn.setAttribute("role", "button");
+        btn.setAttribute("tabindex", "0");
+        btn.title = "High scores";
+        btn.setAttribute("aria-label", `View ${dappDisplayName(dapp)} high scores`);
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "2");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        svg.setAttribute("aria-hidden", "true");
+        svg.innerHTML =
+          '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1.5A3.5 3.5 0 0 0 7.5 11M17 6h3v1.5A3.5 3.5 0 0 1 16.5 11"/>';
+        btn.appendChild(svg);
+        btn.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+            e.preventDefault();
+            e.stopPropagation();
+            openStumbleModal(dapp);
+          }
+        });
+        return btn;
+      }
+
+      function appendRankIcon(container, dapp) {
+        const icon = makeRankIcon(dapp);
+        if (icon) container.appendChild(icon);
+      }
+
       function bannerSrc(dapp) {
         const b = typeof dapp.banner === "string" ? dapp.banner.trim() : "";
         if (b) return b;
@@ -2791,6 +2924,7 @@
         desc.textContent = dapp.description || "";
         descRow.appendChild(desc);
         descRow.appendChild(makeLaunchBtn(dapp));
+        appendRankIcon(descRow, dapp);
 
         body.appendChild(nameRow);
         body.appendChild(author);
@@ -2818,6 +2952,7 @@
         const stats = makeStats(dapp);
         if (stats) nameRow.appendChild(stats);
         nameRow.appendChild(makeLaunchBtn(dapp));
+        appendRankIcon(nameRow, dapp);
 
         body.appendChild(nameRow);
 
@@ -2860,6 +2995,7 @@
         const stats = makeStats(dapp);
         footer.appendChild(stats || document.createElement("span"));
         footer.appendChild(makeLaunchBtn(dapp));
+        appendRankIcon(footer, dapp);
         body.appendChild(footer);
 
         link.appendChild(banner);
@@ -3411,6 +3547,144 @@
         if (dapp && dapp.url) window.open(dapp.url, "_blank", "noopener");
       }
 
+      // ── Stumble high-scores leaderboard modal ──────────────────────────────
+      // null = unknown, true/false after the first leaderboard fetch. When false
+      // (no DB configured → API 503) the ranking icon is suppressed entirely.
+      let stumbleAvailable = null;
+      let stumblePollTimer = null;
+      const STUMBLE_POLL_MS = 5000;
+
+      function stumbleEls() {
+        return {
+          modal: document.getElementById("stumbleModal"),
+          list: document.getElementById("stumbleList"),
+          empty: document.getElementById("stumbleEmpty"),
+          unavailable: document.getElementById("stumbleUnavailable"),
+          live: document.getElementById("stumbleLive"),
+        };
+      }
+
+      function hideAllRankIcons() {
+        document.querySelectorAll(".rankIcon").forEach((el) => el.remove());
+      }
+
+      function renderStumbleRows(players) {
+        const { list, empty, unavailable, live } = stumbleEls();
+        if (!list) return;
+        unavailable.hidden = true;
+        list.textContent = "";
+        if (!players || players.length === 0) {
+          empty.hidden = false;
+          live.hidden = false;
+          return;
+        }
+        empty.hidden = true;
+        live.hidden = false;
+        for (const p of players) {
+          const liRow = document.createElement("li");
+          liRow.className = "stumbleRow" + (p.rank <= 3 ? " top" + p.rank : "");
+          const rank = document.createElement("span");
+          rank.className = "stumbleRank";
+          rank.textContent = p.rank;
+          const name = document.createElement("span");
+          name.className = "stumbleName";
+          name.textContent = p.username || "(anonymous)";
+          const score = document.createElement("span");
+          score.className = "stumbleScore";
+          score.textContent = Number(p.score || 0).toLocaleString();
+          liRow.appendChild(rank);
+          liRow.appendChild(name);
+          liRow.appendChild(score);
+          list.appendChild(liRow);
+        }
+      }
+
+      async function fetchStumbleLeaderboard() {
+        const { list, empty, unavailable, live } = stumbleEls();
+        try {
+          const res = await fetch("/api/stumble/leaderboard", { cache: "no-store" });
+          if (res.status === 503) {
+            if (stumbleAvailable !== false) {
+              stumbleAvailable = false;
+              hideAllRankIcons();
+            }
+            if (list) list.textContent = "";
+            if (empty) empty.hidden = true;
+            if (live) live.hidden = true;
+            if (unavailable) unavailable.hidden = false;
+            stopStumblePolling();
+            return;
+          }
+          if (!res.ok) return;
+          stumbleAvailable = true;
+          const data = await res.json();
+          renderStumbleRows(data.players || []);
+        } catch (_) {
+          /* transient — keep last view, next poll retries */
+        }
+      }
+
+      function startStumblePolling() {
+        stopStumblePolling();
+        if (document.hidden) return;
+        stumblePollTimer = setInterval(fetchStumbleLeaderboard, STUMBLE_POLL_MS);
+      }
+
+      function stopStumblePolling() {
+        if (stumblePollTimer) {
+          clearInterval(stumblePollTimer);
+          stumblePollTimer = null;
+        }
+      }
+
+      function stumbleModalOpen() {
+        const { modal } = stumbleEls();
+        return modal && !modal.hidden;
+      }
+
+      function openStumbleModal() {
+        const { modal } = stumbleEls();
+        if (!modal) return;
+        modal.hidden = false;
+        document.body.style.overflow = "hidden";
+        fetchStumbleLeaderboard();
+        startStumblePolling();
+      }
+
+      function closeStumbleModal() {
+        const { modal } = stumbleEls();
+        if (!modal) return;
+        modal.hidden = true;
+        document.body.style.overflow = "";
+        stopStumblePolling();
+      }
+
+      (function stumbleModalWiring() {
+        const modal = document.getElementById("stumbleModal");
+        const closeBtn = document.getElementById("stumbleClose");
+        if (!modal) return;
+        if (closeBtn) closeBtn.addEventListener("click", closeStumbleModal);
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) closeStumbleModal();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && stumbleModalOpen()) closeStumbleModal();
+        });
+        // Pause polling when tab hidden; resume + refresh when visible again.
+        document.addEventListener("visibilitychange", () => {
+          if (!stumbleModalOpen()) return;
+          if (document.hidden) {
+            stopStumblePolling();
+          } else {
+            fetchStumbleLeaderboard();
+            startStumblePolling();
+          }
+        });
+        // One-time probe so the ranking icon can be suppressed where the
+        // leaderboard backend isn't configured (no DB → 503).
+        fetchStumbleLeaderboard();
+      })();
+
       // Format an ISO-ish date string into a friendly "Last updated" value.
       // Falls back to the raw string when it can't be parsed; null when empty.
       function formatUpdated(raw) {
@@ -3853,6 +4127,12 @@
             }
             const li = downTarget.closest("li");
             const dapp = li && li.__dapp;
+            // Tap on the ranking icon opens the high-scores modal, never navigates.
+            if (downTarget.closest(".rankIcon")) {
+              if (dapp) openStumbleModal(dapp);
+              downTarget = null;
+              return;
+            }
             if (dapp) {
               if (downTarget.closest(".launchBtn")) {
                 // Tapped the Launch button → open the hosted dapp.
