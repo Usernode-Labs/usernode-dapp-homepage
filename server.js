@@ -1277,9 +1277,6 @@ function microblogRouter(req, res, pathname, urlObj) {
   if (pathname === "/api/microblog/feed" && method === "GET") {
     return run(() => mbFeed(res, urlObj, user));
   }
-  if (pathname === "/api/microblog/leaderboard" && method === "GET") {
-    return run(() => mbLeaderboard(res, urlObj));
-  }
   if (pathname === "/api/microblog/me" && method === "GET") {
     if (!user) return sendJson(res, 401, { error: "Not authenticated" });
     return run(() => mbMe(res, user));
@@ -1342,16 +1339,6 @@ async function mbFeed(res, urlObj, user) {
     staging: IS_STAGING,
     max_len: MICROBLOG_MAX_POST_LEN,
   });
-}
-
-async function mbLeaderboard(res, urlObj) {
-  const limit = Math.min(Math.max(parseInt(urlObj.searchParams.get("limit"), 10) || 10, 1), 50);
-  const { rows } = await pgPool.query(
-    `SELECT username, points_earned::int AS points FROM microblog_points
-     WHERE points_earned > 0 ORDER BY points_earned DESC, username ASC LIMIT $1`,
-    [limit]
-  );
-  return sendJson(res, 200, { leaders: rows, staging: IS_STAGING });
 }
 
 async function mbMe(res, user) {

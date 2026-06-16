@@ -1926,25 +1926,8 @@
       .signinPrompt strong { font-size: 14.5px; }
       .signinPrompt span { font-size: 13px; color: var(--muted); }
 
-      .feedLayout { display: flex; gap: 14px; align-items: flex-start; }
-      .feedMain { flex: 1 1 auto; min-width: 0; display: grid; gap: 10px; }
-      .leaderboard {
-        flex: 0 0 200px;
-        border: 1px solid var(--card-item-border);
-        box-shadow: var(--card-item-shadow);
-        border-radius: 12px;
-        padding: 12px 14px;
-        background: var(--card);
-        position: sticky;
-        top: 0;
-      }
-      .leaderTitle { font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 10px; }
-      .leaderList { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: lb; }
-      .leaderList li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border: none; box-shadow: none; padding: 0; }
-      .leaderList li::before { counter-increment: lb; content: counter(lb); font-weight: 700; color: var(--muted); width: 16px; flex: 0 0 auto; }
-      .leaderName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .leaderPts { font-weight: 700; color: var(--accent); flex: 0 0 auto; }
-      .leaderEmpty { font-size: 12.5px; color: var(--muted); }
+      .feedLayout { display: block; }
+      .feedMain { display: grid; gap: 10px; }
 
       .post {
         border: 1px solid var(--card-item-border);
@@ -2001,11 +1984,6 @@
         padding: 10px 12px;
       }
       .convertInput:focus { outline: none; border-color: var(--accent); }
-
-      @media (max-width: 560px) {
-        .feedLayout { flex-direction: column; }
-        .leaderboard { flex: 1 1 auto; width: 100%; box-sizing: border-box; position: static; order: -1; }
-      }
     </style>
   </head>
   <body>
@@ -2150,11 +2128,6 @@
               <div class="feedEmpty" id="feedEmpty" hidden>No posts yet — be the first to post.</div>
               <div class="feedUnavailable" id="feedUnavailable" hidden>The feed is unavailable in this environment.</div>
             </div>
-            <aside class="leaderboard" id="leaderboard">
-              <div class="leaderTitle">Top contributors</div>
-              <ol id="leaderList" class="leaderList"></ol>
-              <div class="leaderEmpty" id="leaderEmpty" hidden>No points earned yet.</div>
-            </aside>
           </div>
         </div>
       </div>
@@ -4198,8 +4171,6 @@
         const feedList = document.getElementById("feedList");
         const feedEmpty = document.getElementById("feedEmpty");
         const feedUnavailable = document.getElementById("feedUnavailable");
-        const leaderList = document.getElementById("leaderList");
-        const leaderEmpty = document.getElementById("leaderEmpty");
 
         const convertModal = document.getElementById("convertModal");
         const openConvertBtn = document.getElementById("openConvertBtn");
@@ -4257,7 +4228,7 @@
         // ── Loaders ──
         async function refreshAll() {
           await loadMe();
-          await Promise.all([loadFeed(), loadLeaderboard()]);
+          await loadFeed();
         }
 
         async function loadMe() {
@@ -4327,23 +4298,6 @@
           }
         }
 
-        async function loadLeaderboard() {
-          try {
-            const r = await fetch(`${API}/leaderboard?limit=10`, { cache: "no-store" });
-            if (!r.ok) { leaderList.innerHTML = ""; leaderEmpty.hidden = false; return; }
-            const data = await r.json();
-            const leaders = (data && data.leaders) || [];
-            leaderList.innerHTML = "";
-            if (!leaders.length) { leaderEmpty.hidden = false; return; }
-            leaderEmpty.hidden = true;
-            for (const l of leaders) {
-              const li = document.createElement("li");
-              li.innerHTML = `<span class="leaderName">${esc(l.username)}</span><span class="leaderPts">${l.points}</span>`;
-              leaderList.appendChild(li);
-            }
-          } catch (_) { /* leave as-is */ }
-        }
-
         // ── Composer ──
         function syncCompose() {
           const len = composerText.value.length;
@@ -4368,7 +4322,7 @@
             if (!r.ok) throw new Error(data.error || "Could not post.");
             composerText.value = "";
             syncCompose();
-            await Promise.all([loadMe(), loadFeed(), loadLeaderboard()]);
+            await Promise.all([loadMe(), loadFeed()]);
           } catch (e) {
             composerError.textContent = e.message;
             composerError.hidden = false;
@@ -4399,7 +4353,6 @@
             if (num) num.textContent = data.like_count;
             // A like you give may have earned the author points — refresh your strip too.
             loadMe();
-            loadLeaderboard();
           } catch (_) {
             /* swallow — leave UI unchanged */
           } finally {
