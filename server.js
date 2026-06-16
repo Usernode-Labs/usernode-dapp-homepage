@@ -13,6 +13,16 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
+// `pg` is the app's single runtime dependency (see package.json). Require it
+// lazily/defensively so a stray local run without `npm install` still serves
+// the public homepage — pin routes degrade to 503 when the client is absent.
+let PgPool = null;
+try {
+  PgPool = require("pg").Pool;
+} catch (_) {
+  console.warn("[pins] 'pg' module not available — pin features disabled");
+}
+
 // ── .env loader ──────────────────────────────────────────────────────────────
 (function loadDotEnv() {
   const envPath = path.join(__dirname, ".env");
@@ -34,6 +44,7 @@ const INDEX_PATH = path.join(__dirname, "index.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
 const MINECRAFT_PATH = path.join(PUBLIC_DIR, "minecraft.html");
+const TRIVIA_PATH = path.join(PUBLIC_DIR, "trivia.html");
 
 // Static content-type lookup for screenshot assets served from public/.
 const STATIC_CONTENT_TYPES = {
@@ -54,6 +65,10 @@ const DAPPS_PATH = (() => {
   }
   return path.join(__dirname, "dapps.json");
 })();
+
+const JWT_SECRET = process.env.JWT_SECRET || "";
+const DATABASE_URL = process.env.DATABASE_URL || "";
+const IS_STAGING = process.env.USERNODE_ENV === "staging";
 
 // ── Submit-a-dapp config ──────────────────────────────────────────────────────
 // On-chain submission fee flow. All values are read from process.env with an
@@ -130,7 +145,10 @@ function proxyExplorer(req, res, subPath) {
       }
     );
     upReq.on("error", (err) => {
-      send(res, 502, { "content-type": "text/plain" }, `Explorer proxy error: ${err.message}`);
+      // Log the technical detail server-side; return a generic body so the
+      // upstream error text never leaks to the client.
+      console.warn(`[explorer-proxy] upstream error: ${err.message}`);
+      send(res, 502, { "content-type": "text/plain" }, "Upstream explorer unavailable");
     });
     if (bodyBuf) upReq.write(bodyBuf);
     upReq.end();
@@ -571,6 +589,208 @@ loadSubmissions();
   setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
 })();
 
+// ── Database (per-user dapp pins) ────────────────────────────────────────────
+// The homepage itself is public, but pinning a dapp is a per-user action, so it
+// needs the platform's Postgres (DATABASE_URL) + JWT auth (JWT_SECRET). Only the
+// /api/pins routes consult auth/DB; every existing route stays public.
+
+let pinsPool = null;   // pg.Pool once initialised
+let pinsReady = false; // true after a successful migration
+
+// dapp_pins is marked `staging:private` (see migration COMMENT) because a row
+// ties a Usernode identity to the dapps they personally favorite — that's
+// owner-only preference data, not public app content. Staging therefore gets
+// the table schema-only and must seed its own rows (IS_STAGING block below).
+const SEED_PINS = [
+  // Obviously-synthetic staging users pinning real dapps from dapps.json so the
+  // Pinned section + sorting can be exercised in a staging preview.
+  { user_id: "staging-demo-user-1", pubkey: "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms" }, // Opinion Market
+  { user_id: "staging-demo-user-1", pubkey: "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu" }, // Falling Sands
+  { user_id: "staging-demo-user-2", pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05" }, // Last One Wins
+];
+
+async function initPinsDb() {
+  if (!PgPool) return;
+  if (!DATABASE_URL) {
+    console.warn("[pins] DATABASE_URL not set — pin features disabled");
+    return;
+  }
+  try {
+    pinsPool = new PgPool({ connectionString: DATABASE_URL });
+    pinsPool.on("error", (err) => console.warn(`[pins] pool error: ${err.message}`));
+
+    await pinsPool.query(`
+      CREATE TABLE IF NOT EXISTS dapp_pins (
+        user_id     TEXT        NOT NULL,
+        dapp_pubkey TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, dapp_pubkey)
+      )
+    `);
+    await pinsPool.query(
+      `CREATE INDEX IF NOT EXISTS dapp_pins_user_id_idx ON dapp_pins (user_id)`
+    );
+    // staging:private — staging gets structure only, never prod rows.
+    await pinsPool.query(`COMMENT ON TABLE dapp_pins IS 'staging:private'`);
+
+    pinsReady = true;
+    console.log("[pins] dapp_pins table ready");
+
+    if (IS_STAGING) {
+      for (const p of SEED_PINS) {
+        await pinsPool.query(
+          `INSERT INTO dapp_pins (user_id, dapp_pubkey)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, dapp_pubkey) DO NOTHING`,
+          [p.user_id, p.pubkey]
+        );
+      }
+      console.log(`[pins] seeded ${SEED_PINS.length} staging demo pin(s)`);
+    }
+  } catch (e) {
+    pinsReady = false;
+    console.warn(`[pins] could not initialise database: ${e.message}`);
+  }
+}
+
+// ── JWT auth (built-in crypto, HS256 only) ───────────────────────────────────
+// The platform shell injects a `?token=…` JWT on iframe load; the frontend
+// forwards it via the `x-usernode-token` header. We verify HS256 against
+// JWT_SECRET without pulling in a `jsonwebtoken` dependency.
+
+function b64urlToBuf(str) {
+  const pad = str.length % 4 === 0 ? "" : "=".repeat(4 - (str.length % 4));
+  return Buffer.from(str.replace(/-/g, "+").replace(/_/g, "/") + pad, "base64");
+}
+
+function verifyJwt(token) {
+  if (!token || !JWT_SECRET) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+
+  let header;
+  try {
+    header = JSON.parse(b64urlToBuf(headerB64).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  if (!header || header.alg !== "HS256") return null;
+
+  const expected = crypto
+    .createHmac("sha256", JWT_SECRET)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest();
+  const got = b64urlToBuf(sigB64);
+  if (expected.length !== got.length || !crypto.timingSafeEqual(expected, got)) {
+    return null;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(b64urlToBuf(payloadB64).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  // Reject expired tokens (exp is seconds since epoch, per JWT spec).
+  if (payload && typeof payload.exp === "number" && payload.exp * 1000 <= Date.now()) {
+    return null;
+  }
+  return payload;
+}
+
+function getUser(req) {
+  const headerTok = req.headers["x-usernode-token"];
+  let token = Array.isArray(headerTok) ? headerTok[0] : headerTok;
+  if (!token) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      token = u.searchParams.get("token") || "";
+    } catch (_) {}
+  }
+  const payload = verifyJwt(token);
+  if (!payload || payload.id == null) return null;
+  return payload;
+}
+
+function jsonRes(res, status, obj) {
+  return send(
+    res,
+    status,
+    { "content-type": "application/json", "cache-control": "no-store" },
+    JSON.stringify(obj)
+  );
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      if (!chunks.length) return resolve(null);
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch (_) {
+        resolve(undefined); // signals malformed JSON
+      }
+    });
+    req.on("error", () => resolve(null));
+  });
+}
+
+async function handlePins(req, res, urlObj) {
+  const user = getUser(req);
+  if (!user) return jsonRes(res, 401, { error: "auth required" });
+  if (!pinsReady) return jsonRes(res, 503, { error: "pins unavailable" });
+  const userId = String(user.id);
+
+  try {
+    if (req.method === "GET") {
+      const { rows } = await pinsPool.query(
+        `SELECT dapp_pubkey FROM dapp_pins WHERE user_id = $1`,
+        [userId]
+      );
+      return jsonRes(res, 200, { pins: rows.map((r) => r.dapp_pubkey) });
+    }
+
+    if (req.method === "POST") {
+      const body = await readBody(req);
+      if (body === undefined) return jsonRes(res, 400, { error: "invalid JSON" });
+      const pubkey = body && typeof body.pubkey === "string" ? body.pubkey.trim() : "";
+      if (!pubkey) return jsonRes(res, 400, { error: "pubkey required" });
+      // Only honour pins for dapps we actually list; unknown keys are ignored
+      // (still 200 to keep the client simple).
+      if (loadPubkeys().includes(pubkey)) {
+        await pinsPool.query(
+          `INSERT INTO dapp_pins (user_id, dapp_pubkey)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, dapp_pubkey) DO NOTHING`,
+          [userId, pubkey]
+        );
+      }
+      return jsonRes(res, 200, { pinned: true });
+    }
+
+    if (req.method === "DELETE") {
+      const pubkey = (urlObj.searchParams.get("pubkey") || "").trim();
+      if (!pubkey) return jsonRes(res, 400, { error: "pubkey required" });
+      await pinsPool.query(
+        `DELETE FROM dapp_pins WHERE user_id = $1 AND dapp_pubkey = $2`,
+        [userId, pubkey]
+      );
+      return jsonRes(res, 200, { pinned: false });
+    }
+
+    return jsonRes(res, 405, { error: "method not allowed" });
+  } catch (e) {
+    console.warn(`[pins] request error: ${e.message}`);
+    return jsonRes(res, 500, { error: "internal error" });
+  }
+}
+
+// Kick off DB init (non-blocking — the homepage serves regardless).
+initPinsDb();
+
 // ── HTTP helpers for the submit/review API ───────────────────────────────────
 
 function sendJson(res, statusCode, obj) {
@@ -638,6 +858,212 @@ function validateSubmissionInput(body) {
   return { ok: true, dapp };
 }
 
+// ── Trivia Quiz ───────────────────────────────────────────────────────────────
+// A public, server-graded trivia game. The question bank ships in
+// quiz-questions.json (curated content, committed). Sessions live in memory
+// (ephemeral — a restart only voids in-flight quizzes). Scores persist to
+// quiz-scores.json, file-backed and atomic just like submissions.json, keeping
+// one best record per player and capped at QUIZ_SCORE_CAP rows.
+
+const QUIZ_QUESTIONS_PATH = process.env.QUIZ_QUESTIONS_JSON_PATH
+  ? path.resolve(process.env.QUIZ_QUESTIONS_JSON_PATH)
+  : path.join(__dirname, "quiz-questions.json");
+
+const QUIZ_SCORES_PATH = process.env.QUIZ_SCORES_JSON_PATH
+  ? path.resolve(process.env.QUIZ_SCORES_JSON_PATH)
+  : path.join(__dirname, "quiz-scores.json");
+
+const QUIZ_QUESTIONS_PER_SESSION = Number(process.env.QUIZ_QUESTIONS_PER_SESSION) || 10;
+const QUIZ_TIME_LIMIT_SECONDS = Number(process.env.QUIZ_TIME_LIMIT_SECONDS) || 120;
+const QUIZ_ELIGIBILITY_MIN_CORRECT = Number(process.env.QUIZ_ELIGIBILITY_MIN_CORRECT) || 8;
+const QUIZ_PRIZE_POOL_ADDRESS = (process.env.QUIZ_PRIZE_POOL_ADDRESS || "").trim();
+
+const QUIZ_POINTS_PER_CORRECT = 100;
+const QUIZ_SCORE_CAP = 500;            // bound quiz-scores.json
+const QUIZ_LEADERBOARD_LIMIT = 50;     // rows returned by /api/quiz/leaderboard
+const QUIZ_SESSION_GRACE_MS = 5000;    // slack on top of the time limit for the round-trip
+const QUIZ_DISPLAY_NAME_MAX = 32;
+
+let quizBank = [];                     // [{ id, category, difficulty, question, options[4], answer }]
+const quizBankById = new Map();
+const quizSessions = new Map();        // sessionId -> { questionIds, startedAt, expiresAt, used, result? }
+let quizScores = [];                   // persisted best-per-player records
+
+function loadQuizBank() {
+  try {
+    const raw = fs.readFileSync(QUIZ_QUESTIONS_PATH, "utf8");
+    const data = JSON.parse(raw);
+    const list = Array.isArray(data) ? data : (Array.isArray(data.questions) ? data.questions : []);
+    quizBank = list.filter(
+      (q) =>
+        q && typeof q.id === "string" &&
+        typeof q.question === "string" &&
+        Array.isArray(q.options) && q.options.length >= 2 &&
+        Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length
+    );
+    quizBankById.clear();
+    for (const q of quizBank) quizBankById.set(q.id, q);
+    console.log(`[quiz] loaded ${quizBank.length} question(s) from ${QUIZ_QUESTIONS_PATH}`);
+  } catch (e) {
+    console.warn(`[quiz] could not read quiz-questions.json: ${e.message}`);
+    quizBank = [];
+    quizBankById.clear();
+  }
+}
+
+function loadQuizScores() {
+  try {
+    if (!fs.existsSync(QUIZ_SCORES_PATH)) {
+      quizScores = [];
+    } else {
+      const raw = fs.readFileSync(QUIZ_SCORES_PATH, "utf8");
+      const data = JSON.parse(raw);
+      quizScores = Array.isArray(data) ? data : (Array.isArray(data.scores) ? data.scores : []);
+    }
+  } catch (e) {
+    console.warn(`[quiz] could not read quiz-scores.json: ${e.message}`);
+    quizScores = [];
+  }
+  // Populate a fresh staging board so the leaderboard isn't empty in previews.
+  // In-memory only — never written back to disk, never runs in production.
+  if (IS_STAGING && quizScores.length === 0) {
+    quizScores = stagingSeedScores();
+    console.log(`[quiz] staging: seeded ${quizScores.length} demo leaderboard rows (in-memory)`);
+  }
+}
+
+function saveQuizScores() {
+  // Don't persist the in-memory staging seed; it re-seeds on each boot.
+  if (IS_STAGING) return;
+  try {
+    atomicWriteJson(QUIZ_SCORES_PATH, quizScores);
+  } catch (e) {
+    console.warn(`[quiz] could not write quiz-scores.json: ${e.message}`);
+  }
+}
+
+// Obviously-fake demo rows for staging — mix of eligible/not and with/without
+// wallets so the leaderboard UI exercises every badge state.
+function stagingSeedScores() {
+  const now = Date.now();
+  const mk = (i, displayName, score, correct, wallet) => ({
+    id: `staging-demo-${i}`,
+    displayName,
+    displayNameKey: displayName.toLowerCase(),
+    wallet: wallet || null,
+    score,
+    correct,
+    total: 10,
+    durationMs: 60000,
+    eligible: correct >= QUIZ_ELIGIBILITY_MIN_CORRECT && !!wallet,
+    eligibilityReason:
+      correct >= QUIZ_ELIGIBILITY_MIN_CORRECT && !!wallet
+        ? "Scored at or above the eligibility threshold with a linked wallet."
+        : (correct >= QUIZ_ELIGIBILITY_MIN_CORRECT
+            ? "Add a Usernode wallet to become reward-eligible."
+            : "Score higher to become reward-eligible."),
+    created_at: now - i * 60000,
+  });
+  return [
+    mk(1, "satoshi_fan", 1180, 10, "ut1qzdemostagingseedwalletaaaaaaaaaaaaaaaaaaaaaak3a9"),
+    mk(2, "block_ninja", 1095, 9, "ut1pfdemostagingseedwalletbbbbbbbbbbbbbbbbbbbbbbm2c7"),
+    mk(3, "gwei_whisperer", 980, 9, null),
+    mk(4, "merkle_mary", 940, 8, "ut1rrdemostagingseedwalletcccccccccccccccccccccc8h2d"),
+    mk(5, "hodl_hannah", 720, 7, "ut1aademostagingseedwalletdddddddddddddddddddddd91x0"),
+    mk(6, "nonce_sense", 690, 7, null),
+    mk(7, "gas_goblin", 540, 6, "ut1ttdemostagingseedwalleteeeeeeeeeeeeeeeeeeeeeeff34"),
+    mk(8, "cold_storage_carl", 510, 5, null),
+    mk(9, "degen_dave", 300, 4, "ut1uudemostagingseedwalletffffffffffffffffffffff00ab"),
+    mk(10, "newbie_nina", 180, 2, null),
+  ];
+}
+
+// Stable ordering: higher score, then faster, then earlier.
+function compareScores(a, b) {
+  if (b.score !== a.score) return b.score - a.score;
+  const ad = typeof a.durationMs === "number" ? a.durationMs : Infinity;
+  const bd = typeof b.durationMs === "number" ? b.durationMs : Infinity;
+  if (ad !== bd) return ad - bd;
+  return (a.created_at || 0) - (b.created_at || 0);
+}
+
+function quizIdentityKey(rec) {
+  return rec.wallet ? `w:${rec.wallet}` : `n:${rec.displayNameKey}`;
+}
+
+// One best record per identity (wallet if present, else lowercased name),
+// sorted, capped to QUIZ_SCORE_CAP.
+function rankedQuizScores() {
+  const best = new Map();
+  for (const rec of quizScores) {
+    const key = quizIdentityKey(rec);
+    const prev = best.get(key);
+    if (!prev || compareScores(rec, prev) < 0) best.set(key, rec);
+  }
+  return Array.from(best.values()).sort(compareScores);
+}
+
+// Mask a ut1 address to "ut1xxxx…xxxx" for display.
+function maskWallet(wallet) {
+  if (!wallet || typeof wallet !== "string") return null;
+  if (wallet.length <= 12) return wallet;
+  return `${wallet.slice(0, 7)}…${wallet.slice(-4)}`;
+}
+
+function quizLeaderboardRows(limit) {
+  const ranked = rankedQuizScores();
+  const out = [];
+  for (let i = 0; i < ranked.length && i < limit; i++) {
+    const r = ranked[i];
+    out.push({
+      rank: i + 1,
+      displayName: r.displayName,
+      walletMasked: maskWallet(r.wallet),
+      score: r.score,
+      correct: r.correct,
+      total: r.total,
+      eligible: !!r.eligible,
+    });
+  }
+  return out;
+}
+
+// Validate + normalize the submitter-supplied fields. Returns { ok, displayName,
+// wallet } or { ok:false, error }.
+function validateQuizPlayer(body) {
+  const str = (v) => (typeof v === "string" ? v.trim() : "");
+  let displayName = str(body && body.displayName).replace(/[\u0000-\u001f]/g, "");
+  if (!displayName) return { ok: false, error: "Display name is required." };
+  if (displayName.length > QUIZ_DISPLAY_NAME_MAX) displayName = displayName.slice(0, QUIZ_DISPLAY_NAME_MAX);
+
+  let wallet = str(body && body.wallet);
+  if (wallet) {
+    if (!wallet.startsWith(TX_PREFIX)) {
+      return { ok: false, error: "Wallet must be a Usernode address (starts with ut1)." };
+    }
+    if (wallet.length < 10 || wallet.length > 120) {
+      return { ok: false, error: "Wallet address looks invalid." };
+    }
+  } else {
+    wallet = null;
+  }
+  return { ok: true, displayName, wallet };
+}
+
+// Pick N distinct random questions from the bank (Fisher–Yates partial shuffle).
+function pickQuizQuestions(n) {
+  const arr = quizBank.slice();
+  const count = Math.min(n, arr.length);
+  for (let i = 0; i < count; i++) {
+    const j = i + Math.floor(Math.random() * (arr.length - i));
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+  return arr.slice(0, count);
+}
+
+loadQuizBank();
+loadQuizScores();
+
 // ── HTTP server ──────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
@@ -653,6 +1079,12 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith(EXPLORER_PROXY_PREFIX)) {
     const subPath = pathname.slice(EXPLORER_PROXY_PREFIX.length);
     return proxyExplorer(req, res, subPath);
+  }
+
+  if (pathname === "/api/pins") {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    handlePins(req, res, urlObj);
+    return;
   }
 
   if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
@@ -744,7 +1176,11 @@ const server = http.createServer((req, res) => {
       return sendJson(res, 503, { error: "Submissions are not currently open (no Reserve address configured)." });
     }
     return readJsonBody(req, 64 * 1024, (err, body) => {
-      if (err) return sendJson(res, 400, { error: err.message });
+      if (err) {
+        // Log the parse detail server-side; return a fixed, generic message.
+        console.warn(`[submit] invalid request body: ${err.message}`);
+        return sendJson(res, 400, { error: "Invalid request body." });
+      }
       const v = validateSubmissionInput(body);
       if (!v.ok) return sendJson(res, 400, { error: v.error });
 
@@ -793,6 +1229,158 @@ const server = http.createServer((req, res) => {
     const sub = findSubmission(id);
     if (!sub) return sendJson(res, 404, { error: "Submission not found." });
     return sendJson(res, 200, publicSubmissionView(sub));
+  }
+
+  // ── Trivia Quiz API (all public, no auth — matches the app's posture) ───────
+
+  // Public config the page needs to render copy + rules.
+  if (pathname === "/api/quiz/config" && req.method === "GET") {
+    return sendJson(res, 200, {
+      questionsPerSession: Math.min(QUIZ_QUESTIONS_PER_SESSION, quizBank.length),
+      timeLimitSeconds: QUIZ_TIME_LIMIT_SECONDS,
+      eligibilityMinCorrect: QUIZ_ELIGIBILITY_MIN_CORRECT,
+      prizePoolAddress: QUIZ_PRIZE_POOL_ADDRESS || null,
+      rewardsEnabled: false,
+      pointsPerCorrect: QUIZ_POINTS_PER_CORRECT,
+    });
+  }
+
+  // Top best-per-player rows.
+  if (pathname === "/api/quiz/leaderboard" && req.method === "GET") {
+    return sendJson(res, 200, {
+      players: quizLeaderboardRows(QUIZ_LEADERBOARD_LIMIT),
+      eligibilityMinCorrect: QUIZ_ELIGIBILITY_MIN_CORRECT,
+    });
+  }
+
+  // Begin a session → returns N questions WITHOUT the answer key + a sessionId.
+  if (pathname === "/api/quiz/start" && req.method === "POST") {
+    if (quizBank.length === 0) {
+      return sendJson(res, 503, { error: "The quiz is not available right now." });
+    }
+    const picked = pickQuizQuestions(QUIZ_QUESTIONS_PER_SESSION);
+    const now = Date.now();
+    const sessionId = crypto.randomUUID();
+    quizSessions.set(sessionId, {
+      questionIds: picked.map((q) => q.id),
+      startedAt: now,
+      expiresAt: now + QUIZ_TIME_LIMIT_SECONDS * 1000 + QUIZ_SESSION_GRACE_MS,
+      used: false,
+      result: null,
+    });
+    return sendJson(res, 201, {
+      sessionId,
+      timeLimitSeconds: QUIZ_TIME_LIMIT_SECONDS,
+      questions: picked.map((q) => ({
+        id: q.id,
+        category: q.category,
+        difficulty: q.difficulty,
+        question: q.question,
+        options: q.options, // answer index intentionally omitted
+      })),
+    });
+  }
+
+  // Grade a session server-side, record the score, return the breakdown.
+  if (pathname === "/api/quiz/submit" && req.method === "POST") {
+    return readJsonBody(req, 64 * 1024, (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+
+      const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+      const session = quizSessions.get(sessionId);
+      if (!session) {
+        return sendJson(res, 404, { error: "Session expired or not found. Please start a new quiz." });
+      }
+      // Single-use: a second submit returns the original result.
+      if (session.used) {
+        if (session.result) return sendJson(res, 200, session.result);
+        return sendJson(res, 409, { error: "This quiz session was already submitted." });
+      }
+
+      const player = validateQuizPlayer(body);
+      if (!player.ok) return sendJson(res, 400, { error: player.error });
+
+      const now = Date.now();
+      const expired = now > session.expiresAt;
+      const answers = body && typeof body.answers === "object" && body.answers ? body.answers : {};
+
+      // Grade only the session's questions; missing/extra keys are wrong.
+      let correct = 0;
+      const breakdown = session.questionIds.map((qid) => {
+        const q = quizBankById.get(qid);
+        const givenRaw = answers[qid];
+        const given = Number.isInteger(givenRaw) ? givenRaw : (typeof givenRaw === "string" && givenRaw !== "" ? Number(givenRaw) : null);
+        const isCorrect = q != null && given === q.answer;
+        if (isCorrect) correct++;
+        return {
+          id: qid,
+          question: q ? q.question : "(unknown)",
+          options: q ? q.options : [],
+          correctAnswer: q ? q.answer : null,
+          givenAnswer: given == null || Number.isNaN(given) ? null : given,
+          correct: isCorrect,
+        };
+      });
+
+      const total = session.questionIds.length;
+      const durationMs = Math.max(0, now - session.startedAt);
+      // Speed bonus: 1 pt per whole second left, zero if the round expired.
+      const secondsLeft = expired
+        ? 0
+        : Math.max(0, Math.floor((QUIZ_TIME_LIMIT_SECONDS * 1000 - durationMs) / 1000));
+      const score = correct * QUIZ_POINTS_PER_CORRECT + secondsLeft;
+
+      const meetsThreshold = correct >= QUIZ_ELIGIBILITY_MIN_CORRECT;
+      const eligible = meetsThreshold && !!player.wallet;
+      const eligibilityReason = eligible
+        ? "Scored at or above the eligibility threshold with a linked wallet."
+        : meetsThreshold
+          ? "Add a Usernode wallet next time to become reward-eligible."
+          : `Answer at least ${QUIZ_ELIGIBILITY_MIN_CORRECT} of ${total} correctly to become reward-eligible.`;
+
+      const record = {
+        id: crypto.randomUUID(),
+        displayName: player.displayName,
+        displayNameKey: player.displayName.toLowerCase(),
+        wallet: player.wallet,
+        score,
+        correct,
+        total,
+        durationMs,
+        eligible,
+        eligibilityReason,
+        created_at: now,
+      };
+      quizScores.push(record);
+
+      // Keep one best record per identity, sorted, capped to QUIZ_SCORE_CAP.
+      quizScores = rankedQuizScores().slice(0, QUIZ_SCORE_CAP);
+      saveQuizScores();
+
+      // Rank of this player's identity on the deduped board.
+      const ranked = rankedQuizScores();
+      const myKey = quizIdentityKey(record);
+      let rank = ranked.findIndex((r) => quizIdentityKey(r) === myKey) + 1;
+      if (rank === 0) rank = ranked.length; // fell outside the cap
+
+      const result = {
+        score,
+        correct,
+        total,
+        durationMs,
+        secondsLeft,
+        eligible,
+        eligibilityReason,
+        rank,
+        totalPlayers: ranked.length,
+        expired,
+        breakdown,
+      };
+
+      session.used = true;
+      session.result = result;
+      return sendJson(res, 200, result);
+    });
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -857,6 +1445,29 @@ const server = http.createServer((req, res) => {
           500,
           { "content-type": "text/plain" },
           `Failed to read minecraft.html: ${err.message}\n`
+        );
+      }
+      const headers = {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      };
+      if (req.method === "HEAD") {
+        res.writeHead(200, { ...headers, "content-length": buf.length });
+        return res.end();
+      }
+      return send(res, 200, headers, buf);
+    });
+  }
+
+  // Web3 Trivia Quiz — self-contained quiz page (same pattern as /minecraft).
+  if (pathname === "/trivia" || pathname === "/trivia.html") {
+    return fs.readFile(TRIVIA_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read trivia.html: ${err.message}\n`
         );
       }
       const headers = {
