@@ -212,6 +212,39 @@
       ]
     },
     {
+      "name": "Stumble Guys",
+      "description": "Dodge swinging hammers and rolling balls — survive the wipeout course.",
+      "longDescription": "Stumble Guys is an original, browser-based wipeout-style obstacle dash. Steer your little bean down an escalating course, dodging swinging hammers, rolling balls, and sliding walls. Every round gets faster and busier — survive as long as you can, clear the final round to win, and post your run to the global high-score leaderboard. Pure arcade fun, playable with keyboard or touch, right inside Usernode.",
+      "author": "Usernode Community",
+      "url": "/stumble-guys",
+      "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#f43f5e'/><circle cx='20' cy='16' r='6.5' fill='#fff'/><rect x='14.5' y='21' width='11' height='12' rx='4' fill='#fff'/><circle cx='17.5' cy='15' r='1.6' fill='#f43f5e'/><circle cx='22.5' cy='15' r='1.6' fill='#f43f5e'/></svg>",
+      "category": "Game",
+      "version": "1.0.0",
+      "updated": "2026-06-16",
+      "highlights": [
+        {
+          "icon": "🏃",
+          "title": "Dodge the chaos",
+          "body": "Weave past swinging hammers, rolling balls, and sliding walls."
+        },
+        {
+          "icon": "🔥",
+          "title": "Escalating rounds",
+          "body": "Each round spawns faster, busier hazards — how far can you get?"
+        },
+        {
+          "icon": "📱",
+          "title": "Keyboard or touch",
+          "body": "Play with arrows/WASD on desktop or on-screen controls on mobile."
+        },
+        {
+          "icon": "🏆",
+          "title": "Global leaderboard",
+          "body": "Post your best run and climb the public high-score board."
+        }
+      ]
+    },
+    {
       "name": "Web3 Trivia Quiz",
       "description": "Test your blockchain & Usernode knowledge — top scorers win a spot in the prize pool.",
       "longDescription": "Web3 Trivia Quiz is a timed, multi-question game about blockchain fundamentals and Usernode. Each session pulls a fresh set of curated questions across Blockchain Basics, Wallets & Keys, Usernode, and Web3 Culture. Answers are graded server-side the instant you submit, your score lands on a global all-time leaderboard, and high scorers who add their Usernode wallet are flagged eligible for a reward from the prize pool. On-chain payouts are a later phase — this release tracks scores and eligibility.",

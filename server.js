@@ -48,6 +48,7 @@ const INDEX_PATH = path.join(__dirname, "index.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
 const MINECRAFT_PATH = path.join(PUBLIC_DIR, "minecraft.html");
+const STUMBLE_GUYS_PATH = path.join(PUBLIC_DIR, "stumble-guys.html");
 const TRIVIA_PATH = path.join(PUBLIC_DIR, "trivia.html");
 
 // Static content-type lookup for screenshot assets served from public/.
@@ -1320,6 +1321,159 @@ async function handlePins(req, res, urlObj) {
   }
 }
 
+// ── Stumble Guys leaderboard (public scores) ─────────────────────────────────
+// The in-app Stumble Guys game (public/stumble-guys.html) keeps a single global
+// high-score table. Unlike dapp_pins (per-user, private), this is public app
+// content — anyone can read the board and anyone can submit a score, matching
+// the app's public posture (same as the unauthenticated submit-a-dapp flow).
+// The table is therefore PUBLIC (default): staging gets a copy of prod scores,
+// and we additionally seed a few obviously-synthetic rows so a fresh/empty
+// staging DB still renders a populated board.
+
+let scoresPool = null;   // pg.Pool once initialised (separate pool from pins)
+let scoresReady = false; // true after a successful migration
+
+const STUMBLE_NAME_MAX = 16;
+const STUMBLE_SCORE_MAX = 1000000;
+const STUMBLE_TOP_N = 20;
+
+// Obviously-synthetic staging rows so the leaderboard + submit-then-refresh
+// flow can be exercised in a staging preview before any real traffic exists.
+const SEED_STUMBLE_SCORES = [
+  { name: "staging-bot-ada", score: 4200 },
+  { name: "staging-bot-lin", score: 3800 },
+  { name: "staging-bot-rex", score: 3450 },
+  { name: "staging-bot-mia", score: 2900 },
+  { name: "staging-bot-kai", score: 2510 },
+  { name: "staging-bot-uma", score: 1980 },
+  { name: "staging-bot-ozzy", score: 1440 },
+  { name: "staging-bot-pip", score: 900 },
+];
+
+async function initScoresDb() {
+  if (!PgPool) return;
+  if (!DATABASE_URL) {
+    console.warn("[scores] DATABASE_URL not set — leaderboard disabled");
+    return;
+  }
+  try {
+    scoresPool = new PgPool({ connectionString: DATABASE_URL });
+    scoresPool.on("error", (err) => console.warn(`[scores] pool error: ${err.message}`));
+
+    await scoresPool.query(`
+      CREATE TABLE IF NOT EXISTS stumble_scores (
+        id          BIGSERIAL   PRIMARY KEY,
+        player_name TEXT        NOT NULL,
+        score       INTEGER     NOT NULL,
+        user_id     TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await scoresPool.query(
+      `CREATE INDEX IF NOT EXISTS stumble_scores_score_idx
+         ON stumble_scores (score DESC, created_at)`
+    );
+    // Public global leaderboard — staging may carry a copy of prod rows.
+    await scoresPool.query(`COMMENT ON TABLE stumble_scores IS 'staging:public'`);
+
+    scoresReady = true;
+    console.log("[scores] stumble_scores table ready");
+
+    if (IS_STAGING) {
+      // Only seed when empty so repeated staging rebuilds don't pile up dupes.
+      const { rows } = await scoresPool.query(
+        `SELECT 1 FROM stumble_scores LIMIT 1`
+      );
+      if (rows.length === 0) {
+        for (const s of SEED_STUMBLE_SCORES) {
+          await scoresPool.query(
+            `INSERT INTO stumble_scores (player_name, score) VALUES ($1, $2)`,
+            [s.name, s.score]
+          );
+        }
+        console.log(`[scores] seeded ${SEED_STUMBLE_SCORES.length} staging demo score(s)`);
+      }
+    }
+  } catch (e) {
+    scoresReady = false;
+    console.warn(`[scores] could not initialise database: ${e.message}`);
+  }
+}
+
+// Sanitize an incoming display name: strip control chars, collapse whitespace,
+// clamp to STUMBLE_NAME_MAX. Returns "" when nothing usable remains.
+function sanitizeScoreName(raw) {
+  if (typeof raw !== "string") return "";
+  // eslint-disable-next-line no-control-regex
+  const cleaned = raw.replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim();
+  return cleaned.slice(0, STUMBLE_NAME_MAX);
+}
+
+async function handleScores(req, res) {
+  // Public — no auth gate (matches the app's public posture). We still read the
+  // JWT opportunistically to stamp user_id for future de-dup, but never require it.
+  if (req.method === "GET") {
+    if (!scoresReady) {
+      return jsonRes(res, 200, { scores: [], enabled: false });
+    }
+    try {
+      const { rows } = await scoresPool.query(
+        `SELECT player_name, score, created_at
+           FROM stumble_scores
+          ORDER BY score DESC, created_at ASC
+          LIMIT $1`,
+        [STUMBLE_TOP_N]
+      );
+      return jsonRes(res, 200, {
+        enabled: true,
+        scores: rows.map((r) => ({
+          name: r.player_name,
+          score: r.score,
+          created_at: r.created_at,
+        })),
+      });
+    } catch (e) {
+      console.warn(`[scores] read error: ${e.message}`);
+      return jsonRes(res, 500, { error: "internal error" });
+    }
+  }
+
+  if (req.method === "POST") {
+    if (!scoresReady) {
+      return jsonRes(res, 503, { error: "leaderboard unavailable" });
+    }
+    const body = await readBody(req);
+    if (body === undefined) return jsonRes(res, 400, { error: "invalid JSON" });
+    const name = sanitizeScoreName(body && body.name);
+    if (!name) return jsonRes(res, 400, { error: "name required" });
+    const score = Math.floor(Number(body && body.score));
+    if (!Number.isFinite(score) || Number.isNaN(score)) {
+      return jsonRes(res, 400, { error: "score must be a number" });
+    }
+    const clamped = Math.max(0, Math.min(STUMBLE_SCORE_MAX, score));
+    const user = getUser(req);
+    const userId = user && user.id != null ? String(user.id) : null;
+    try {
+      await scoresPool.query(
+        `INSERT INTO stumble_scores (player_name, score, user_id)
+         VALUES ($1, $2, $3)`,
+        [name, clamped, userId]
+      );
+      const { rows } = await scoresPool.query(
+        `SELECT COUNT(*)::int AS ahead FROM stumble_scores WHERE score > $1`,
+        [clamped]
+      );
+      const rank = (rows[0] ? rows[0].ahead : 0) + 1;
+      return jsonRes(res, 200, { accepted: true, score: clamped, rank });
+    } catch (e) {
+      console.warn(`[scores] write error: ${e.message}`);
+      return jsonRes(res, 500, { error: "internal error" });
+    }
+  }
+
+  return jsonRes(res, 405, { error: "method not allowed" });
+}
+
 // ── dapp_status helpers ──────────────────────────────────────────────────────
 // Owner-declared maintenance status. Reads default to `operational` for any
 // pubkey without a row; every path degrades gracefully when the DB is absent.
@@ -1419,6 +1573,7 @@ async function handleDappStatus(req, res, urlObj) {
 
 // Kick off DB init (non-blocking — the homepage serves regardless).
 initPinsDb();
+initScoresDb();
 
 // ── User profile endpoint ────────────────────────────────────────────────────
 // Returns user identity + activity stats derived from the poller caches
@@ -2207,6 +2362,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Public Stumble Guys leaderboard (GET top scores / POST a score). No auth —
+  // global public content, same posture as the rest of the app.
+  if (pathname === "/api/stumble-scores") {
+    handleScores(req, res);
+    return;
+  }
+
   if (pathname === "/api/dapp-status") {
     const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     handleDappStatus(req, res, urlObj);
@@ -2632,6 +2794,29 @@ const server = http.createServer((req, res) => {
           500,
           { "content-type": "text/plain" },
           `Failed to read minecraft.html: ${err.message}\n`
+        );
+      }
+      const headers = {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      };
+      if (req.method === "HEAD") {
+        res.writeHead(200, { ...headers, "content-length": buf.length });
+        return res.end();
+      }
+      return send(res, 200, headers, buf);
+    });
+  }
+
+  // Stumble Guys — self-contained obstacle-dodging arcade game page.
+  if (pathname === "/stumble-guys" || pathname === "/stumble-guys.html") {
+    return fs.readFile(STUMBLE_GUYS_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read stumble-guys.html: ${err.message}\n`
         );
       }
       const headers = {
