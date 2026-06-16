@@ -1,0 +1,1040 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Stumble Guys</title>
+    <script>
+    // usernode-dev-console@1
+    (function () {
+      if (window.__usernodeDevConsole) return;
+      window.__usernodeDevConsole = true;
+      var S = '__usernodeDevConsole';
+      function serialize(v, depth) {
+        depth = depth || 0;
+        try {
+          if (v === undefined) return 'undefined';
+          if (v === null) return 'null';
+          if (typeof v === 'string') return v;
+          if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+          if (typeof v === 'function') return '[Function ' + (v.name || 'anonymous') + ']';
+          if (v instanceof Error) return (v.stack || (v.name + ': ' + v.message));
+          if (depth > 3) return '[…]';
+          var seen = new WeakSet();
+          return JSON.stringify(v, function (k, val) {
+            if (typeof val === 'object' && val !== null) {
+              if (seen.has(val)) return '[Circular]';
+              seen.add(val);
+            }
+            if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
+            if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+            return val;
+          });
+        } catch (e) { try { return String(v); } catch (_) { return '[unserializable]'; } }
+      }
+      function post(level, args, meta) {
+        try {
+          var payload = {
+            sentinel: S,
+            level: level,
+            args: Array.prototype.slice.call(args).map(function (a) { return serialize(a); }),
+            ts: Date.now(),
+            url: location.href,
+          };
+          if (meta) for (var k in meta) payload[k] = meta[k];
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(payload, '*');
+          }
+        } catch (_) {}
+      }
+      ['log','info','warn','error','debug'].forEach(function (level) {
+        var orig = console[level] ? console[level].bind(console) : function () {};
+        console[level] = function () { post(level, arguments); orig.apply(null, arguments); };
+      });
+      window.addEventListener('error', function (e) {
+        var msg = (e.error && (e.error.stack || e.error.message)) || e.message || 'Error';
+        post('error', [msg], { source: e.filename || '', line: e.lineno || 0, col: e.colno || 0, kind: 'error' });
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        var msg = (r && (r.stack || r.message)) || String(r);
+        post('error', [msg], { kind: 'unhandledrejection' });
+      });
+      try { post('info', ['[dev-console ready]'], { kind: 'ready' }); } catch (_) {}
+    })();
+    </script>
+    <style>
+      :root {
+        --bg: #0b0f16;
+        --fg: #e7edf7;
+        --muted: #a8b3c7;
+        --card: #141b26;
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #6ea8fe;
+        --danger: #f43f5e;
+        --good: #34d399;
+        --arena: #0e1626;
+        --arena2: #0a1120;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f4f6fb;
+          --fg: #16202e;
+          --muted: #5a6b85;
+          --card: #ffffff;
+          --border: rgba(0, 0, 0, 0.12);
+          --accent: #2563eb;
+          --danger: #e11d48;
+          --good: #059669;
+          --arena: #e9eefb;
+          --arena2: #dde6f8;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        height: 100dvh;
+      }
+      header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+      }
+      .backLink {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 13px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 5px 10px;
+        white-space: nowrap;
+      }
+      .backLink:hover { color: var(--fg); border-color: var(--accent); }
+      .title {
+        font-weight: 700;
+        font-size: 15px;
+        letter-spacing: 0.3px;
+        flex: 1 1 auto;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .readout {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      .readout .lives { color: var(--danger); letter-spacing: 1px; }
+      .readout .num { font-variant-numeric: tabular-nums; font-weight: 700; }
+      .btn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        font: inherit;
+        font-size: 13px;
+        padding: 5px 10px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .btn:hover { color: var(--fg); border-color: var(--accent); }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+      .btn.primary:hover { filter: brightness(1.08); color: #fff; }
+      .stage {
+        flex: 1 1 auto;
+        min-height: 0;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background:
+          radial-gradient(120% 90% at 50% 0%, var(--arena), var(--arena2));
+      }
+      canvas {
+        display: block;
+        touch-action: none;
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 10px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+      }
+
+      /* ── Overlay (start / pause / gameover / win + leaderboard) ───────────── */
+      .overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(4, 8, 14, 0.62);
+        backdrop-filter: blur(2px);
+      }
+      .overlay[hidden] { display: none; }
+      .panel {
+        width: min(420px, 100%);
+        max-height: 100%;
+        overflow: auto;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+      }
+      .panel h1 {
+        margin: 0 0 4px;
+        font-size: 22px;
+      }
+      .panel h1.win { color: var(--good); }
+      .panel h1.lose { color: var(--danger); }
+      .panel p { margin: 6px 0; color: var(--muted); font-size: 14px; }
+      .panel .bigScore {
+        font-size: 34px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        margin: 8px 0 2px;
+      }
+      .panel .actions {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin-top: 14px;
+        flex-wrap: wrap;
+      }
+      .controlsHelp {
+        margin-top: 14px;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .controlsHelp kbd {
+        display: inline-block;
+        border: 1px solid var(--border);
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        padding: 0 6px;
+        font-size: 11px;
+        background: rgba(127, 127, 127, 0.12);
+      }
+
+      /* ── Leaderboard ─────────────────────────────────────────────────────── */
+      .lb {
+        margin-top: 16px;
+        text-align: left;
+        border-top: 1px solid var(--border);
+        padding-top: 12px;
+      }
+      .lb h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: var(--muted);
+        margin: 0 0 8px;
+      }
+      .lbList { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+      .lbList li {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 4px 6px;
+        border-radius: 6px;
+      }
+      .lbList li:nth-child(odd) { background: rgba(127, 127, 127, 0.08); }
+      .lbList li .rank { color: var(--muted); width: 1.8em; flex: 0 0 auto; }
+      .lbList li .nm {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .lbList li.me { outline: 1px solid var(--accent); }
+      .lbList li .sc { font-variant-numeric: tabular-nums; font-weight: 700; }
+      .lbEmpty { color: var(--muted); font-size: 13px; }
+      .submitRow {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .submitRow input {
+        flex: 1 1 auto;
+        min-width: 0;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 8px 10px;
+      }
+      .submitRow input:focus { outline: none; border-color: var(--accent); }
+      .submitMsg { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 1em; }
+
+      /* ── Touch controls ──────────────────────────────────────────────────── */
+      .touch {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .touch[hidden] { display: none; }
+      .pad {
+        position: absolute;
+        bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+        left: 14px;
+        display: grid;
+        grid-template-columns: repeat(3, 52px);
+        grid-template-rows: repeat(3, 52px);
+        gap: 6px;
+        pointer-events: none;
+      }
+      .dpad {
+        pointer-events: auto;
+        appearance: none;
+        border: 1px solid var(--border);
+        background: rgba(20, 27, 38, 0.78);
+        color: var(--fg);
+        border-radius: 12px;
+        font-size: 20px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+      }
+      .dpad:active, .dpad.on { background: var(--accent); color: #fff; }
+      .dpad.up { grid-area: 1 / 2; }
+      .dpad.left { grid-area: 2 / 1; }
+      .dpad.right { grid-area: 2 / 3; }
+      .dpad.down { grid-area: 3 / 2; }
+      .dash {
+        pointer-events: auto;
+        position: absolute;
+        bottom: calc(34px + env(safe-area-inset-bottom, 0px));
+        right: 18px;
+        width: 84px;
+        height: 84px;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        background: rgba(244, 63, 94, 0.85);
+        color: #fff;
+        font-weight: 800;
+        font-size: 15px;
+        letter-spacing: 0.5px;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .dash:active, .dash.on { filter: brightness(1.15); }
+      .dash:disabled { opacity: 0.4; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="backLink" href="/" aria-label="Back to directory">← Dapps</a>
+      <div class="title">Stumble Guys</div>
+      <div class="readout" aria-live="polite">
+        <span class="lives" id="livesEl" title="Lives">♥♥♥</span>
+        <span>Round <span class="num" id="roundEl">1</span></span>
+        <span>Score <span class="num" id="scoreEl">0</span></span>
+      </div>
+      <button class="btn" id="pauseBtn" type="button">Pause</button>
+    </header>
+
+    <div class="stage" id="stage">
+      <canvas id="game" width="360" height="600"></canvas>
+
+      <!-- On-screen touch controls (shown on coarse pointers / small screens) -->
+      <div class="touch" id="touch" hidden>
+        <div class="pad">
+          <button class="dpad up" data-dir="up" type="button" aria-label="Up">▲</button>
+          <button class="dpad left" data-dir="left" type="button" aria-label="Left">◀</button>
+          <button class="dpad right" data-dir="right" type="button" aria-label="Right">▶</button>
+          <button class="dpad down" data-dir="down" type="button" aria-label="Down">▼</button>
+        </div>
+        <button class="dash" id="dashBtn" type="button" aria-label="Dash">DASH</button>
+      </div>
+
+      <!-- Single overlay reused for every non-playing state -->
+      <div class="overlay" id="overlay">
+        <div class="panel" id="panel">
+          <h1 id="panelTitle">Stumble Guys</h1>
+          <div class="bigScore" id="panelScore" hidden>0</div>
+          <p id="panelMsg">Reach the finish line at the top while dodging hammers, balls, and walls. Clear all rounds to win!</p>
+          <div class="actions" id="panelActions">
+            <button class="btn primary" id="startBtn" type="button">Play</button>
+          </div>
+          <div class="controlsHelp">
+            <kbd>← → ↑ ↓</kbd> / <kbd>W A S D</kbd> move &nbsp;·&nbsp; <kbd>Space</kbd> dash &nbsp;·&nbsp; <kbd>P</kbd> pause
+          </div>
+
+          <div class="lb" id="lbWrap">
+            <h2>Leaderboard</h2>
+            <ol class="lbList" id="lbList"></ol>
+            <div class="lbEmpty" id="lbEmpty" hidden>No scores yet — be the first!</div>
+            <div class="submitRow" id="submitRow" hidden>
+              <input id="nameInput" type="text" maxlength="16" placeholder="Your name" autocomplete="off" />
+              <button class="btn primary" id="submitBtn" type="button">Submit</button>
+            </div>
+            <div class="submitMsg" id="submitMsg"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      "use strict";
+
+      // ── Constants ──────────────────────────────────────────────────────────
+      var W = 360, H = 600;           // logical arena size
+      var FINISH_Y = 46;              // y above which counts as "finished" the round
+      var START_Y = H - 40;           // player spawn y
+      var TICK = 1 / 60;              // fixed update step (seconds)
+      var TOTAL_ROUNDS = 5;
+      var START_LIVES = 3;
+      var PLAYER_R = 12;
+      var BASE_SPEED = 165;           // px/sec
+      var DASH_SPEED = 320;           // px/sec while dashing
+      var DASH_TIME = 0.22;           // seconds of dash
+      var DASH_COOLDOWN = 0.9;        // seconds before next dash
+      var IFRAME_TIME = 1.3;          // invulnerability after a hit (seconds)
+      var SCORE_PER_SEC = 10;
+      var ROUND_BONUS = 500;
+
+      // ── State ──────────────────────────────────────────────────────────────
+      var canvas = document.getElementById("game");
+      var ctx = canvas.getContext("2d");
+      var dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+
+      var STATE = "ready"; // ready | playing | paused | gameover | win
+      var player = null;
+      var hazards = [];
+      var round = 1;
+      var lives = START_LIVES;
+      var score = 0;
+      var elapsed = 0;        // seconds survived (drives time score)
+      var roundBonus = 0;
+      var hitFlash = 0;
+      var rngSeed = 1;
+
+      // Deterministic-ish PRNG so a session is reproducible per boot but varied.
+      function rand() {
+        rngSeed = (rngSeed * 1664525 + 1013904223) % 4294967296;
+        return rngSeed / 4294967296;
+      }
+      function rrange(a, b) { return a + (b - a) * rand(); }
+
+      var input = { left: false, right: false, up: false, down: false, dash: false };
+
+      // ── Player ─────────────────────────────────────────────────────────────
+      function makePlayer() {
+        return {
+          x: W / 2, y: START_Y, r: PLAYER_R,
+          dashT: 0, dashCd: 0, iframe: 0,
+        };
+      }
+
+      // ── Hazards ────────────────────────────────────────────────────────────
+      // Each hazard exposes update(dt) and hit(px,py,pr) -> bool.
+      function makeBall(y, speed, dir, r) {
+        return {
+          type: "ball", x: dir > 0 ? -r : W + r, y: y, r: r, vx: speed * dir,
+          update: function (dt) {
+            this.x += this.vx * dt;
+            if (this.vx > 0 && this.x - this.r > W) this.x = -this.r;
+            if (this.vx < 0 && this.x + this.r < 0) this.x = W + this.r;
+          },
+          hit: function (px, py, pr) {
+            var dx = px - this.x, dy = py - this.y;
+            var rr = this.r + pr;
+            return dx * dx + dy * dy <= rr * rr;
+          },
+          draw: function () {
+            ctx.fillStyle = "#fb923c";
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(0,0,0,0.18)";
+            ctx.beginPath();
+            ctx.arc(this.x - this.r * 0.3, this.y - this.r * 0.3, this.r * 0.45, 0, Math.PI * 2);
+            ctx.fill();
+          },
+        };
+      }
+
+      function makeWall(y, h, speed, dir) {
+        var w = rrange(70, 130);
+        return {
+          type: "wall", x: dir > 0 ? -w : W, y: y, w: w, h: h, vx: speed * dir,
+          update: function (dt) {
+            this.x += this.vx * dt;
+            if (this.vx > 0 && this.x > W) { this.x = -this.w; }
+            if (this.vx < 0 && this.x + this.w < 0) { this.x = W; }
+          },
+          hit: function (px, py, pr) {
+            // circle vs AABB
+            var nx = Math.max(this.x, Math.min(px, this.x + this.w));
+            var ny = Math.max(this.y, Math.min(py, this.y + this.h));
+            var dx = px - nx, dy = py - ny;
+            return dx * dx + dy * dy <= pr * pr;
+          },
+          draw: function () {
+            ctx.fillStyle = "#60a5fa";
+            roundRect(this.x, this.y, this.w, this.h, 5);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.18)";
+            roundRect(this.x, this.y, this.w, 4, 2);
+            ctx.fill();
+          },
+        };
+      }
+
+      function makeHammer(px, len, amp, speed, phase) {
+        return {
+          type: "hammer", px: px, py: FINISH_Y + 8, len: len,
+          amp: amp, speed: speed, phase: phase, t: 0,
+          ang: 0, hx: px, hy: FINISH_Y + 8, hr: 16,
+          update: function (dt) {
+            this.t += dt;
+            this.ang = this.amp * Math.sin(this.t * this.speed + this.phase);
+            this.hx = this.px + Math.sin(this.ang) * this.len;
+            this.hy = this.py + Math.cos(this.ang) * this.len;
+          },
+          hit: function (qx, qy, pr) {
+            // distance from player to the bar segment (pivot -> head) and head
+            var d = segDist(qx, qy, this.px, this.py, this.hx, this.hy);
+            if (d <= pr + 4) return true;
+            var dx = qx - this.hx, dy = qy - this.hy, rr = this.hr + pr;
+            return dx * dx + dy * dy <= rr * rr;
+          },
+          draw: function () {
+            ctx.strokeStyle = "rgba(180,190,210,0.55)";
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(this.px, this.py);
+            ctx.lineTo(this.hx, this.hy);
+            ctx.stroke();
+            ctx.fillStyle = "#94a3b8";
+            ctx.beginPath();
+            ctx.arc(this.px, this.py, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#e11d48";
+            ctx.beginPath();
+            ctx.arc(this.hx, this.hy, this.hr, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.25)";
+            ctx.beginPath();
+            ctx.arc(this.hx - 5, this.hy - 5, this.hr * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+          },
+        };
+      }
+
+      function segDist(px, py, ax, ay, bx, by) {
+        var dx = bx - ax, dy = by - ay;
+        var len2 = dx * dx + dy * dy || 1;
+        var t = ((px - ax) * dx + (py - ay) * dy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        var cx = ax + t * dx, cy = ay + t * dy;
+        var ex = px - cx, ey = py - cy;
+        return Math.sqrt(ex * ex + ey * ey);
+      }
+
+      function roundRect(x, y, w, h, r) {
+        r = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+
+      // Build the hazard field for a given round. Difficulty scales with round.
+      function buildRound(r) {
+        hazards = [];
+        var diff = 1 + (r - 1) * 0.22;          // global speed multiplier
+        var laneTop = FINISH_Y + 70;
+        var laneBottom = START_Y - 60;
+        var span = laneBottom - laneTop;
+
+        var balls = 2 + r;                       // 3..7
+        for (var i = 0; i < balls; i++) {
+          var by = laneTop + span * ((i + 0.5) / balls) + rrange(-12, 12);
+          var br = rrange(11, 18);
+          var bs = rrange(90, 150) * diff;
+          hazards.push(makeBall(by, bs, rand() < 0.5 ? -1 : 1, br));
+        }
+
+        var walls = Math.max(1, r - 1);          // 0..4 (min 1 from round 2)
+        for (var j = 0; j < walls; j++) {
+          var wy = laneTop + span * ((j + 0.7) / (walls + 1));
+          var ws = rrange(55, 95) * diff;
+          hazards.push(makeWall(wy, rrange(16, 26), ws, rand() < 0.5 ? -1 : 1));
+        }
+
+        var hammers = Math.min(3, r);            // 1..3
+        for (var k = 0; k < hammers; k++) {
+          var hx = W * ((k + 1) / (hammers + 1));
+          var len = rrange(70, 120);
+          var amp = rrange(0.7, 1.15);
+          var spd = rrange(1.3, 2.2) * diff;
+          hazards.push(makeHammer(hx, len, amp, spd, rrange(0, Math.PI * 2)));
+        }
+      }
+
+      function startRun() {
+        round = 1;
+        lives = START_LIVES;
+        score = 0;
+        elapsed = 0;
+        roundBonus = 0;
+        hitFlash = 0;
+        rngSeed = (Date.now() % 4294967296) || 1;
+        player = makePlayer();
+        buildRound(round);
+        setState("playing");
+      }
+
+      function nextRound() {
+        roundBonus += ROUND_BONUS;
+        if (round >= TOTAL_ROUNDS) {
+          finish(true);
+          return;
+        }
+        round += 1;
+        player = makePlayer();
+        buildRound(round);
+        updateReadout();
+      }
+
+      function takeHit() {
+        if (player.iframe > 0) return;
+        lives -= 1;
+        player.iframe = IFRAME_TIME;
+        hitFlash = 0.4;
+        // knock the player back toward the start so a hit costs progress
+        player.y = Math.min(START_Y, player.y + 90);
+        player.dashT = 0;
+        updateReadout();
+        if (lives <= 0) finish(false);
+      }
+
+      function finish(won) {
+        score = Math.floor(elapsed * SCORE_PER_SEC) + roundBonus + (won ? ROUND_BONUS : 0);
+        setState(won ? "win" : "gameover");
+      }
+
+      // ── Simulation step ──────────────────────────────────────────────────────
+      function update(dt) {
+        elapsed += dt;
+        var p = player;
+        if (p.dashCd > 0) p.dashCd -= dt;
+        if (p.iframe > 0) p.iframe -= dt;
+        if (hitFlash > 0) hitFlash -= dt;
+
+        // dash trigger
+        if (input.dash && p.dashT <= 0 && p.dashCd <= 0) {
+          p.dashT = DASH_TIME;
+          p.dashCd = DASH_COOLDOWN;
+        }
+        var speed = BASE_SPEED;
+        if (p.dashT > 0) { p.dashT -= dt; speed = DASH_SPEED; }
+
+        var mx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+        var my = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+        if (mx !== 0 && my !== 0) { var inv = 0.7071; mx *= inv; my *= inv; }
+        p.x += mx * speed * dt;
+        p.y += my * speed * dt;
+        p.x = Math.max(p.r, Math.min(W - p.r, p.x));
+        p.y = Math.max(p.r, Math.min(H - p.r, p.y));
+
+        for (var i = 0; i < hazards.length; i++) {
+          hazards[i].update(dt);
+          if (hazards[i].hit(p.x, p.y, p.r)) { takeHit(); break; }
+        }
+
+        // reached the finish line?
+        if (p.y - p.r <= FINISH_Y) nextRound();
+
+        score = Math.floor(elapsed * SCORE_PER_SEC) + roundBonus;
+        updateReadout();
+      }
+
+      // ── Render ───────────────────────────────────────────────────────────────
+      function render() {
+        ctx.clearRect(0, 0, W, H);
+
+        // arena background bands
+        ctx.fillStyle = "rgba(127,127,127,0.05)";
+        for (var y = FINISH_Y; y < H; y += 40) ctx.fillRect(0, y, W, 20);
+
+        // finish line
+        var fs = ctx.createLinearGradient(0, 0, 0, FINISH_Y);
+        fs.addColorStop(0, "rgba(52,211,153,0.35)");
+        fs.addColorStop(1, "rgba(52,211,153,0.05)");
+        ctx.fillStyle = fs;
+        ctx.fillRect(0, 0, W, FINISH_Y);
+        ctx.fillStyle = "rgba(52,211,153,0.9)";
+        for (var cx = 0; cx < W; cx += 16) {
+          ctx.fillRect(cx + ((Math.floor(cx / 16) % 2) ? 0 : 8), FINISH_Y - 6, 8, 6);
+        }
+        ctx.fillStyle = "rgba(52,211,153,0.9)";
+        ctx.font = "bold 12px ui-sans-serif, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("FINISH", W / 2, 18);
+
+        // hazards
+        for (var i = 0; i < hazards.length; i++) hazards[i].draw();
+
+        // player
+        if (player) {
+          var p = player;
+          var blink = p.iframe > 0 && (Math.floor(p.iframe * 12) % 2 === 0);
+          if (!blink) {
+            ctx.fillStyle = p.dashT > 0 ? "#a78bfa" : "#34d399";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+            // little face
+            ctx.fillStyle = "#04210f";
+            ctx.beginPath();
+            ctx.arc(p.x - 4, p.y - 2, 2, 0, Math.PI * 2);
+            ctx.arc(p.x + 4, p.y - 2, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        if (hitFlash > 0) {
+          ctx.fillStyle = "rgba(244,63,94," + Math.min(0.4, hitFlash) + ")";
+          ctx.fillRect(0, 0, W, H);
+        }
+      }
+
+      // ── Main loop (fixed timestep) ─────────────────────────────────────────────
+      var lastT = 0, acc = 0;
+      function frame(ts) {
+        requestAnimationFrame(frame);
+        if (!lastT) lastT = ts;
+        var dtReal = (ts - lastT) / 1000;
+        lastT = ts;
+        if (dtReal > 0.25) dtReal = 0.25; // clamp after tab-away
+        if (STATE === "playing") {
+          acc += dtReal;
+          while (acc >= TICK) { update(TICK); acc -= TICK; if (STATE !== "playing") { acc = 0; break; } }
+        } else {
+          acc = 0;
+        }
+        render();
+      }
+      requestAnimationFrame(frame);
+
+      // ── UI / state plumbing ────────────────────────────────────────────────────
+      var overlay = document.getElementById("overlay");
+      var panelTitle = document.getElementById("panelTitle");
+      var panelScore = document.getElementById("panelScore");
+      var panelMsg = document.getElementById("panelMsg");
+      var startBtn = document.getElementById("startBtn");
+      var pauseBtn = document.getElementById("pauseBtn");
+      var submitRow = document.getElementById("submitRow");
+      var nameInput = document.getElementById("nameInput");
+      var submitBtn = document.getElementById("submitBtn");
+      var submitMsg = document.getElementById("submitMsg");
+      var lbList = document.getElementById("lbList");
+      var lbEmpty = document.getElementById("lbEmpty");
+      var lbWrap = document.getElementById("lbWrap");
+      var livesEl = document.getElementById("livesEl");
+      var roundEl = document.getElementById("roundEl");
+      var scoreEl = document.getElementById("scoreEl");
+
+      var lastScoreSubmitted = -1;
+
+      function updateReadout() {
+        livesEl.textContent = lives > 0 ? "♥".repeat(lives) : "—";
+        roundEl.textContent = String(round);
+        scoreEl.textContent = String(score);
+      }
+
+      function setState(s) {
+        STATE = s;
+        pauseBtn.textContent = s === "paused" ? "Resume" : "Pause";
+        pauseBtn.disabled = (s === "ready" || s === "gameover" || s === "win");
+        if (s === "playing") {
+          overlay.hidden = true;
+          updateReadout();
+          return;
+        }
+        overlay.hidden = false;
+        // configure panel per state
+        if (s === "ready") {
+          panelTitle.className = "";
+          panelTitle.textContent = "Stumble Guys";
+          panelScore.hidden = true;
+          panelMsg.textContent = "Reach the finish line at the top while dodging hammers, balls, and walls. Clear all " + TOTAL_ROUNDS + " rounds to win!";
+          startBtn.textContent = "Play";
+          submitRow.hidden = true;
+          submitMsg.textContent = "";
+          refreshLeaderboard();
+        } else if (s === "paused") {
+          panelTitle.className = "";
+          panelTitle.textContent = "Paused";
+          panelScore.hidden = true;
+          panelMsg.textContent = "Take a breather. Your run is waiting.";
+          startBtn.textContent = "Resume";
+          submitRow.hidden = true;
+        } else if (s === "win" || s === "gameover") {
+          panelTitle.className = (s === "win") ? "win" : "lose";
+          panelTitle.textContent = (s === "win") ? "You Win! 🏆" : "Game Over";
+          panelScore.hidden = false;
+          panelScore.textContent = String(score);
+          panelMsg.textContent = (s === "win")
+            ? "You cleared every round. Post your score!"
+            : "You stumbled out. Better luck next run!";
+          startBtn.textContent = "Play again";
+          submitRow.hidden = false;
+          submitMsg.textContent = "";
+          lastScoreSubmitted = -1;
+          refreshLeaderboard();
+        }
+      }
+
+      startBtn.addEventListener("click", function () {
+        if (STATE === "paused") { setState("playing"); return; }
+        startRun();
+      });
+      pauseBtn.addEventListener("click", function () {
+        if (STATE === "playing") setState("paused");
+        else if (STATE === "paused") setState("playing");
+      });
+
+      // ── Leaderboard API ────────────────────────────────────────────────────────
+      function escText(node, s) { node.textContent = s == null ? "" : String(s); }
+
+      function renderLeaderboard(scores, highlightName) {
+        lbList.innerHTML = "";
+        if (!scores || scores.length === 0) {
+          lbEmpty.hidden = false;
+          return;
+        }
+        lbEmpty.hidden = true;
+        scores.forEach(function (row, i) {
+          var li = document.createElement("li");
+          if (highlightName && row.name === highlightName && i === highlightIndexOnce) li.className = "me";
+          var rank = document.createElement("span");
+          rank.className = "rank";
+          escText(rank, (i + 1) + ".");
+          var nm = document.createElement("span");
+          nm.className = "nm";
+          escText(nm, row.name);                 // textContent — never inject HTML
+          var sc = document.createElement("span");
+          sc.className = "sc";
+          escText(sc, row.score);
+          li.appendChild(rank); li.appendChild(nm); li.appendChild(sc);
+          lbList.appendChild(li);
+        });
+      }
+      var highlightIndexOnce = -1;
+
+      function refreshLeaderboard() {
+        fetch("/api/stumble-scores", { headers: { accept: "application/json" } })
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)); })
+          .then(function (data) {
+            if (!data || data.enabled === false) {
+              lbWrap.querySelector("h2").textContent = "Leaderboard (unavailable)";
+              renderLeaderboard([]);
+              lbEmpty.hidden = false;
+              lbEmpty.textContent = "Leaderboard is unavailable right now — your run still counts locally!";
+              submitRow.hidden = true;
+              return;
+            }
+            lbWrap.querySelector("h2").textContent = "Leaderboard";
+            lbEmpty.textContent = "No scores yet — be the first!";
+            renderLeaderboard(data.scores || []);
+          })
+          .catch(function (err) {
+            console.warn("leaderboard fetch failed", err);
+            lbWrap.querySelector("h2").textContent = "Leaderboard (unavailable)";
+            renderLeaderboard([]);
+            lbEmpty.hidden = false;
+            lbEmpty.textContent = "Leaderboard is unavailable right now — your run still counts locally!";
+            submitRow.hidden = true;
+          });
+      }
+
+      function submitScore() {
+        var name = (nameInput.value || "").trim();
+        if (!name) { submitMsg.textContent = "Enter a name to post your score."; nameInput.focus(); return; }
+        if (score === lastScoreSubmitted) { submitMsg.textContent = "Already submitted this run."; return; }
+        submitBtn.disabled = true;
+        submitMsg.textContent = "Submitting…";
+        var token = "";
+        try {
+          var u = new URL(location.href);
+          token = u.searchParams.get("token") || "";
+        } catch (_) {}
+        var headers = { "content-type": "application/json" };
+        if (token) headers["x-usernode-token"] = token;
+        fetch("/api/stumble-scores", {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({ name: name, score: score }),
+        })
+          .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, status: r.status, body: b }; }); })
+          .then(function (res) {
+            submitBtn.disabled = false;
+            if (res.ok && res.body && res.body.accepted) {
+              lastScoreSubmitted = score;
+              highlightIndexOnce = (res.body.rank || 0) - 1;
+              submitMsg.textContent = "Posted! You're #" + (res.body.rank || "—") + ".";
+              refreshLeaderboard();
+            } else if (res.status === 503) {
+              submitMsg.textContent = "Leaderboard is unavailable right now.";
+            } else {
+              submitMsg.textContent = (res.body && res.body.error) ? res.body.error : "Could not submit score.";
+            }
+          })
+          .catch(function (err) {
+            submitBtn.disabled = false;
+            console.warn("score submit failed", err);
+            submitMsg.textContent = "Could not submit score (network error).";
+          });
+      }
+      submitBtn.addEventListener("click", submitScore);
+      nameInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); submitScore(); }
+      });
+
+      // ── Keyboard input ─────────────────────────────────────────────────────────
+      var KEYMAP = {
+        ArrowLeft: "left", a: "left", A: "left",
+        ArrowRight: "right", d: "right", D: "right",
+        ArrowUp: "up", w: "up", W: "up",
+        ArrowDown: "down", s: "down", S: "down",
+        " ": "dash",
+      };
+      window.addEventListener("keydown", function (e) {
+        if (e.key === "p" || e.key === "P") {
+          if (STATE === "playing") setState("paused");
+          else if (STATE === "paused") setState("playing");
+          return;
+        }
+        if ((e.key === "Enter" || e.key === " ") && (STATE === "ready")) {
+          // don't hijack Enter when typing a name
+          if (document.activeElement !== nameInput) { e.preventDefault(); startRun(); return; }
+        }
+        var k = KEYMAP[e.key];
+        if (k) {
+          if (k !== "dash" || document.activeElement !== nameInput) {
+            input[k] = true;
+            if (k === "dash" || e.key.indexOf("Arrow") === 0) e.preventDefault();
+          }
+        }
+      });
+      window.addEventListener("keyup", function (e) {
+        var k = KEYMAP[e.key];
+        if (k) input[k] = false;
+      });
+      window.addEventListener("blur", function () {
+        input.left = input.right = input.up = input.down = input.dash = false;
+      });
+
+      // ── Touch input ──────────────────────────────────────────────────────────
+      var touchWrap = document.getElementById("touch");
+      var dashBtn = document.getElementById("dashBtn");
+      var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      if (coarse || "ontouchstart" in window) touchWrap.hidden = false;
+
+      Array.prototype.forEach.call(document.querySelectorAll(".dpad"), function (btn) {
+        var dir = btn.getAttribute("data-dir");
+        var set = function (on) {
+          return function (e) {
+            e.preventDefault();
+            input[dir] = on;
+            btn.classList.toggle("on", on);
+          };
+        };
+        btn.addEventListener("pointerdown", set(true));
+        btn.addEventListener("pointerup", set(false));
+        btn.addEventListener("pointercancel", set(false));
+        btn.addEventListener("pointerleave", set(false));
+      });
+      dashBtn.addEventListener("pointerdown", function (e) { e.preventDefault(); input.dash = true; });
+      dashBtn.addEventListener("pointerup", function (e) { e.preventDefault(); input.dash = false; });
+      dashBtn.addEventListener("pointercancel", function () { input.dash = false; });
+
+      // Tap-to-steer: pointer on the arena steers toward the touch point.
+      var steerId = null;
+      canvas.addEventListener("pointerdown", function (e) {
+        if (STATE !== "playing") return;
+        steerId = e.pointerId;
+        steerToward(e);
+      });
+      canvas.addEventListener("pointermove", function (e) {
+        if (steerId === e.pointerId) steerToward(e);
+      });
+      function endSteer(e) {
+        if (steerId === e.pointerId) {
+          steerId = null;
+          input.left = input.right = input.up = input.down = false;
+        }
+      }
+      canvas.addEventListener("pointerup", endSteer);
+      canvas.addEventListener("pointercancel", endSteer);
+      function steerToward(e) {
+        var rect = canvas.getBoundingClientRect();
+        var sx = (e.clientX - rect.left) / rect.width * W;
+        var sy = (e.clientY - rect.top) / rect.height * H;
+        var dx = sx - player.x, dy = sy - player.y;
+        var dead = 8;
+        input.left = dx < -dead; input.right = dx > dead;
+        input.up = dy < -dead; input.down = dy > dead;
+      }
+
+      // ── Canvas sizing (crisp on HiDPI, keep 3:5 aspect) ──────────────────────────
+      function resize() {
+        var stage = document.getElementById("stage");
+        var availW = stage.clientWidth - 16;
+        var availH = stage.clientHeight - 16;
+        var scale = Math.min(availW / W, availH / H);
+        scale = Math.max(0.1, scale);
+        canvas.style.width = Math.round(W * scale) + "px";
+        canvas.style.height = Math.round(H * scale) + "px";
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      // ── Boot ─────────────────────────────────────────────────────────────────
+      updateReadout();
+      setState("ready");
+    </script>
+  </body>
+</html>
