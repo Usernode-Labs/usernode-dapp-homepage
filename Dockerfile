@@ -2,10 +2,19 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Give the non-root "node" user ownership of the workdir so it can write
+# node_modules during the install step below.
+RUN chown node:node /app
+
 # Run as the non-root "node" user that ships with the base image.
 USER node
 
-# This repo has no package.json; it's just static files + server.js.
+# Install the single runtime dependency (pg) before copying app sources so
+# the npm layer is cached across source-only changes.
+COPY --chown=node:node package.json ./
+RUN npm install --omit=dev --no-audit --no-fund
+
+# App sources.
 COPY --chown=node:node server.js index.html dapps.json ./
 # Static screenshot assets served at /screenshots/* by server.js.
 COPY --chown=node:node public ./public
