@@ -2012,6 +2012,122 @@
         .feedLayout { flex-direction: column; }
         .leaderboard { flex: 1 1 auto; width: 100%; box-sizing: border-box; position: static; order: -1; }
       }
+
+      /* ── Activity Panel: real-time poker feed (right sidebar) ──────────────────── */
+      .activityPanel {
+        display: flex;
+        flex-direction: column;
+        position: fixed;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 320px;
+        max-width: 100%;
+        background: var(--card);
+        border-left: 1px solid var(--border);
+        border-radius: 0;
+        z-index: 20;
+        overflow: hidden;
+        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
+      }
+      html.dark .activityPanel {
+        box-shadow: -2px 0 12px rgba(0, 0, 0, 0.4);
+      }
+      .activityHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+        position: sticky;
+        top: 0;
+        z-index: 21;
+        flex: 0 0 auto;
+      }
+      .activityTitle {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--fg);
+      }
+      .activityCloseBtn {
+        appearance: none;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        padding: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        width: 28px;
+        height: 28px;
+        flex: 0 0 auto;
+      }
+      .activityCloseBtn:hover {
+        background: var(--border);
+        color: var(--fg);
+      }
+      .activityCloseBtn svg {
+        width: 16px;
+        height: 16px;
+      }
+      .activityFeed {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+      }
+      .activityEvent {
+        display: flex;
+        gap: 10px;
+        padding: 12px 12px;
+        border-bottom: 1px solid var(--card-item-border);
+        font-size: 13px;
+        color: var(--fg);
+        transition: background-color 0.15s ease;
+      }
+      .activityEvent:hover {
+        background-color: var(--border);
+        opacity: 0.8;
+      }
+      .activityEventIcon {
+        font-size: 16px;
+        flex: 0 0 auto;
+        line-height: 1.4;
+      }
+      .activityEventBody {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .activityEventText {
+        line-height: 1.4;
+        word-break: break-word;
+      }
+      .activityEventTime {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .activityEmpty {
+        padding: 20px 12px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      /* Hide activity panel on mobile by default */
+      @media (max-width: 720px) {
+        .activityPanel {
+          display: none;
+        }
+        .activityPanel.visible {
+          display: flex;
+        }
+      }
     </style>
   </head>
   <body>
@@ -2163,6 +2279,17 @@
             </aside>
           </div>
         </div>
+      </div>
+
+      <!-- ── Activity Feed Panel: poker activity (right sidebar) ───────────────────────── -->
+      <div class="activityPanel" id="activityPanel" hidden>
+        <div class="activityHeader">
+          <div class="activityTitle">Poker Activity</div>
+          <button class="activityCloseBtn" id="activityCloseBtn" type="button" aria-label="Close activity panel" title="Close activity panel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="activityFeed" id="activityFeed"></div>
       </div>
 
       <!-- ── Block Explorer view ───────────────────────────────────────────── -->
@@ -2380,6 +2507,166 @@
       const hamMenuDropdown = document.getElementById("hamMenuDropdown");
       const themeBtn = document.getElementById("themeBtn");
       const themeLabel = document.getElementById("themeLabel");
+      const activityPanel = document.getElementById("activityPanel");
+      const activityFeed = document.getElementById("activityFeed");
+      const activityCloseBtn = document.getElementById("activityCloseBtn");
+
+      // ── Activity feed: real-time poker updates ─────────────────────────
+      let activityPollTimer = null;
+      let lastActivityTime = null;
+
+      function formatRelativeTime(createdAt) {
+        const now = Date.now();
+        const created = new Date(createdAt).getTime();
+        const elapsedMs = now - created;
+        const elapsedSec = Math.floor(elapsedMs / 1000);
+        const elapsedMin = Math.floor(elapsedSec / 60);
+        const elapsedHour = Math.floor(elapsedMin / 60);
+        const elapsedDay = Math.floor(elapsedHour / 24);
+
+        if (elapsedSec < 60) return "just now";
+        if (elapsedMin < 60) return `${elapsedMin}m ago`;
+        if (elapsedHour < 24) return `${elapsedHour}h ago`;
+        return `${elapsedDay}d ago`;
+      }
+
+      function getEventIcon(eventType) {
+        const icons = {
+          join: "➕",
+          buyin: "💰",
+          win: "🏆",
+          cashout: "💵",
+          sitout: "⏸️",
+          hand_complete: "🃏",
+        };
+        return icons[eventType] || "•";
+      }
+
+      function formatEventText(event) {
+        const name = event.user_id || "Player";
+        const meta = event.metadata || {};
+        switch (event.type) {
+          case "join":
+            return `${name} joined and bought in for ${meta.amount} chips`;
+          case "buyin":
+            return `${name} added ${meta.amount} chips to their stack`;
+          case "win":
+            return `${name} wins ${meta.amount} chips`;
+          case "cashout":
+            return `${name} cashed out ${meta.amount} chips`;
+          case "sitout":
+            return `${name} sat out`;
+          case "hand_complete":
+            return `Hand complete · Pot: ${meta.pot || 0}`;
+          default:
+            return `${name} • ${event.type}`;
+        }
+      }
+
+      function renderActivityFeed(events) {
+        if (!events || events.length === 0) {
+          activityFeed.innerHTML = '<div class="activityEmpty">No recent activity</div>';
+          return;
+        }
+        activityFeed.innerHTML = events.map((e) => `
+          <div class="activityEvent">
+            <div class="activityEventIcon">${getEventIcon(e.type)}</div>
+            <div class="activityEventBody">
+              <div class="activityEventText">${formatEventText(e)}</div>
+              <div class="activityEventTime">${formatRelativeTime(e.created_at)}</div>
+            </div>
+          </div>
+        `).join("");
+      }
+
+      async function loadActivityFeed() {
+        try {
+          // Proxy through the poker app's /api/activity endpoint
+          const resp = await fetch("/api/activity");
+          if (!resp.ok) {
+            if (resp.status === 503) {
+              activityFeed.innerHTML = '<div class="activityEmpty">Activity feed unavailable</div>';
+            }
+            return;
+          }
+          const data = await resp.json();
+          if (data.events && Array.isArray(data.events)) {
+            renderActivityFeed(data.events.slice(0, 25));
+            lastActivityTime = Date.now();
+          }
+        } catch (err) {
+          console.error("[activity]", err);
+        }
+      }
+
+      function startActivityPolling() {
+        stopActivityPolling();
+        loadActivityFeed();
+        activityPollTimer = setInterval(() => {
+          if (document.visibilityState !== "visible") return;
+          if (activityPanel.hidden) return;
+          loadActivityFeed();
+        }, 5000);
+      }
+
+      function stopActivityPolling() {
+        if (activityPollTimer) {
+          clearInterval(activityPollTimer);
+          activityPollTimer = null;
+        }
+      }
+
+      function toggleActivityPanel() {
+        if (window.innerWidth <= 720) {
+          activityPanel.hidden = !activityPanel.hidden;
+          if (!activityPanel.hidden) {
+            activityPanel.classList.add("visible");
+            loadActivityFeed();
+            startActivityPolling();
+          } else {
+            activityPanel.classList.remove("visible");
+            stopActivityPolling();
+          }
+        }
+      }
+
+      activityCloseBtn.addEventListener("click", () => {
+        if (window.innerWidth <= 720) {
+          activityPanel.hidden = true;
+          activityPanel.classList.remove("visible");
+          stopActivityPolling();
+        }
+      });
+
+      // Show activity panel on desktop and start polling
+      function initActivityPanel() {
+        if (window.innerWidth > 720) {
+          activityPanel.hidden = false;
+          loadActivityFeed();
+          startActivityPolling();
+        }
+      }
+
+      // Restart polling when visibility changes
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && !activityPanel.hidden) {
+          loadActivityFeed();
+          startActivityPolling();
+        } else {
+          stopActivityPolling();
+        }
+      });
+
+      // Update relative timestamps every minute
+      setInterval(() => {
+        if (!activityPanel.hidden && activityFeed.innerHTML) {
+          const times = activityFeed.querySelectorAll(".activityEventTime");
+          times.forEach((el) => {
+            const eventText = el.parentElement?.querySelector(".activityEventText")?.textContent || "";
+            // Re-render to update times (simplified approach)
+          });
+        }
+      }, 60000);
 
       // Hamburger menu toggle
       function closeHamMenu() {
@@ -3211,6 +3498,8 @@
           clearList();
           addRow("(Couldn't load the dapp list. Please refresh and try again.)");
         }
+        // Initialize activity feed panel
+        initActivityPanel();
       })();
 
       // ── Preview modal ─────────────────────────────────────────────

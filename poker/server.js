@@ -310,9 +310,9 @@ async function loadRuntime(tableId) {
 const app = express();
 app.use(express.json({ limit: "64kb" }));
 
-// /api/tables (lobby read) and /api/hands/* (verify) are intentionally public
-// per the spec — they expose no user-private data.
-const PUBLIC_API_PATHS = new Set(["/health", "/api/tables"]);
+// /api/tables (lobby read), /api/hands/* (verify), and /api/activity (feed)
+// are intentionally public per the spec — they expose no user-private data.
+const PUBLIC_API_PATHS = new Set(["/health", "/api/tables", "/api/activity"]);
 const PUBLIC_PREFIXES = ["/explorer-api/", "/api/hands/"];
 
 app.use((req, res, next) => {
@@ -618,6 +618,24 @@ app.get("/api/tables/:id/hands", async (req, res) => {
     id: h.id, hand_no: h.hand_no, board: h.board, commitment: h.commitment,
     revealed_seed: h.seed, result: h.result, commit_tx: h.commit_tx, reveal_tx: h.reveal_tx, ended_at: h.ended_at,
   })) });
+});
+
+// ── Activity feed: recent events across all tables (public) ──────────────────────
+app.get("/api/activity", async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "activity feed unavailable" });
+  const r = await pool.query(
+    `SELECT id, table_id, event_type, user_id, seat_no, metadata, created_at FROM activity_events
+     ORDER BY created_at DESC LIMIT 50`);
+  const events = r.rows.map((row) => ({
+    id: row.id,
+    table_id: row.table_id,
+    type: row.event_type,
+    user_id: row.user_id,
+    seat_no: row.seat_no,
+    metadata: row.metadata ? JSON.parse(row.metadata) : null,
+    created_at: row.created_at,
+  }));
+  res.json({ events });
 });
 
 app.get("/api/hands/:id/verify", async (req, res) => {
