@@ -1031,6 +1031,45 @@ async function handlePins(req, res, urlObj) {
   }
 }
 
+// Micro-blog leaderboard handler (public endpoint, no auth required).
+async function handleLeaderboard(req, res) {
+  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+  const limit = Math.min(Math.max(parseInt(urlObj.searchParams.get("limit"), 10) || 10, 1), 50);
+
+  const mockLeaders = [
+    { username: "staging-demo-alice", points: 450 },
+    { username: "staging-demo-bob", points: 380 },
+    { username: "staging-demo-charlie", points: 320 },
+    { username: "staging-demo-diana", points: 290 },
+    { username: "staging-demo-eve", points: 250 },
+    { username: "staging-demo-frank", points: 180 },
+    { username: "staging-demo-grace", points: 150 },
+    { username: "staging-demo-henry", points: 120 },
+    { username: "staging-demo-iris", points: 85 },
+    { username: "staging-demo-jack", points: 60 }
+  ];
+
+  // If database is available, query the real microblog_points table.
+  if (pgPool) {
+    try {
+      const { rows } = await pgPool.query(
+        `SELECT username, points_earned::int AS points FROM microblog_points
+         WHERE points_earned > 0 ORDER BY points_earned DESC, username ASC LIMIT $1`,
+        [limit]
+      );
+      return sendJson(res, 200, { leaders: rows, staging: IS_STAGING });
+    } catch (err) {
+      // Table may not exist in standalone/dev. Fall back to mock data in staging.
+    }
+  }
+
+  // No database or query failed — return mock data in staging, empty in prod.
+  if (IS_STAGING) {
+    return sendJson(res, 200, { leaders: mockLeaders.slice(0, limit), staging: true });
+  }
+  return sendJson(res, 200, { leaders: [], staging: false });
+}
+
 // Kick off DB init (non-blocking — the homepage serves regardless).
 initPinsDb();
 
@@ -1545,6 +1584,12 @@ const server = http.createServer((req, res) => {
       players: quizLeaderboardRows(QUIZ_LEADERBOARD_LIMIT),
       eligibilityMinCorrect: QUIZ_ELIGIBILITY_MIN_CORRECT,
     });
+  }
+
+  // Micro-blog top contributors (by points earned).
+  if (pathname === "/api/leaderboard" && req.method === "GET") {
+    handleLeaderboard(req, res);
+    return;
   }
 
   // Begin a session → returns N questions WITHOUT the answer key + a sessionId.
