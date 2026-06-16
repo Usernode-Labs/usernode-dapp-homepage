@@ -1,0 +1,16 @@
+{
+  "name": "usernode-holdem",
+  "version": "0.1.0",
+  "description": "On-chain Texas Hold'em (slice 1) — a Usernode child app.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.5"
+  }
+}
