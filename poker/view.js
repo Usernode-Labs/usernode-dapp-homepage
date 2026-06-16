@@ -37,6 +37,8 @@ function buildTableView(runtime, viewerUserId, isSpectator = false) {
       isYou: !!(s && s.userId && s.userId === viewerUserId),
       holeCards: null,
       holeCount: 0,
+      is_bot: !!(s && s.is_bot),
+      bot_difficulty: (s && s.is_bot) ? (s.bot_difficulty || null) : null,
     };
     if (ep && ep.holeCards.length) {
       out.holeCount = ep.holeCards.length;
@@ -63,6 +65,8 @@ function buildTableView(runtime, viewerUserId, isSpectator = false) {
       is_private: (t.visibility || "public") === "private",
       allow_spectators: runtime.table.allow_spectators !== false,
       spectator_count: runtime.spectators ? runtime.spectators.size : 0,
+      allow_bots: !!runtime.table.allow_bots,
+      bot_difficulty: runtime.table.bot_difficulty || "medium",
     },
     seats,
     hand: null,

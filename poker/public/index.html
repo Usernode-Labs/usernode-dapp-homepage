@@ -173,6 +173,18 @@
         <label for="cAllowSpec" class="text-sm">Allow spectators</label>
         <input type="checkbox" id="cAllowSpec" checked class="w-4 h-4 rounded accent-emerald-500" />
       </div>
+      <div class="flex items-center justify-between mb-2">
+        <label for="cAllowBots" class="text-sm">Allow AI bots</label>
+        <input type="checkbox" id="cAllowBots" class="w-4 h-4 rounded accent-blue-500" onchange="toggleBotDiff()" />
+      </div>
+      <div id="cBotDiffWrap" class="hidden mb-3">
+        <label class="block text-sm mb-1">Bot difficulty</label>
+        <select id="cBotDiff" class="w-full bg-slate-800 rounded px-3 py-2">
+          <option value="easy">Easy — plays loosely, mostly calls</option>
+          <option value="medium" selected>Medium — uses hand strength heuristics</option>
+          <option value="hard">Hard — pot odds, draws, position</option>
+        </select>
+      </div>
       <div id="cPrivateWrap" class="hidden">
         <label class="block text-sm mb-1">Password <span class="text-slate-500">(optional if whitelisting)</span></label>
         <input id="cPassword" type="password" autocomplete="off" class="w-full bg-slate-800 rounded px-3 py-2 mb-3" placeholder="Set a join password" />
@@ -235,6 +247,7 @@
         const rows = data.tables.map((t) => {
           const full = t.seated >= t.max_seats;
           const lock = t.is_private ? '<span class="text-amber-300" title="Private table">🔒 </span>' : '';
+          const botBadge = t.allow_bots ? `<span class="text-[10px] uppercase tracking-wide text-blue-300/80 align-middle ml-1">🤖 Bots</span>` : '';
           const watching = t.spectator_count > 0 ? ` · <span class="text-slate-400">${t.spectator_count} watching</span>` : '';
           const watchBtn = (ME && t.allow_spectators)
             ? `<button onclick="watchTable('${t.id}')" class="shrink-0 bg-slate-600 hover:bg-slate-500 rounded-lg px-3 py-2 text-sm font-medium">👁 Watch</button>`
@@ -242,7 +255,7 @@
           return `
           <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-3">
             <div class="min-w-0">
-              <div class="font-semibold truncate">${lock}${escapeHtml(t.name)}${t.is_private ? ' <span class="text-[10px] uppercase tracking-wide text-amber-300/80 align-middle">Private</span>' : ''}</div>
+              <div class="font-semibold truncate">${lock}${escapeHtml(t.name)}${t.is_private ? ' <span class="text-[10px] uppercase tracking-wide text-amber-300/80 align-middle">Private</span>' : ''}${botBadge}</div>
               <div class="text-sm text-slate-400">Blinds ${t.sb}/${t.bb} · Buy-in ${t.min_buyin}–${t.max_buyin} · ${t.max_seats}-max · <span class="${full ? 'text-amber-400' : 'text-emerald-300'}">${t.seated}/${t.max_seats} seated</span>${watching}</div>
             </div>
             <div class="flex gap-2 shrink-0">
@@ -279,6 +292,7 @@
       $('createModal').classList.remove('hidden'); $('createModal').classList.add('flex');
     }
     function closeCreate() { $('createModal').classList.add('hidden'); $('createModal').classList.remove('flex'); }
+    function toggleBotDiff() { $('cBotDiffWrap').classList.toggle('hidden', !$('cAllowBots').checked); }
     document.addEventListener('change', (e) => {
       if (e.target && e.target.id === 'cVis') {
         $('cPrivateWrap').classList.toggle('hidden', e.target.value !== 'private');
@@ -299,6 +313,8 @@
           max_buyin: Number($('cMax').value),
           visibility: $('cVis').value,
           allow_spectators: $('cAllowSpec').checked,
+          allow_bots: $('cAllowBots').checked,
+          bot_difficulty: $('cBotDiff').value,
           password: $('cVis').value === 'private' ? $('cPassword').value : '',
           whitelist: $('cVis').value === 'private' ? $('cWhitelist').value : '',
         };
@@ -412,10 +428,11 @@
         return `<div class="${cls}" style="left:${pos.x}%;top:${pos.y}%;min-width:96px;text-align:center">
             ${ring}${occ ? badges : ''}
             ${occ ? `
-              <div class="text-xs font-semibold truncate ${isMe ? 'text-emerald-300' : ''}">${escapeHtml(s.username || '')}${isMe ? ' (you)' : ''}</div>
+              <div class="text-xs font-semibold truncate ${isMe ? 'text-emerald-300' : s.is_bot ? 'text-blue-300' : ''}">${s.is_bot ? '🤖 ' : ''}${escapeHtml(s.username || '')}${isMe ? ' (you)' : ''}${s.is_bot && s.bot_difficulty ? `<span class="ml-1 text-[9px] text-blue-400/70 uppercase">${s.bot_difficulty}</span>` : ''}</div>
               <div class="text-[11px] text-amber-300 chip-pill rounded px-1 inline-block mt-0.5">${s.stack}${s.folded ? ' · folded' : ''}${s.allIn ? ' · all-in' : ''}</div>
               <div class="mt-1 flex gap-0.5 justify-center" style="transform:scale(.62);transform-origin:center">${cards}</div>
               ${s.committed ? `<div class="text-[10px] text-slate-200 mt-0.5">bet ${s.committed}</div>` : ''}
+              ${s.is_bot && !isSpec ? `<button onclick="startBuyin(${s.seat_no})" class="text-[10px] text-slate-500 hover:text-blue-300 mt-0.5 w-full">Take seat</button>` : ''}
             ` : (isSpec ? `<div class="py-3 text-xs text-slate-600 text-center">Empty</div>` : `<button onclick="startBuyin(${s.seat_no})" class="text-xs text-slate-400 hover:text-emerald-300 py-3 w-full">Sit here</button>`)}
           </div>`;
       }).join('');

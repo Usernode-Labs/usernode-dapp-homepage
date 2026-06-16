@@ -24,6 +24,10 @@ ALTER TABLE tables ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'pu
 -- Whether spectators may watch the table live. When false the stream endpoint
 -- returns 403 to non-seated viewers and the lobby hides the Watch button.
 ALTER TABLE tables ADD COLUMN IF NOT EXISTS allow_spectators BOOLEAN NOT NULL DEFAULT TRUE;
+-- AI bot configuration. allow_bots fills empty seats with virtual opponents;
+-- bot_difficulty controls their play style (easy | medium | hard).
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS allow_bots BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS bot_difficulty VARCHAR(10) NOT NULL DEFAULT 'medium';
 
 -- Private access material for a table: salted password hash and/or an allowed
 -- wallet whitelist. Marked staging:private — auth material must never leak from

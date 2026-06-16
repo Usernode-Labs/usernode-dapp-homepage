@@ -18,6 +18,8 @@ const fairness = require("./engine/fairness");
 const { createHand, legalActions, applyAction } = require("./engine/holdem");
 const timerLogic = require("./engine/timer");
 const { buildTableView } = require("./view");
+const { isBotUserId } = require("./engine/bots");
+const { fillEmptySeatsWithBots, evictBotFromSeat, replenishBrokeBots, scheduleBot } = require("./engine/botManager");
 
 const PORT = Number(process.env.PORT) || 3000;
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -97,9 +99,9 @@ async function seedStaging() {
   // through betting → showdown quickly for testers (staging-only).
   const DEMO_TIMER = 15;
   await pool.query(
-    `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by)
-     VALUES ($1,'Staging demo — Play Money 6-max',$2,$3,$4,$5,$6,$7,'open','staging-demo-user')
-     ON CONFLICT (id) DO NOTHING`,
+    `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by, allow_bots, bot_difficulty)
+     VALUES ($1,'Staging demo — Play Money 6-max',$2,$3,$4,$5,$6,$7,'open','staging-demo-user',true,'medium')
+     ON CONFLICT (id) DO UPDATE SET allow_bots=true, bot_difficulty='medium'`,
     [DEMO_TABLE_ID, SB, BB, MIN_BUYIN, MAX_BUYIN, MAX_SEATS, DEMO_TIMER]
   );
   const demoSeats = [
@@ -305,6 +307,8 @@ app.get("/api/tables", async (req, res) => {
       visibility: t.visibility || "public",
       is_private: (t.visibility || "public") === "private",
       allow_spectators: t.allow_spectators !== false,
+      allow_bots: !!t.allow_bots,
+      bot_difficulty: t.bot_difficulty || "medium",
       seated: seatRows.rows[0].n,
       spectator_count: rt ? rt.spectators.size : 0,
     });
@@ -331,6 +335,8 @@ app.post("/api/tables", async (req, res) => {
   const timer = intIn(b.action_timer_seconds, ACTION_TIMER_SECONDS);
   const visibility = b.visibility === "private" ? "private" : "public";
   const allowSpectators = b.allow_spectators !== false; // default true
+  const allowBots = b.allow_bots === true;
+  const botDifficulty = ["easy", "medium", "hard"].includes(b.bot_difficulty) ? b.bot_difficulty : "medium";
 
   // Validate the settings so a malformed table can't break the engine.
   if (maxSeats < MIN_SEATS_ALLOWED || maxSeats > MAX_SEATS_ALLOWED)
@@ -353,9 +359,9 @@ app.post("/api/tables", async (req, res) => {
     return res.status(400).json({ error: "a private table needs a password or a wallet whitelist" });
 
   await pool.query(
-    `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by, visibility, allow_spectators)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9,$10,$11)`,
-    [id, name, sb, bb, minBuyin, maxBuyin, maxSeats, timer, req.user.id, visibility, allowSpectators]
+    `INSERT INTO tables (id, name, sb, bb, min_buyin, max_buyin, max_seats, action_timer_seconds, status, created_by, visibility, allow_spectators, allow_bots, bot_difficulty)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9,$10,$11,$12,$13)`,
+    [id, name, sb, bb, minBuyin, maxBuyin, maxSeats, timer, req.user.id, visibility, allowSpectators, allowBots, botDifficulty]
   );
   if (visibility === "private") {
     let hash = null, salt = null;
@@ -366,7 +372,7 @@ app.post("/api/tables", async (req, res) => {
       [id, hash, salt, JSON.stringify(whitelist)]
     );
   }
-  res.status(201).json({ id, visibility, allow_spectators: allowSpectators });
+  res.status(201).json({ id, visibility, allow_spectators: allowSpectators, allow_bots: allowBots, bot_difficulty: botDifficulty });
 });
 
 app.get("/api/tables/:id", async (req, res) => {
@@ -397,10 +403,15 @@ app.post("/api/tables/:id/buyin", async (req, res) => {
   const denied = checkTableAccess(rt, { wallet, password: req.body.password });
   if (denied) return res.status(denied.code).json({ error: denied.error });
 
-  // Seat must be free, or already yours.
+  // Seat must be free, or already yours, or occupied by a bot (evict it).
   const existing = rt.seats.get(seatNo);
-  if (existing && existing.userId && existing.userId !== req.user.id)
-    return res.status(409).json({ error: "seat is taken" });
+  if (existing && existing.userId && existing.userId !== req.user.id) {
+    if (existing.is_bot) {
+      evictBotFromSeat(rt, seatNo);
+    } else {
+      return res.status(409).json({ error: "seat is taken" });
+    }
+  }
   // One seat per user at a table.
   for (const [, s] of rt.seats) {
     if (s.userId === req.user.id && s.seat_no !== seatNo)
@@ -639,8 +650,15 @@ function seatedActivePlayers(rt) {
 async function maybeStartHand(rt) {
   if (rt.hand && !rt.hand.engineState.complete) return;
   if (rt.starting) return;
+  // Replenish and fill bots before counting players.
+  if (rt.table.allow_bots) {
+    replenishBrokeBots(rt);
+    fillEmptySeatsWithBots(rt);
+  }
   const players = seatedActivePlayers(rt);
   if (players.length < 2) return;
+  // Need at least one human at a bot table (bots don't play alone).
+  if (rt.table.allow_bots && players.every((p) => isBotUserId(p.userId))) return;
   rt.starting = true;
   try {
     await startHand(rt, players);
@@ -685,12 +703,15 @@ async function startHand(rt, players) {
     sb: Number(rt.table.sb), bb: Number(rt.table.bb), deck, handId,
   });
 
-  // Persist hole cards (private) + the hand row (commitment recorded now).
+  // Persist hole cards (private) for human seats only — bots have no DB row.
   for (const p of engineState.players) {
-    await pool.query(
-      `INSERT INTO hole_cards (hand_id, seat_no, user_id, cards) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (hand_id, seat_no) DO NOTHING`,
-      [handId, p.seat, rt.seats.get(p.seat).userId, p.holeCards]);
+    const seatMeta = rt.seats.get(p.seat);
+    if (seatMeta && !seatMeta.is_bot) {
+      await pool.query(
+        `INSERT INTO hole_cards (hand_id, seat_no, user_id, cards) VALUES ($1,$2,$3,$4)
+         ON CONFLICT (hand_id, seat_no) DO NOTHING`,
+        [handId, p.seat, seatMeta.userId, p.holeCards]);
+    }
   }
   await pool.query(
     `INSERT INTO hands (id, table_id, hand_no, button_seat, board, commitment, nonces, deck)
@@ -708,7 +729,11 @@ async function startHand(rt, players) {
   anchorCommit(handId, commitment).catch(() => {});
 
   broadcast(rt);
-  if (engineState.complete) finishHand(rt); // e.g. everyone all-in from blinds
+  if (engineState.complete) {
+    finishHand(rt); // e.g. everyone all-in from blinds
+  } else {
+    scheduleBot(rt, advanceHand, scheduleBot);
+  }
 }
 
 function advanceHand(rt, action) {
@@ -721,6 +746,7 @@ function advanceHand(rt, action) {
   } else {
     rt.hand.deadline = Date.now() + rt.table.action_timer_seconds * 1000;
     broadcast(rt);
+    scheduleBot(rt, advanceHand, scheduleBot);
   }
 }
 
@@ -728,10 +754,12 @@ async function finishHand(rt) {
   const hand = rt.hand;
   const engine = hand.engineState;
   // Settle the ledger: seats.stack := engine final stacks (pot is conserved).
+  // Bot seats are in-memory only — no DB writes for them.
   for (const p of engine.players) {
     const seat = rt.seats.get(p.seat);
     if (seat) {
       seat.stack = p.stack;
+      if (seat.is_bot) continue;
       await pool.query(`UPDATE seats SET stack=$1 WHERE table_id=$2 AND seat_no=$3`, [p.stack, rt.table.id, p.seat]);
       if (seat.stack === 0) {
         seat.status = "sitting_out";
@@ -959,6 +987,8 @@ async function main() {
       // Seed 2 fake spectators so the spectator count shows in the lobby.
       demoRt.spectators.add("staging-demo-spectator-1");
       demoRt.spectators.add("staging-demo-spectator-2");
+      // Pre-fill bot seats so they appear in the lobby before the first hand.
+      fillEmptySeatsWithBots(demoRt);
       maybeStartHand(demoRt).catch(() => {});
     }
   }
