@@ -1,7 +1,10 @@
 {
+  "version": 1,
+  "updated_at": 0,
   "apps": [
     {
       "name": "Opinion Market",
+      "displayName": "Opinion Market (Community Edition)",
       "description": "A prediction market, but for opinions.",
       "longDescription": "Opinion Market lets anyone open a market on a subjective question and trade shares on the outcomes they believe in. Stake on opinions, watch prices move as the crowd weighs in, and settle markets through community resolution. Every trade is an on-chain transaction on the Usernode chain, so the order book and your positions are fully transparent and verifiable.",
       "author": "Usernode Labs",
@@ -123,6 +126,7 @@
     },
     {
       "name": "Echo Diagnostic",
+      "displayName": "Echo — Diagnostics Tool",
       "description": "Simple test of sending / receiving transactions",
       "longDescription": "Echo Diagnostic is a minimal utility for verifying end-to-end transaction flow on the Usernode chain. Send a transaction and watch it echo back, confirming that signing, broadcast, inclusion, and explorer indexing are all working. Handy for debugging wallet connectivity and as a reference implementation for the simplest possible dapp.",
       "author": "Usernode Labs",

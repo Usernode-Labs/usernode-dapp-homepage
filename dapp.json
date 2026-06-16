@@ -1,5 +1,5 @@
 {
-  "name": "Usernode Hold'em",
+  "name": "Usernode DApps Hub",
   "secrets": [
     {
       "key": "TREASURY_ADDRESS",
@@ -58,6 +58,38 @@
       "required": false,
       "private": false,
       "default": "http://usernode-node:3001"
+    },
+    {
+      "key": "POINTS_PER_POST",
+      "description": "Micro-blog feed: points awarded to the author for each post. Public tuning value.",
+      "required": false,
+      "private": false,
+      "default": "5",
+      "staging_default": "5"
+    },
+    {
+      "key": "POINTS_PER_LIKE",
+      "description": "Micro-blog feed: points awarded to a post's author for each like it receives from another user (self-likes award none). Public tuning value.",
+      "required": false,
+      "private": false,
+      "default": "1",
+      "staging_default": "1"
+    },
+    {
+      "key": "POINTS_PER_TOKEN",
+      "description": "Micro-blog feed: points required to mint 1 simulated in-app token when converting. Public tuning value.",
+      "required": false,
+      "private": false,
+      "default": "10",
+      "staging_default": "10"
+    },
+    {
+      "key": "MICROBLOG_MAX_POST_LEN",
+      "description": "Micro-blog feed: maximum characters allowed per post. Public tuning value.",
+      "required": false,
+      "private": false,
+      "default": "280",
+      "staging_default": "280"
     },
     {
       "key": "QUIZ_PRIZE_POOL_ADDRESS",
