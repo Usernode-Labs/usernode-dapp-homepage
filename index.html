@@ -1815,6 +1815,45 @@
         background: var(--accent);
         border-color: var(--accent);
       }
+
+      /* ── Header navigation tabs (Dapps / Feed) ───────────────────────── */
+      .navTabs {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+        margin-left: 12px;
+      }
+      .navTab {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        font: inherit;
+        font-weight: 600;
+        font-size: 13.5px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+        white-space: nowrap;
+      }
+      .navTab:hover { color: var(--fg); border-color: var(--card-hover-border); }
+      .navTab.active {
+        color: #fff;
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+
+      /* Hide dApp-specific UI when Feed is active */
+      #feedView:not([hidden]) ~ .categoryBar,
+      #feedView:not([hidden]) ~ .searchBar {
+        display: none;
+      }
+      #feedView:not([hidden]) ~ div #viewWrap {
+        display: none;
+      }
+
       .stagingBadge {
         margin-left: auto;
         font-size: 11px;
@@ -2042,6 +2081,11 @@
                 <span class="brandName">DAPPS</span>
               </a>
             </div>
+            <div class="navTabs" role="tablist" aria-label="Navigate between Dapps and Feed">
+              <button class="navTab active" id="tabDapps" type="button" role="tab" aria-selected="true">Dapps</button>
+              <button class="navTab" id="tabFeed" type="button" role="tab" aria-selected="false">Feed</button>
+              <span class="stagingBadge" id="stagingBadge" hidden title="You are viewing staging mock data">Staging</span>
+            </div>
             <div class="headerButtonRow">
               <a class="navBtn" id="goExplorerBtn" href="#/explorer" title="Open the block explorer">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
@@ -2098,11 +2142,6 @@
                 </div>
               </div>
             </div>
-          </div>
-          <div class="viewTabs" role="tablist" aria-label="Views">
-            <button class="viewTab active" id="tabDapps" type="button" role="tab" aria-selected="true">Dapps</button>
-            <button class="viewTab" id="tabFeed" type="button" role="tab" aria-selected="false">Feed</button>
-            <span class="stagingBadge" id="stagingBadge" hidden title="You are viewing staging mock data">Staging</span>
           </div>
         </div>
         <div class="searchBar">
@@ -4249,6 +4288,12 @@
           tabDapps.setAttribute("aria-selected", String(!on));
           feedView.hidden = !on;
           dappList.style.display = on ? "none" : "";
+          const categoryBar = document.getElementById("categoryBar");
+          const searchBar = document.querySelector(".searchBar");
+          const viewWrap = document.getElementById("viewWrap");
+          if (categoryBar) categoryBar.style.display = on ? "none" : "";
+          if (searchBar) searchBar.style.display = on ? "none" : "";
+          if (viewWrap) viewWrap.style.display = on ? "none" : "";
           if (on) refreshAll();
         }
         tabFeed.addEventListener("click", () => showFeed(true));
