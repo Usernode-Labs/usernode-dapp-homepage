@@ -187,6 +187,18 @@ const txCache = {};       // { [pubkey]: Transaction[] }
 const seenTxIds = {};     // { [pubkey]: Set }
 const lastHeight = {};    // { [pubkey]: number } — for from_height incremental
 let statsChainId = null;
+let lastPollCompletedAt = null;   // ms — stamped at the end of each pollAllStats pass
+let explorerReachable = null;     // null = not yet attempted, true/false afterwards
+
+// ── Health / reachability ────────────────────────────────────────────────────
+// Per-dapp reachability probe results, keyed by pubkey (or by url for keyless
+// listing entries such as the bundled Mini Minecraft page). Populated by
+// pollAllHealth() each tick and joined with on-chain activity by buildHealth().
+const healthCache = {};   // { [key]: { ok, http_status, latency_ms, last_checked, seeded? } }
+
+const PROBE_TIMEOUT_MS = Number(process.env.HEALTH_PROBE_TIMEOUT_MS) || 5000;
+const HEALTH_SLOW_MS = Number(process.env.HEALTH_SLOW_MS) || 2000;            // > this → degraded
+const HEALTH_STALE_MS = Number(process.env.HEALTH_STALE_MS) || 7 * 24 * 3600 * 1000; // no tx in 7d → degraded
 
 // Global usernames address — polled the same way as dapp pubkeys so we can
 // derive `username` / `has_set_username` per wallet for /user_activity.
@@ -385,6 +397,7 @@ function explorerBaseUrl() {
 async function discoverStatsChainId() {
   try {
     const data = await httpJson("GET", `${explorerBaseUrl()}/active_chain`);
+    explorerReachable = true;
     if (data && data.chain_id) {
       if (statsChainId && statsChainId !== data.chain_id) {
         console.log(`[stats] chain_id changed: ${statsChainId} -> ${data.chain_id} — clearing all caches`);
@@ -398,6 +411,7 @@ async function discoverStatsChainId() {
       statsChainId = data.chain_id;
     }
   } catch (e) {
+    explorerReachable = false;
     console.warn(`[stats] could not discover chain ID: ${e.message}`);
   }
 }
@@ -492,7 +506,12 @@ const STATS_POLL_INTERVAL_MS = 30000;
 
 async function pollAllStats() {
   await discoverStatsChainId();
-  if (!statsChainId) return;
+
+  // Reachability probing is independent of chain availability — run it every
+  // tick so the health panel works even if the explorer is unreachable.
+  await pollAllHealth();
+
+  if (!statsChainId) { lastPollCompletedAt = Date.now(); return; }
 
   const pubkeys = loadPubkeys();
   const extra = [USERNAMES_PUBKEY];
@@ -505,6 +524,7 @@ async function pollAllStats() {
   // Credit confirmed submission payments and age out unpaid submissions.
   reconcileSubmissionPayments();
   expireStaleSubmissions();
+  lastPollCompletedAt = Date.now();
 }
 
 // ── /user_activity derivation ────────────────────────────────────────────────
@@ -583,6 +603,170 @@ function buildUserActivity() {
     };
   }
   return out;
+}
+
+// ── Health derivation ─────────────────────────────────────────────────────────
+// Reachability probing + per-dapp status classification. The reachability probe
+// is a server-side HTTP request to each dapp's own URL (no CORS to fight, unlike
+// a browser-side check), recorded in healthCache; buildHealth() then joins it
+// with on-chain activity recency (from txCache), the poller's sync state, and an
+// optional operator `status` field in dapps.json into a single status per dapp.
+
+// Read every listing entry (including keyless ones like the bundled Mini
+// Minecraft page) with the fields health needs. Distinct from loadDapps(), which
+// filters to pubkey-bearing entries for the stats poller.
+function loadDappsForHealth() {
+  try {
+    const data = JSON.parse(fs.readFileSync(DAPPS_PATH, "utf8"));
+    const apps = data.apps || data.items || [];
+    return apps.map((a) => ({
+      name: a.name || "(unnamed)",
+      pubkey: (a.pubkey || "").trim(),
+      url: (a.url || "").trim(),
+      status: (a.status || "").trim().toLowerCase(),
+    }));
+  } catch (e) {
+    console.warn(`[health] could not read dapps.json: ${e.message}`);
+    return [];
+  }
+}
+
+// Stable health key: prefer the on-chain pubkey, fall back to the url so keyless
+// entries still get a status.
+function healthKey(d) {
+  return d.pubkey || d.url || "";
+}
+
+// Probe a single dapp URL. HEAD with a short timeout, falling back to GET when a
+// host rejects HEAD (405/501). Any 2xx/3xx counts as reachable. Never rejects —
+// resolves a result object so one bad host can't blow up the pass.
+function probeDappUrl(url) {
+  return new Promise((resolve) => {
+    let parsed;
+    try { parsed = new URL(url); } catch (_) {
+      return resolve({ ok: false, http_status: null, latency_ms: null });
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return resolve({ ok: false, http_status: null, latency_ms: null });
+    }
+    const transport = parsed.protocol === "https:" ? https : http;
+    const start = Date.now();
+    let settled = false;
+    const finish = (r) => { if (!settled) { settled = true; resolve(r); } };
+
+    function attempt(method) {
+      const req = transport.request(
+        parsed,
+        { method, timeout: PROBE_TIMEOUT_MS, headers: { "user-agent": "usernode-dapp-homepage-healthcheck/1" } },
+        (res) => {
+          const status = res.statusCode;
+          res.resume(); // drain so the socket can be freed
+          if (method === "HEAD" && (status === 405 || status === 501)) {
+            return attempt("GET");
+          }
+          finish({ ok: status >= 200 && status < 400, http_status: status, latency_ms: Date.now() - start });
+        }
+      );
+      req.on("timeout", () => { req.destroy(); finish({ ok: false, http_status: null, latency_ms: Date.now() - start }); });
+      req.on("error", () => finish({ ok: false, http_status: null, latency_ms: Date.now() - start }));
+      req.end();
+    }
+    attempt("HEAD");
+  });
+}
+
+// Probe every listed dapp's URL in parallel (each call is independently timed, so
+// one slow host bounds the pass at PROBE_TIMEOUT_MS, not the sum). Relative URLs
+// (e.g. "/minecraft") are same-origin and marked operational without a round-trip.
+// Skipped entirely under IS_STAGING, where seedStagingHealth() owns healthCache.
+async function pollAllHealth() {
+  if (IS_STAGING) return;
+  const dapps = loadDappsForHealth();
+  await Promise.all(dapps.map(async (d) => {
+    const key = healthKey(d);
+    if (!key || !d.url) return;
+    if (d.url.startsWith("/")) {
+      healthCache[key] = { ok: true, http_status: 200, latency_ms: 0, last_checked: Date.now(), local: true };
+      return;
+    }
+    const r = await probeDappUrl(d.url);
+    healthCache[key] = { ok: r.ok, http_status: r.http_status, latency_ms: r.latency_ms, last_checked: Date.now() };
+  }));
+}
+
+// Most recent on-chain activity time (ms) seen for a key, or null. A staging seed
+// may stamp an explicit time on the health entry; otherwise derive from txCache
+// (skipping self-sends, mirroring buildUserActivity).
+function lastActivityForKey(key) {
+  const h = healthCache[key];
+  if (h && typeof h.seeded_activity_at === "number") return h.seeded_activity_at;
+  const txs = txCache[key] || [];
+  let max = null;
+  for (const tx of txs) {
+    const sender = tx.source || tx.from_pubkey || tx.from;
+    if (sender && sender === key) continue;
+    const t = typeof tx.timestamp_ms === "number" ? tx.timestamp_ms : 0;
+    if (t && (max == null || t > max)) max = t;
+  }
+  return max;
+}
+
+// Compose a single status for one dapp. Operator override wins; then reachability;
+// then latency/activity heuristics. See the spec's priority order.
+function classifyStatus(operatorStatus, h, lastActivityAt) {
+  if (operatorStatus === "deprecated") return "deprecated";
+  if (operatorStatus === "maintenance") return "maintenance";
+  if (!h || h.last_checked == null) return "checking";
+  if (!h.ok) return "offline";
+  const slow = typeof h.latency_ms === "number" && h.latency_ms > HEALTH_SLOW_MS;
+  const stale = lastActivityAt != null && (Date.now() - lastActivityAt) > HEALTH_STALE_MS;
+  if (slow || stale) return "degraded";
+  return "operational";
+}
+
+// Per-dapp health map: { [key]: { status, operator_status, reachable, ... } }.
+function buildHealth() {
+  const dapps = loadDappsForHealth();
+  const out = {};
+  for (const d of dapps) {
+    const key = healthKey(d);
+    if (!key) continue;
+    const h = healthCache[key] || null;
+    const operatorStatus = STAGING_OPERATOR_OVERRIDES[key] || d.status || "";
+    const lastActivityAt = lastActivityForKey(key);
+    const hasTxs = (txCache[key] || []).length > 0 || lastActivityAt != null;
+
+    let activity_state = "none";
+    if (lastActivityAt != null) {
+      activity_state = (Date.now() - lastActivityAt) > HEALTH_STALE_MS ? "idle" : "active";
+    } else if (hasTxs) {
+      activity_state = "active";
+    }
+
+    out[key] = {
+      status: classifyStatus(operatorStatus, h, lastActivityAt),
+      operator_status: operatorStatus || "operational",
+      reachable: h ? !!h.ok : null,
+      http_status: h ? (h.http_status == null ? null : h.http_status) : null,
+      latency_ms: h ? (h.latency_ms == null ? null : h.latency_ms) : null,
+      last_checked: h ? (h.last_checked == null ? null : h.last_checked) : null,
+      last_activity_at: lastActivityAt,
+      activity_state,
+      indexed: !!statsCache[key] || !!(h && h.seeded),
+    };
+  }
+  return out;
+}
+
+// Top-level health payload served at GET /api/health.
+function buildHealthResponse() {
+  return {
+    chain_id: statsChainId,
+    synced: !!statsChainId,
+    explorer_reachable: explorerReachable,
+    last_poll_at: lastPollCompletedAt,
+    dapps: buildHealth(),
+  };
 }
 
 // ── Submission payment reconciliation + auto-publish ──────────────────────────
@@ -831,6 +1015,47 @@ function seedStagingFixtures() {
   }
   console.log("[staging] seeded demo submissions + listed dapp for conflict testing");
 }
+
+// ── Staging health seed ───────────────────────────────────────────────────────
+// Health is derived live from HTTP probes + the chain poller, so a staging
+// preview (real hosts may be unreachable, txCache empty) would otherwise render
+// every dapp as offline/checking. Seed an obviously-synthetic spread covering all
+// status colors so the dots + panel are reviewable. pollAllHealth() short-circuits
+// under IS_STAGING so this seed is never clobbered. Strictly a no-op in prod.
+//
+// The maintenance example is applied as an operator override here rather than by
+// editing dapps.json (which would mark a live dapp under maintenance in prod too).
+const STAGING_OPERATOR_OVERRIDES = IS_STAGING
+  ? { "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05": "maintenance" } // Last One Wins
+  : {};
+
+function seedStagingHealth() {
+  const now = Date.now();
+  statsChainId = statsChainId || "staging-demo-chain";
+  explorerReachable = true;
+  lastPollCompletedAt = now;
+  const put = (key, entry, activityAgoMs, stat) => {
+    healthCache[key] = { last_checked: now, seeded: true, ...entry };
+    if (typeof activityAgoMs === "number") healthCache[key].seeded_activity_at = now - activityAgoMs;
+    if (stat) statsCache[key] = stat;
+  };
+  // Opinion Market — operational, fast, active minutes ago.
+  put("ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
+    { ok: true, http_status: 200, latency_ms: 180 }, 4 * 60 * 1000, { users: 42, txns: 318 });
+  // Falling Sands — reachable but slow → degraded.
+  put("ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu",
+    { ok: true, http_status: 200, latency_ms: 2400 }, 55 * 60 * 1000, { users: 17, txns: 96 });
+  // Last One Wins — maintenance (operator override), still reachable.
+  put("ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05",
+    { ok: true, http_status: 200, latency_ms: 240 }, 30 * 60 * 1000, { users: 23, txns: 140 });
+  // Echo Diagnostic — probe failed → offline.
+  put("ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh",
+    { ok: false, http_status: null, latency_ms: null }, null, null);
+  // Mini Minecraft — bundled local route, operational.
+  put("/minecraft", { ok: true, http_status: 200, latency_ms: 0, local: true }, 2 * 60 * 60 * 1000, null);
+  console.log("[health] seeded staging health spread (5 demo dapps)");
+}
+if (IS_STAGING) seedStagingHealth();
 
 // Start background polling
 function startBackground() {
@@ -1936,6 +2161,23 @@ const server = http.createServer((req, res) => {
 
   if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
     const body = JSON.stringify(statsCache);
+    if (req.method === "HEAD") {
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+        "cache-control": "no-store",
+      });
+      return res.end();
+    }
+    return send(res, 200, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+    }, body);
+  }
+
+  if (pathname === "/api/health" && (req.method === "GET" || req.method === "HEAD")) {
+    const body = JSON.stringify(buildHealthResponse());
     if (req.method === "HEAD") {
       res.writeHead(200, {
         "content-type": "application/json",
