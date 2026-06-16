@@ -467,14 +467,22 @@
 
       ul {
         list-style: none;
-        padding: 12px 12px 14px;
+        /* Bottom padding reserves clearance so the last card clears the host
+           app's bottom navigation bar / device home indicator. */
+        padding: 12px 12px max(14px, env(safe-area-inset-bottom));
         margin: 0;
         display: grid;
         gap: 10px;
         will-change: transform;
-        touch-action: none;
+        /* pan-y lets the browser own native vertical scrolling; the rubber-band
+           JS only adds an overscroll bounce at the scroll edges. */
+        touch-action: pan-y;
         flex: 1 1 auto;
         min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
         align-content: start;
         grid-auto-rows: max-content;
       }
@@ -506,7 +514,7 @@
         padding: 12px 12px;
         color: inherit;
         text-decoration: none;
-        touch-action: none;
+        touch-action: pan-y;
       }
       .dappLink:hover {
         text-decoration: none;
@@ -3346,6 +3354,10 @@
         let activePointerId = null;
         let dragging = false;
         let moved = false;
+        // True once the current gesture is being treated as an edge overscroll
+        // bounce (we drive a transform); false while native pan-y scrolling owns
+        // the gesture.
+        let bouncing = false;
 
         function apply(offset) {
           const t = offset;
@@ -3374,11 +3386,12 @@
           startY = e.clientY;
           dragging = true;
           moved = false;
+          bouncing = false;
           downTarget = e.target;
           listEl.style.transition = "";
-          try {
-            listEl.setPointerCapture(activePointerId);
-          } catch (_) {}
+          // Do NOT capture the pointer here — capturing would suppress the
+          // browser's native pan-y scrolling. We only capture once we commit to
+          // an edge bounce (see pointermove).
 
           pressedLi = e.target.closest("li");
           if (pressedLi) pressedLi.classList.add("is-pressed");
@@ -3391,6 +3404,37 @@
             const dy = e.clientY - startY;
 
             if (!moved && Math.abs(dy) > RUBBER_BAND.deadzonePx) moved = true;
+
+            // Native pan-y scrolling owns the gesture unless the user is pulling
+            // PAST an edge: dragging down (dy > 0) while already at the top, or
+            // dragging up (dy < 0) while already at the bottom. Only then do we
+            // drive the rubber-band transform.
+            const atTop = listEl.scrollTop <= 0;
+            const atBottom =
+              listEl.scrollTop + listEl.clientHeight >=
+              listEl.scrollHeight - 1;
+            const wantBounce = (dy > 0 && atTop) || (dy < 0 && atBottom);
+
+            if (!wantBounce) {
+              if (bouncing) {
+                // Returned from an edge back into the scrollable range — drop the
+                // transform and hand the gesture back to native scrolling.
+                bouncing = false;
+                listEl.style.transform = "";
+              }
+              return;
+            }
+
+            if (!bouncing) {
+              bouncing = true;
+              // Capture only for the bounce so the snap-back gesture stays bound.
+              try {
+                listEl.setPointerCapture(activePointerId);
+              } catch (_) {}
+            }
+            // Suppress native scroll/scroll-chaining while we render the bounce.
+            if (e.cancelable) e.preventDefault();
+
             const effectiveDy =
               Math.abs(dy) <= RUBBER_BAND.deadzonePx
                 ? 0
@@ -3412,10 +3456,11 @@
           { passive: false }
         );
 
-        function end(e) {
+        function end(e, cancelled) {
           if (!dragging || e.pointerId !== activePointerId) return;
           dragging = false;
           activePointerId = null;
+          bouncing = false;
 
           if (pressedLi) {
             pressedLi.classList.remove("is-pressed");
@@ -3424,7 +3469,9 @@
 
           reset();
 
-          if (!moved && downTarget) {
+          // A pointercancel means the browser took the gesture over for native
+          // scrolling — never treat that as a tap/navigation.
+          if (!cancelled && !moved && downTarget) {
             // Tap on the star/pin control toggles the pin and never navigates.
             const star = downTarget.closest(".starBtn");
             if (star) {
@@ -3456,8 +3503,8 @@
           downTarget = null;
         }
 
-        listEl.addEventListener("pointerup", end);
-        listEl.addEventListener("pointercancel", end);
+        listEl.addEventListener("pointerup", (e) => end(e, false));
+        listEl.addEventListener("pointercancel", (e) => end(e, true));
 
         listEl.addEventListener(
           "click",
