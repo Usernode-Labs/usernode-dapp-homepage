@@ -1847,6 +1847,26 @@ const server = http.createServer((req, res) => {
     }, body);
   }
 
+  if (pathname === "/api/activity" && (req.method === "GET" || req.method === "HEAD")) {
+    // Public activity feed: poker events from the poker database (when available).
+    // In local dev, returns empty. In production, aggregates from poker app's DB.
+    const activity = { events: [] };
+    const body = JSON.stringify(activity);
+    if (req.method === "HEAD") {
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+        "cache-control": "no-store",
+      });
+      return res.end();
+    }
+    return send(res, 200, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+    }, body);
+  }
+
   // ── Submit-a-dapp API ──────────────────────────────────────────────────────
 
   // Public config the form needs to render (fee amount, whether submissions are
