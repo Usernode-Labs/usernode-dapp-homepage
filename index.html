@@ -262,10 +262,10 @@
         color: var(--muted);
         line-height: 1.45;
       }
-      .headerActions {
+      .headerButtonRow {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
         flex: 0 0 auto;
       }
       .submitBtn {
@@ -416,6 +416,7 @@
       html.dark .themeBtn .iconMoon {
         display: none;
       }
+
 
       ul {
         list-style: none;
@@ -1265,6 +1266,27 @@
         }
       }
 
+      /* ── Submit-a-dapp button + modal ─────────────────────────────────────── */
+      .submitBtn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--accent);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        appearance: none;
+        flex: 0 0 auto;
+      }
+      .submitBtn svg { width: 16px; height: 16px; }
+      .submitBtnLabel { display: none; }
+      .submitBtn:hover { filter: brightness(1.06); }
+
+
       .modalOverlay {
         position: fixed;
         inset: 0;
@@ -1420,7 +1442,7 @@
                 <span class="brandName">DAPPS</span>
               </a>
             </div>
-            <div class="headerActions">
+            <div class="headerButtonRow">
               <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span class="submitBtnLabel">Submit</span>
