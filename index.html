@@ -429,6 +429,16 @@
       .hamMenuOption span {
         flex: 1;
       }
+      .hamMenuCheckmark {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 600;
+        opacity: 0;
+        transition: opacity 150ms ease;
+      }
+      .hamMenuOption[aria-selected="true"] .hamMenuCheckmark {
+        opacity: 1;
+      }
 
       .themeBtn {
         appearance: none;
@@ -856,105 +866,6 @@
         .viewBtn svg {
           width: 15px;
           height: 15px;
-        }
-      }
-
-      /* ── View dropdown (sort options) ───────────────────────────────── */
-      .viewDropdown {
-        position: relative;
-        flex: 0 0 auto;
-      }
-      .viewDropdownBtn {
-        appearance: none;
-        background: transparent;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        color: var(--muted);
-        padding: 6px 10px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        font-size: 13px;
-        font-weight: 600;
-        height: 34px;
-        box-sizing: border-box;
-        flex: 0 0 auto;
-        transition: color 150ms ease, border-color 150ms ease;
-      }
-      .viewDropdownBtn:hover {
-        color: var(--fg);
-        border-color: var(--accent);
-      }
-      .viewDropdownBtn svg {
-        width: 14px;
-        height: 14px;
-        flex-shrink: 0;
-      }
-      .viewDropdownMenu {
-        display: none;
-        position: absolute;
-        top: calc(100% + 4px);
-        right: 0;
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-        z-index: 100;
-        padding: 8px 4px;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 160px;
-      }
-      .viewDropdownMenu[aria-expanded="true"] {
-        display: flex;
-      }
-      .viewDropdownItem {
-        appearance: none;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 12px;
-        border: none;
-        background: transparent;
-        color: var(--fg);
-        cursor: pointer;
-        border-radius: 6px;
-        font-family: inherit;
-        font-size: 13px;
-        width: 100%;
-        text-align: left;
-        transition: background 150ms ease;
-      }
-      .viewDropdownItem:hover {
-        background: var(--border);
-      }
-      .viewDropdownItem[aria-selected="true"] {
-        color: var(--accent);
-        background: var(--border);
-      }
-      .viewDropdownItem svg {
-        width: 16px;
-        height: 16px;
-        flex-shrink: 0;
-      }
-      .viewDropdownCheckmark {
-        margin-left: auto;
-        font-size: 12px;
-        font-weight: 600;
-        opacity: 0;
-        transition: opacity 150ms ease;
-      }
-      .viewDropdownItem[aria-selected="true"] .viewDropdownCheckmark {
-        opacity: 1;
-      }
-      @media (max-width: 520px) {
-        .viewDropdownBtn span {
-          display: none;
-        }
-        .viewDropdownBtn {
-          padding: 6px 9px;
         }
       }
 
@@ -2161,34 +2072,6 @@
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
                 </button>
               </div>
-              <div class="viewDropdown" id="viewDropdown">
-                <button class="viewDropdownBtn" id="viewDropdownBtn" type="button" aria-label="Sort by" aria-haspopup="listbox" aria-expanded="false">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
-                  <span id="viewDropdownLabel">Popular</span>
-                </button>
-                <div class="viewDropdownMenu" id="viewDropdownMenu" role="listbox">
-                  <button class="viewDropdownItem" data-sort="popular" role="option" aria-selected="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
-                    <span>Popular</span>
-                    <span class="viewDropdownCheckmark">✓</span>
-                  </button>
-                  <button class="viewDropdownItem" data-sort="users" role="option" aria-selected="false">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    <span>Most users</span>
-                    <span class="viewDropdownCheckmark">✓</span>
-                  </button>
-                  <button class="viewDropdownItem" data-sort="txns" role="option" aria-selected="false">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                    <span>Most transactions</span>
-                    <span class="viewDropdownCheckmark">✓</span>
-                  </button>
-                  <button class="viewDropdownItem" data-sort="alpha" role="option" aria-selected="false">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l3 3 3-3M6 20V4"/><path d="M13 6h7M13 12h5M13 18h3"/></svg>
-                    <span>Alphabetical</span>
-                    <span class="viewDropdownCheckmark">✓</span>
-                  </button>
-                </div>
-              </div>
               <div class="hamMenuWrap">
                 <button class="hamBtn" id="hamBtn" type="button" aria-label="Menu" title="Menu">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -2201,6 +2084,29 @@
                         <svg class="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
                       </button>
                       <span id="themeLabel">Light</span>
+                    </button>
+                  </div>
+                  <div class="hamMenuSection sort">
+                    <div class="hamMenuLabel">Sort</div>
+                    <button class="hamMenuOption" data-sort="popular" role="menuitemradio" aria-label="Popular" title="Popular" aria-selected="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                      <span>Popular</span>
+                      <span class="hamMenuCheckmark">✓</span>
+                    </button>
+                    <button class="hamMenuOption" data-sort="users" role="menuitemradio" aria-label="Most users" title="Most users" aria-selected="false">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      <span>Most users</span>
+                      <span class="hamMenuCheckmark">✓</span>
+                    </button>
+                    <button class="hamMenuOption" data-sort="txns" role="menuitemradio" aria-label="Most transactions" title="Most transactions" aria-selected="false">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                      <span>Most transactions</span>
+                      <span class="hamMenuCheckmark">✓</span>
+                    </button>
+                    <button class="hamMenuOption" data-sort="alpha" role="menuitemradio" aria-label="Alphabetical" title="Alphabetical" aria-selected="false">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l3 3 3-3M6 20V4"/><path d="M13 6h7M13 12h5M13 18h3"/></svg>
+                      <span>Alphabetical</span>
+                      <span class="hamMenuCheckmark">✓</span>
                     </button>
                   </div>
                 </div>
@@ -3107,53 +3013,24 @@
         }
       }
 
-      // --- Sort dropdown (View menu) ---
+      // --- Sort menu (now in hamburger) ---
       function updateSortUI() {
-        const label = SORT_LABELS[currentSort] || "Popular";
-        document.getElementById("viewDropdownLabel").textContent = label;
-        document.querySelectorAll(".viewDropdownItem").forEach((btn) => {
+        hamMenuDropdown.querySelectorAll(".hamMenuOption[data-sort]").forEach((btn) => {
           const active = btn.dataset.sort === currentSort;
+          btn.classList.toggle("active", active);
           btn.setAttribute("aria-selected", active ? "true" : "false");
         });
       }
 
-      const viewDropdown = document.getElementById("viewDropdown");
-      const viewDropdownBtn = document.getElementById("viewDropdownBtn");
-      const viewDropdownMenu = document.getElementById("viewDropdownMenu");
-
-      function openViewDropdown() {
-        viewDropdownBtn.setAttribute("aria-expanded", "true");
-        viewDropdownMenu.setAttribute("aria-expanded", "true");
-      }
-
-      function closeViewDropdown() {
-        viewDropdownBtn.setAttribute("aria-expanded", "false");
-        viewDropdownMenu.setAttribute("aria-expanded", "false");
-      }
-
-      viewDropdownBtn.addEventListener("click", () => {
-        const isOpen = viewDropdownBtn.getAttribute("aria-expanded") === "true";
-        if (isOpen) {
-          closeViewDropdown();
-        } else {
-          openViewDropdown();
+      hamMenuDropdown.addEventListener("click", (e) => {
+        const optSort = e.target.closest(".hamMenuOption[data-sort]");
+        if (optSort) {
+          currentSort = optSort.dataset.sort;
+          localStorage.setItem(SORT_KEY, currentSort);
+          updateSortUI();
+          renderDapps(allApps);
           closeHamMenu();
-        }
-      });
-
-      viewDropdownMenu.addEventListener("click", (e) => {
-        const opt = e.target.closest(".viewDropdownItem");
-        if (!opt) return;
-        currentSort = opt.dataset.sort;
-        localStorage.setItem(SORT_KEY, currentSort);
-        updateSortUI();
-        renderDapps(allApps);
-        closeViewDropdown();
-      });
-
-      document.addEventListener("click", (e) => {
-        if (!viewDropdown.contains(e.target)) {
-          closeViewDropdown();
+          return;
         }
       });
 
