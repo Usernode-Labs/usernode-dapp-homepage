@@ -9,15 +9,18 @@ RUN chown node:node /app
 # Run as the non-root "node" user that ships with the base image.
 USER node
 
-# Install the single runtime dependency (pg) before copying app sources so
-# the npm layer is cached across source-only changes.
-COPY --chown=node:node package.json ./
-RUN npm install --omit=dev --no-audit --no-fund
+# Install the single runtime dependency (pg, for the micro-blog feed and pins)
+# before copying app sources so the npm layer is cached across source-only changes.
+COPY --chown=node:node package.json package-lock.json* ./
+RUN npm ci --omit=dev || npm install --omit=dev
 
 # App sources.
 COPY --chown=node:node server.js index.html dapps.json ./
 # Static screenshot assets served at /screenshots/* by server.js.
-COPY --chown=node:node public ./public
+COPY public ./public
+
+# Drop privileges for runtime.
+USER node
 
 ENV NODE_ENV=production
 ENV PORT=3000

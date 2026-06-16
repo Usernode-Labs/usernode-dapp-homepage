@@ -13,14 +13,14 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// `pg` is the app's single runtime dependency (see package.json). Require it
-// lazily/defensively so a stray local run without `npm install` still serves
-// the public homepage — pin routes degrade to 503 when the client is absent.
+// Optional Postgres driver — used by the micro-blog feed and per-user dapp pins.
+// Wrapped so a standalone checkout without `npm install` (or a deploy with no DB)
+// still boots the public homepage; pg-backed features degrade to 503.
 let PgPool = null;
 try {
   PgPool = require("pg").Pool;
 } catch (_) {
-  console.warn("[pins] 'pg' module not available — pin features disabled");
+  console.warn("[pg] module not available — feed and pin features disabled");
 }
 
 // ── .env loader ──────────────────────────────────────────────────────────────
@@ -90,6 +90,25 @@ const SUBMISSION_FEE = Number(process.env.SUBMISSION_FEE) || 1000;
 // How long an unpaid submission stays in `awaiting_payment` before it is swept
 // to `expired` (the UI stops polling). A real late payment is still credited.
 const SUBMISSION_TTL_HOURS = Number(process.env.SUBMISSION_TTL_HOURS) || 24;
+
+// ── Micro-blog feed config ────────────────────────────────────────────────────
+// Consumes JWT_SECRET and DATABASE_URL (declared above). When DATABASE_URL is
+// absent the feed degrades to an "unavailable" state and every existing public
+// surface keeps working unchanged.
+const POINTS_PER_POST = Number(process.env.POINTS_PER_POST) || 5;
+const POINTS_PER_LIKE = Number(process.env.POINTS_PER_LIKE) || 1;
+const POINTS_PER_TOKEN = Number(process.env.POINTS_PER_TOKEN) || 10;
+const MICROBLOG_MAX_POST_LEN = Number(process.env.MICROBLOG_MAX_POST_LEN) || 280;
+
+const pgPool = (PgPool && process.env.DATABASE_URL)
+  ? new PgPool({ connectionString: process.env.DATABASE_URL })
+  : null;
+const MICROBLOG_ENABLED = !!pgPool;
+if (pgPool) {
+  // A pool-level error (dropped backend connection, etc.) must not crash the
+  // process — log and let the next query re-establish.
+  pgPool.on("error", (e) => console.warn(`[microblog] pg pool error: ${e.message}`));
+}
 
 const EXPLORER_PROD_HOST = "testnet-explorer.usernodelabs.org";
 const EXPLORER_PROD_BASE = "/api";
@@ -589,6 +608,15 @@ loadSubmissions();
   setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
 })();
 
+// Bring up the micro-blog schema (and staging seed) if a database is configured.
+if (pgPool) {
+  microblogBootstrap()
+    .then(() => console.log(`[microblog] schema ready${IS_STAGING ? " (staging seed on)" : ""}`))
+    .catch((e) => console.warn(`[microblog] bootstrap failed: ${e.message}`));
+} else {
+  console.log("[microblog] DATABASE_URL not set — feed disabled (homepage unaffected)");
+}
+
 // ── Database (per-user dapp pins) ────────────────────────────────────────────
 // The homepage itself is public, but pinning a dapp is a per-user action, so it
 // needs the platform's Postgres (DATABASE_URL) + JWT auth (JWT_SECRET). Only the
@@ -856,6 +884,440 @@ function validateSubmissionInput(body) {
   if (category) dapp.category = category;
   if (logo) dapp.logo = logo;
   return { ok: true, dapp };
+}
+// Resolve the authenticated user for micro-blog routes from ?token= or the
+// x-usernode-token header. Returns { id, username, usernode_pubkey } or null.
+function userFromReq(req, urlObj) {
+  const token =
+    (urlObj && urlObj.searchParams.get("token")) ||
+    req.headers["x-usernode-token"] ||
+    "";
+  const payload = verifyJwt(token);
+  if (!payload) return null;
+  const id = payload.id != null ? payload.id : (payload.sub != null ? payload.sub : null);
+  if (id == null) return null;
+  const username =
+    payload.username || payload.name || payload.preferred_username || `user_${String(id).slice(0, 8)}`;
+  return { id: String(id), username: String(username), usernode_pubkey: payload.usernode_pubkey || null };
+}
+
+// ── Micro-blog schema bootstrap + staging seed ───────────────────────────────
+// Idempotent on every boot (CREATE TABLE IF NOT EXISTS). microblog_conversions
+// is the only private table — it's the convertible-token ledger (financial data)
+// so it is copied schema-only to staging and seeded here under IS_STAGING.
+
+async function microblogBootstrap() {
+  if (!pgPool) return;
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS microblog_posts (
+      id BIGSERIAL PRIMARY KEY,
+      author_user_id TEXT NOT NULL,
+      author_username TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS microblog_likes (
+      id BIGSERIAL PRIMARY KEY,
+      post_id BIGINT NOT NULL REFERENCES microblog_posts(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (post_id, user_id)
+    )`);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS microblog_points (
+      user_id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      points_earned BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS microblog_conversions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      points_spent BIGINT NOT NULL,
+      tokens_credited BIGINT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  // Financial / convertible-balance ledger → private (schema-only to staging).
+  await pgPool.query(`COMMENT ON TABLE microblog_conversions IS 'staging:private'`);
+  await pgPool.query(`CREATE INDEX IF NOT EXISTS microblog_posts_id_desc_idx ON microblog_posts (id DESC)`);
+  if (IS_STAGING) await microblogSeedStaging();
+}
+
+// Seed a small, obviously-fake demo dataset so the feed, leaderboard, like
+// counts and balances render in a staging preview. Idempotent (fixed ids +
+// ON CONFLICT DO NOTHING); a strict no-op outside staging (guarded by caller).
+async function microblogSeedStaging() {
+  const authors = [
+    { id: "staging-demo-alice", points: 28 },
+    { id: "staging-demo-bob", points: 19 },
+    { id: "staging-demo-carol", points: 17 },
+    { id: "staging-demo-dave", points: 11 },
+  ];
+  // [fixed id, author id, body, age-ago interval]
+  const posts = [
+    [900001, "staging-demo-alice", "Staging demo: just shipped my first dapp on Usernode 🎉", "3 days"],
+    [900002, "staging-demo-bob", "Staging demo: gm builders, who's hacking this weekend?", "2 days 6 hours"],
+    [900003, "staging-demo-carol", "Staging demo: the new sort menu on the homepage is so clean", "2 days"],
+    [900004, "staging-demo-alice", "Staging demo: points for posting? I'm farming the leaderboard 😄", "30 hours"],
+    [900005, "staging-demo-dave", "Staging demo: first post here. hello feed!", "26 hours"],
+    [900006, "staging-demo-bob", "Staging demo: converted my points to tokens, felt great", "20 hours"],
+    [900007, "staging-demo-carol", "Staging demo: anyone tried Falling Sands? wild physics", "14 hours"],
+    [900008, "staging-demo-alice", "Staging demo: liking good posts is the whole vibe", "8 hours"],
+    [900009, "staging-demo-dave", "Staging demo: leaderboard szn ☀️", "5 hours"],
+    [900010, "staging-demo-bob", "Staging demo: short and sweet. that's microblogging.", "2 hours"],
+    [900011, "staging-demo-carol", "Staging demo: building in public on Usernode 🛠️", "40 minutes"],
+  ];
+  // Likes among demo users → non-uniform counts for an interesting leaderboard.
+  const likes = [
+    [900001, "staging-demo-bob"], [900001, "staging-demo-carol"], [900001, "staging-demo-dave"],
+    [900002, "staging-demo-alice"], [900002, "staging-demo-carol"],
+    [900003, "staging-demo-alice"], [900003, "staging-demo-bob"], [900003, "staging-demo-dave"],
+    [900004, "staging-demo-bob"], [900004, "staging-demo-carol"], [900004, "staging-demo-dave"],
+    [900006, "staging-demo-alice"],
+    [900007, "staging-demo-alice"], [900007, "staging-demo-bob"],
+    [900008, "staging-demo-carol"], [900008, "staging-demo-dave"],
+    [900010, "staging-demo-alice"], [900010, "staging-demo-carol"],
+  ];
+  try {
+    for (const a of authors) {
+      await pgPool.query(
+        `INSERT INTO microblog_points (user_id, username, points_earned)
+         VALUES ($1, $1, $2) ON CONFLICT (user_id) DO NOTHING`,
+        [a.id, a.points]
+      );
+    }
+    for (const [id, author, body, ago] of posts) {
+      await pgPool.query(
+        `INSERT INTO microblog_posts (id, author_user_id, author_username, body, created_at)
+         VALUES ($1, $2, $2, $3, now() - ($4)::interval) ON CONFLICT (id) DO NOTHING`,
+        [id, author, body, ago]
+      );
+    }
+    for (const [pid, uid] of likes) {
+      await pgPool.query(
+        `INSERT INTO microblog_likes (post_id, user_id) VALUES ($1, $2)
+         ON CONFLICT (post_id, user_id) DO NOTHING`,
+        [pid, uid]
+      );
+    }
+    // Private ledger row: alice converted 20 points → 2 tokens (rate default 10),
+    // so her available points show as 8 and token balance as 2 in staging.
+    await pgPool.query(
+      `INSERT INTO microblog_conversions (id, user_id, username, points_spent, tokens_credited)
+       VALUES (900001, 'staging-demo-alice', 'staging-demo-alice', 20, 2)
+       ON CONFLICT (id) DO NOTHING`
+    );
+    // Advance the serial sequences past our fixed demo ids so real inserts don't collide.
+    await pgPool.query(
+      `SELECT setval(pg_get_serial_sequence('microblog_posts', 'id'),
+        GREATEST((SELECT MAX(id) FROM microblog_posts), 1))`
+    );
+    await pgPool.query(
+      `SELECT setval(pg_get_serial_sequence('microblog_conversions', 'id'),
+        GREATEST((SELECT MAX(id) FROM microblog_conversions), 1))`
+    );
+    console.log("[microblog] staging seed applied");
+  } catch (e) {
+    console.warn(`[microblog] staging seed failed: ${e.message}`);
+  }
+}
+
+// ── Micro-blog API ───────────────────────────────────────────────────────────
+// GET  /api/microblog/feed         — public (reverse-chron posts + like counts)
+// GET  /api/microblog/leaderboard  — public (top users by points earned)
+// GET  /api/microblog/me           — auth (caller's points/token balances)
+// POST /api/microblog/posts        — auth (create post, +POINTS_PER_POST)
+// POST|DELETE /api/microblog/posts/:id/like — auth (toggle like; author earns)
+// POST /api/microblog/convert      — auth (simulated points → token conversion)
+
+function microblogRouter(req, res, pathname, urlObj) {
+  if (!MICROBLOG_ENABLED) {
+    return sendJson(res, 503, { error: "The feed is not available in this environment." });
+  }
+  const user = userFromReq(req, urlObj);
+  const method = req.method;
+
+  const run = (fn) => Promise.resolve()
+    .then(fn)
+    .catch((e) => {
+      console.warn(`[microblog] ${method} ${pathname}: ${e.message}`);
+      if (!res.headersSent) sendJson(res, 500, { error: "Internal error." });
+    });
+
+  if (pathname === "/api/microblog/feed" && method === "GET") {
+    return run(() => mbFeed(res, urlObj, user));
+  }
+  if (pathname === "/api/microblog/leaderboard" && method === "GET") {
+    return run(() => mbLeaderboard(res, urlObj));
+  }
+  if (pathname === "/api/microblog/me" && method === "GET") {
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+    return run(() => mbMe(res, user));
+  }
+  if (pathname === "/api/microblog/posts" && method === "POST") {
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+    return mbCreatePost(req, res, user);
+  }
+  const likeMatch = pathname.match(/^\/api\/microblog\/posts\/(\d+)\/like$/);
+  if (likeMatch && (method === "POST" || method === "DELETE")) {
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+    return run(() => mbLike(res, Number(likeMatch[1]), user, method === "POST"));
+  }
+  if (pathname === "/api/microblog/convert" && method === "POST") {
+    if (!user) return sendJson(res, 401, { error: "Not authenticated" });
+    return mbConvert(req, res, user);
+  }
+  return sendJson(res, 404, { error: "Not found" });
+}
+
+async function mbFeed(res, urlObj, user) {
+  const limit = Math.min(Math.max(parseInt(urlObj.searchParams.get("limit"), 10) || 30, 1), 100);
+  const before = parseInt(urlObj.searchParams.get("before"), 10);
+  const meId = user ? user.id : null;
+
+  const params = [];
+  const conds = [];
+  if (Number.isFinite(before)) { params.push(before); conds.push(`p.id < $${params.length}`); }
+  let likedExpr = "false";
+  if (meId) {
+    params.push(meId);
+    likedExpr = `EXISTS(SELECT 1 FROM microblog_likes l2 WHERE l2.post_id = p.id AND l2.user_id = $${params.length})`;
+  }
+  params.push(limit);
+  const limitIdx = params.length;
+  const whereSql = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+
+  const q = `
+    SELECT p.id, p.author_username, p.author_user_id, p.body, p.created_at,
+      (SELECT COUNT(*) FROM microblog_likes l WHERE l.post_id = p.id)::int AS like_count,
+      ${likedExpr} AS liked_by_me
+    FROM microblog_posts p
+    ${whereSql}
+    ORDER BY p.id DESC
+    LIMIT $${limitIdx}`;
+  const { rows } = await pgPool.query(q, params);
+  const posts = rows.map((r) => ({
+    id: String(r.id),
+    author: r.author_username,
+    author_user_id: r.author_user_id,
+    body: r.body,
+    created_at: r.created_at,
+    like_count: r.like_count,
+    liked_by_me: r.liked_by_me,
+    mine: meId != null && r.author_user_id === meId,
+  }));
+  return sendJson(res, 200, {
+    posts,
+    signed_in: !!user,
+    staging: IS_STAGING,
+    max_len: MICROBLOG_MAX_POST_LEN,
+  });
+}
+
+async function mbLeaderboard(res, urlObj) {
+  const limit = Math.min(Math.max(parseInt(urlObj.searchParams.get("limit"), 10) || 10, 1), 50);
+  const { rows } = await pgPool.query(
+    `SELECT username, points_earned::int AS points FROM microblog_points
+     WHERE points_earned > 0 ORDER BY points_earned DESC, username ASC LIMIT $1`,
+    [limit]
+  );
+  return sendJson(res, 200, { leaders: rows, staging: IS_STAGING });
+}
+
+async function mbMe(res, user) {
+  const pr = await pgPool.query(`SELECT points_earned::int AS earned FROM microblog_points WHERE user_id = $1`, [user.id]);
+  const earned = pr.rows.length ? pr.rows[0].earned : 0;
+  const cr = await pgPool.query(
+    `SELECT COALESCE(SUM(points_spent), 0)::int AS spent,
+            COALESCE(SUM(tokens_credited), 0)::int AS tokens
+     FROM microblog_conversions WHERE user_id = $1`,
+    [user.id]
+  );
+  const pc = await pgPool.query(`SELECT COUNT(*)::int AS c FROM microblog_posts WHERE author_user_id = $1`, [user.id]);
+  return sendJson(res, 200, {
+    username: user.username,
+    points_earned: earned,
+    points_available: earned - cr.rows[0].spent,
+    token_balance: cr.rows[0].tokens,
+    post_count: pc.rows[0].c,
+    rate: POINTS_PER_TOKEN,
+    points_per_post: POINTS_PER_POST,
+    points_per_like: POINTS_PER_LIKE,
+    staging: IS_STAGING,
+  });
+}
+
+function mbCreatePost(req, res, user) {
+  return readJsonBody(req, 64 * 1024, (err, body) => {
+    if (err) return sendJson(res, 400, { error: err.message });
+    const text = body && typeof body.body === "string" ? body.body.trim() : "";
+    if (!text) return sendJson(res, 400, { error: "Post cannot be empty." });
+    if (text.length > MICROBLOG_MAX_POST_LEN) {
+      return sendJson(res, 400, { error: `Post is too long (max ${MICROBLOG_MAX_POST_LEN} characters).` });
+    }
+    (async () => {
+      const client = await pgPool.connect();
+      try {
+        await client.query("BEGIN");
+        const ins = await client.query(
+          `INSERT INTO microblog_posts (author_user_id, author_username, body)
+           VALUES ($1, $2, $3) RETURNING id, created_at`,
+          [user.id, user.username, text]
+        );
+        await client.query(
+          `INSERT INTO microblog_points (user_id, username, points_earned, updated_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (user_id) DO UPDATE
+             SET points_earned = microblog_points.points_earned + $3,
+                 username = $2, updated_at = now()`,
+          [user.id, user.username, POINTS_PER_POST]
+        );
+        await client.query("COMMIT");
+        const row = ins.rows[0];
+        return sendJson(res, 201, {
+          id: String(row.id),
+          author: user.username,
+          author_user_id: user.id,
+          body: text,
+          created_at: row.created_at,
+          like_count: 0,
+          liked_by_me: false,
+          mine: true,
+        });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.warn(`[microblog] create post: ${e.message}`);
+        return sendJson(res, 500, { error: "Could not create post." });
+      } finally {
+        client.release();
+      }
+    })();
+  });
+}
+
+async function mbLike(res, postId, user, isLike) {
+  const client = await pgPool.connect();
+  try {
+    await client.query("BEGIN");
+    const pr = await client.query(
+      `SELECT author_user_id, author_username FROM microblog_posts WHERE id = $1`,
+      [postId]
+    );
+    if (!pr.rows.length) {
+      await client.query("ROLLBACK");
+      return sendJson(res, 404, { error: "Post not found." });
+    }
+    const authorId = pr.rows[0].author_user_id;
+    const authorName = pr.rows[0].author_username;
+    let changed = false;
+
+    if (isLike) {
+      const r = await client.query(
+        `INSERT INTO microblog_likes (post_id, user_id) VALUES ($1, $2)
+         ON CONFLICT (post_id, user_id) DO NOTHING`,
+        [postId, user.id]
+      );
+      changed = r.rowCount > 0;
+      // Self-likes are allowed but award no points (anti points-farming).
+      if (changed && authorId !== user.id) {
+        await client.query(
+          `INSERT INTO microblog_points (user_id, username, points_earned, updated_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (user_id) DO UPDATE
+             SET points_earned = microblog_points.points_earned + $3, updated_at = now()`,
+          [authorId, authorName, POINTS_PER_LIKE]
+        );
+      }
+    } else {
+      const r = await client.query(
+        `DELETE FROM microblog_likes WHERE post_id = $1 AND user_id = $2`,
+        [postId, user.id]
+      );
+      changed = r.rowCount > 0;
+      if (changed && authorId !== user.id) {
+        await client.query(
+          `UPDATE microblog_points
+             SET points_earned = GREATEST(points_earned - $2, 0), updated_at = now()
+           WHERE user_id = $1`,
+          [authorId, POINTS_PER_LIKE]
+        );
+      }
+    }
+    const cnt = await client.query(`SELECT COUNT(*)::int AS c FROM microblog_likes WHERE post_id = $1`, [postId]);
+    await client.query("COMMIT");
+    return sendJson(res, 200, { liked: isLike, like_count: cnt.rows[0].c, changed });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.warn(`[microblog] like: ${e.message}`);
+    return sendJson(res, 500, { error: "Could not update like." });
+  } finally {
+    client.release();
+  }
+}
+
+function mbConvert(req, res, user) {
+  return readJsonBody(req, 16 * 1024, (err, body) => {
+    if (err) return sendJson(res, 400, { error: err.message });
+    const points = Number(body && body.points);
+    if (!Number.isInteger(points) || points <= 0) {
+      return sendJson(res, 400, { error: "Enter a positive whole number of points." });
+    }
+    (async () => {
+      const client = await pgPool.connect();
+      try {
+        await client.query("BEGIN");
+        // Lock the user's points row so two tabs can't double-spend the same points.
+        const pr = await client.query(
+          `SELECT points_earned::int AS earned FROM microblog_points WHERE user_id = $1 FOR UPDATE`,
+          [user.id]
+        );
+        const earned = pr.rows.length ? pr.rows[0].earned : 0;
+        const sr = await client.query(
+          `SELECT COALESCE(SUM(points_spent), 0)::int AS spent FROM microblog_conversions WHERE user_id = $1`,
+          [user.id]
+        );
+        const available = earned - sr.rows[0].spent;
+        const tokens = Math.floor(points / POINTS_PER_TOKEN);
+        if (tokens < 1) {
+          await client.query("ROLLBACK");
+          return sendJson(res, 400, { error: `You need at least ${POINTS_PER_TOKEN} points to get 1 token.` });
+        }
+        const spend = tokens * POINTS_PER_TOKEN;
+        if (spend > available) {
+          await client.query("ROLLBACK");
+          return sendJson(res, 400, { error: "Not enough points available to convert." });
+        }
+        await client.query(
+          `INSERT INTO microblog_conversions (user_id, username, points_spent, tokens_credited)
+           VALUES ($1, $2, $3, $4)`,
+          [user.id, user.username, spend, tokens]
+        );
+        const tot = await client.query(
+          `SELECT COALESCE(SUM(points_spent), 0)::int AS spent,
+                  COALESCE(SUM(tokens_credited), 0)::int AS tokens
+           FROM microblog_conversions WHERE user_id = $1`,
+          [user.id]
+        );
+        await client.query("COMMIT");
+        return sendJson(res, 200, {
+          converted_points: spend,
+          tokens_credited: tokens,
+          points_earned: earned,
+          points_available: earned - tot.rows[0].spent,
+          token_balance: tot.rows[0].tokens,
+        });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.warn(`[microblog] convert: ${e.message}`);
+        return sendJson(res, 500, { error: "Could not convert points." });
+      } finally {
+        client.release();
+      }
+    })();
+  });
 }
 
 // ── Trivia Quiz ───────────────────────────────────────────────────────────────
@@ -1229,6 +1691,14 @@ const server = http.createServer((req, res) => {
     const sub = findSubmission(id);
     if (!sub) return sendJson(res, 404, { error: "Submission not found." });
     return sendJson(res, 200, publicSubmissionView(sub));
+  }
+
+  // ── Micro-blog feed API ────────────────────────────────────────────────────
+  // Handled before the GET/HEAD-only guard below since posts/likes/convert are
+  // POST/DELETE. Reads are public; writes require a verified platform token.
+  if (pathname.startsWith("/api/microblog/")) {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    return microblogRouter(req, res, pathname, urlObj);
   }
 
   // ── Trivia Quiz API (all public, no auth — matches the app's posture) ───────
