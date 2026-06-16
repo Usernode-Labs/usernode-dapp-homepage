@@ -1070,8 +1070,103 @@ async function handleLeaderboard(req, res) {
   return sendJson(res, 200, { leaders: [], staging: false });
 }
 
+// ── Chat feature initialization ──────────────────────────────────────────────
+let chatReady = false;
+
+async function initChatDb() {
+  if (!pgPool) return;
+  try {
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id     TEXT        NOT NULL,
+        username    TEXT        NOT NULL,
+        message     TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await pgPool.query(
+      `CREATE INDEX IF NOT EXISTS chat_messages_created_at_idx ON chat_messages (created_at DESC)`
+    );
+    chatReady = true;
+    console.log("[chat] chat_messages table ready");
+
+    if (IS_STAGING) {
+      const seedMessages = [
+        { user_id: "staging-demo-user-1", username: "staging-demo-alice", message: "Welcome to the chat!" },
+        { user_id: "staging-demo-user-2", username: "staging-demo-bob", message: "Hi everyone, great to see the new dapps" },
+        { user_id: "staging-demo-user-1", username: "staging-demo-alice", message: "Did anyone try the new game dapp yet?" },
+        { user_id: "staging-demo-user-3", username: "staging-demo-charlie", message: "Yes! It's pretty fun. Recommend checking it out" },
+        { user_id: "staging-demo-user-2", username: "staging-demo-bob", message: "Looking forward to trying it this evening" }
+      ];
+      for (const msg of seedMessages) {
+        await pgPool.query(
+          `INSERT INTO chat_messages (user_id, username, message)
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING`,
+          [msg.user_id, msg.username, msg.message]
+        );
+      }
+      console.log(`[chat] seeded ${seedMessages.length} staging demo message(s)`);
+    }
+  } catch (e) {
+    chatReady = false;
+    console.warn(`[chat] could not initialise database: ${e.message}`);
+  }
+}
+
+async function handleChat(req, res) {
+  if (!pgPool) return jsonRes(res, 503, { error: "chat unavailable" });
+  if (!chatReady) return jsonRes(res, 503, { error: "chat unavailable" });
+
+  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+
+  if (req.method === "GET") {
+    try {
+      const limit = Math.min(Math.max(parseInt(urlObj.searchParams.get("limit"), 10) || 50, 1), 200);
+      const { rows } = await pgPool.query(
+        `SELECT id, username, message, created_at FROM chat_messages ORDER BY created_at DESC LIMIT $1`,
+        [limit]
+      );
+      // Reverse to chronological order (oldest first)
+      return jsonRes(res, 200, { messages: rows.reverse(), staging: IS_STAGING });
+    } catch (err) {
+      console.warn(`[chat] GET error: ${err.message}`);
+      return jsonRes(res, 200, { messages: [], staging: IS_STAGING });
+    }
+  }
+
+  if (req.method === "POST") {
+    const user = getUser(req);
+    if (!user) return jsonRes(res, 401, { error: "auth required" });
+
+    try {
+      const body = await readBody(req);
+      if (body === undefined) return jsonRes(res, 400, { error: "invalid JSON" });
+      const message = body && typeof body.message === "string" ? body.message.trim() : "";
+      if (!message) return jsonRes(res, 400, { error: "message required" });
+      if (message.length > 1000) return jsonRes(res, 400, { error: "message too long" });
+
+      const { rows } = await pgPool.query(
+        `INSERT INTO chat_messages (user_id, username, message)
+         VALUES ($1, $2, $3)
+         RETURNING id, created_at`,
+        [String(user.id), String(user.username || ""), message]
+      );
+      const row = rows[0];
+      return jsonRes(res, 201, { id: row.id, created_at: row.created_at, ok: true });
+    } catch (err) {
+      console.warn(`[chat] POST error: ${err.message}`);
+      return jsonRes(res, 500, { error: "internal error" });
+    }
+  }
+
+  return jsonRes(res, 405, { error: "method not allowed" });
+}
+
 // Kick off DB init (non-blocking — the homepage serves regardless).
 initPinsDb();
+initChatDb();
 
 // ── HTTP helpers for the submit/review API ───────────────────────────────────
 
@@ -1589,6 +1684,11 @@ const server = http.createServer((req, res) => {
   // Micro-blog top contributors (by points earned).
   if (pathname === "/api/leaderboard" && req.method === "GET") {
     handleLeaderboard(req, res);
+    return;
+  }
+
+  if (pathname === "/api/chat") {
+    handleChat(req, res);
     return;
   }
 
