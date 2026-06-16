@@ -1,0 +1,53 @@
+{
+  "name": "Usernode Tic-Tac-Toe",
+  "secrets": [
+    {
+      "key": "TURN_TIMER_SECONDS",
+      "description": "Per-turn shot clock in seconds. When a player's countdown reaches zero, they forfeit the game.",
+      "required": false,
+      "private": false,
+      "default": "30",
+      "staging_default": "30"
+    },
+    {
+      "key": "REMATCH_WINDOW_SECONDS",
+      "description": "How many seconds both players have to click Rematch after a game ends. If only one clicks within this window, no rematch occurs.",
+      "required": false,
+      "private": false,
+      "default": "30",
+      "staging_default": "30"
+    },
+    {
+      "key": "CHAT_MAX_LEN",
+      "description": "Maximum characters allowed per in-game chat message.",
+      "required": false,
+      "private": false,
+      "default": "200",
+      "staging_default": "200"
+    },
+    {
+      "key": "ROOM_IDLE_TTL_SECONDS",
+      "description": "Seconds a waiting room sits idle (no players, no SSE connections) before being automatically abandoned.",
+      "required": false,
+      "private": false,
+      "default": "300",
+      "staging_default": "300"
+    },
+    {
+      "key": "LEADERBOARD_LIMIT",
+      "description": "Maximum number of rows returned by the leaderboard endpoint.",
+      "required": false,
+      "private": false,
+      "default": "50",
+      "staging_default": "50"
+    },
+    {
+      "key": "QUEUE_TIMEOUT_SECONDS",
+      "description": "Seconds a player stays in the Quick Match queue before being automatically removed if no opponent is found.",
+      "required": false,
+      "private": false,
+      "default": "60",
+      "staging_default": "60"
+    }
+  ]
+}

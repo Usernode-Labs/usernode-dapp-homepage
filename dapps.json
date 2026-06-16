@@ -241,6 +241,40 @@
           "body": "Top scorers who add a Usernode wallet are flagged eligible — payout in a later phase."
         }
       ]
+    },
+    {
+      "name": "Tic-Tac-Toe",
+      "description": "Real-time multiplayer Tic-Tac-Toe with rooms, AI opponents, and a global leaderboard.",
+      "longDescription": "Tic-Tac-Toe on Usernode is a full-featured multiplayer platform. Create public or private rooms, challenge an AI opponent at Easy/Medium/Hard difficulty, or jump into Quick Match to be paired instantly. Every game is server-authoritative with a turn countdown timer. Spectators can watch live games, match history is replayable move-by-move, and a global leaderboard tracks the top players.",
+      "author": "Usernode Labs",
+      "developerUrl": "https://usernodelabs.org",
+      "url": "https://usernode-tictactoe.social-vibecoding.usernodelabs.org",
+      "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#0891b2'/><line x1='14' y1='6' x2='14' y2='34' stroke='#fff' stroke-width='2.5' stroke-linecap='round'/><line x1='26' y1='6' x2='26' y2='34' stroke='#fff' stroke-width='2.5' stroke-linecap='round'/><line x1='6' y1='14' x2='34' y2='14' stroke='#fff' stroke-width='2.5' stroke-linecap='round'/><line x1='6' y1='26' x2='34' y2='26' stroke='#fff' stroke-width='2.5' stroke-linecap='round'/></svg>",
+      "category": "Game",
+      "version": "1.0.0",
+      "updated": "2026-06-16",
+      "highlights": [
+        {
+          "icon": "🎮",
+          "title": "Public & private rooms",
+          "body": "Create open rooms for anyone to join or lock them with a password for friends-only play."
+        },
+        {
+          "icon": "🤖",
+          "title": "AI opponents",
+          "body": "Play against Easy, Medium, or Hard AI — the Hard AI uses minimax and never loses."
+        },
+        {
+          "icon": "⏱️",
+          "title": "Turn countdown timer",
+          "body": "Every turn has a shot clock. Let it expire and you forfeit — no stalling."
+        },
+        {
+          "icon": "🏆",
+          "title": "Leaderboard & achievements",
+          "body": "Earn points for wins and draws, climb the global leaderboard, and unlock achievements."
+        }
+      ]
     }
   ]
 }
