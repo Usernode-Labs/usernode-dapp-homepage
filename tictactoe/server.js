@@ -991,6 +991,9 @@ async function handleRequest(req, res) {
 
   const method = req.method;
 
+  // Health — public (must be before the non-API catch-all)
+  if (pathname === '/health' && method === 'GET') return sendJson(res, 200, { ok: true });
+
   // Serve index.html for all non-API paths
   if (!pathname.startsWith('/api/')) {
     return fs.readFile(INDEX_PATH, (err, buf) => {
