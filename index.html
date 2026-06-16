@@ -898,29 +898,63 @@
         border-radius: 999px;
         display: inline-block;
       }
-      /* Live status dot */
-      .liveDot {
-        width: 7px;
-        height: 7px;
+      /* Maintenance-status badge (dot + optional label) */
+      .statusBadge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+        margin-right: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .statusDot {
+        width: 8px;
+        height: 8px;
         border-radius: 50%;
-        background: #22c55e;
+        background: var(--status-color, #22c55e);
         flex-shrink: 0;
         position: relative;
-        margin-right: 6px;
       }
+      .statusLabel { color: var(--status-color, #22c55e); }
+      .statusOperational { --status-color: #22c55e; }
+      .statusMaintenance { --status-color: #f59e0b; }
+      .statusUnavailable { --status-color: #ef4444; }
       @media (prefers-reduced-motion: no-preference) {
         @keyframes livePing {
           0% { transform: scale(1); opacity: 0.6; }
           100% { transform: scale(2); opacity: 0; }
         }
-        .liveDot::after {
+        /* Only an operational ("live") badge pulses. */
+        .statusBadge.isLive .statusDot::after {
           content: '';
           position: absolute;
           inset: 0;
           border-radius: 50%;
-          background: #22c55e;
+          background: var(--status-color, #22c55e);
           animation: livePing 2s ease-out infinite;
         }
+      }
+      /* Owner status editor inside the preview panel */
+      .statusEditRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+        flex-wrap: wrap;
+      }
+      .statusEditRow label { font-size: 13px; color: var(--muted); font-weight: 600; }
+      .statusSelect {
+        font: inherit;
+        font-size: 13px;
+        padding: 5px 8px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--fg);
+        cursor: pointer;
       }
 
       /* Name block (live dot + name), grouped so the row's space-between
@@ -2408,6 +2442,7 @@
             >Read more</button>
           </div>
           <div class="previewMeta" id="previewMeta"></div>
+          <div class="previewStatus" id="previewStatus"></div>
         </div>
         <div class="previewFooter">
           <button class="previewLaunch" id="previewLaunch" type="button">Launch</button>
@@ -2467,6 +2502,21 @@
         <div id="submitStepDone" hidden>
           <div id="doneBody"></div>
           <div class="modalActions"><button class="btnPrimary" id="doneClose" type="button">Done</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Launch confirmation for non-operational dapps -->
+    <div class="modalOverlay" id="launchConfirmModal" hidden role="dialog" aria-modal="true" aria-labelledby="launchConfirmTitle">
+      <div class="modalCard">
+        <div class="modalHead">
+          <div class="modalTitle" id="launchConfirmTitle">Open this dapp?</div>
+          <button class="modalClose" id="launchConfirmClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <p class="modalNote" id="launchConfirmMsg"></p>
+        <div class="modalActions">
+          <button class="btnGhost" id="launchConfirmCancel" type="button">Cancel</button>
+          <button class="btnPrimary" id="launchConfirmGo" type="button">Open anyway</button>
         </div>
       </div>
     </div>
@@ -2658,6 +2708,11 @@
 
       let allApps = [];
       let statsMap = {};
+      // Maintenance status, keyed by dapp pubkey. Any pubkey absent from the map
+      // is treated as "operational". `ownedSet` lists the pubkeys the signed-in
+      // user owns (server-resolved from the JWT), gating the status editor.
+      let statusMap = {};
+      let ownedSet = new Set();
       let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
       // Live search query (client-side only, not persisted across reloads).
       let searchQuery = "";
@@ -2666,6 +2721,18 @@
         : "detailed";
 
       const viewWrap = document.getElementById("viewWrap");
+
+      // Maintenance-status presentation. `operational` is the default; only the
+      // other two surface a non-green badge and trigger the launch warning.
+      const DAPP_STATUS_META = {
+        operational:       { label: "Operational",       cls: "statusOperational", warn: null },
+        under_maintenance: { label: "Under maintenance", cls: "statusMaintenance", warn: "is currently under maintenance" },
+        unavailable:       { label: "Unavailable",       cls: "statusUnavailable", warn: "is currently marked unavailable" },
+      };
+      function statusOf(dapp) {
+        const s = dapp && dapp.pubkey ? statusMap[dapp.pubkey] : null;
+        return DAPP_STATUS_META[s] ? s : "operational";
+      }
 
       // --- Pins / auth ---
       const USERNODE_TOKEN = (() => {
@@ -2842,6 +2909,29 @@
         return svg;
       }
 
+      // Maintenance-status badge: a colored dot + short label. Operational keeps
+      // the gentle "live" ping; the other states are static. `compact` drops the
+      // text label (used where space is tight); the dot + title still convey it.
+      function makeStatusBadge(dapp, compact) {
+        const status = statusOf(dapp);
+        const meta = DAPP_STATUS_META[status];
+        const badge = document.createElement("span");
+        badge.className = "statusBadge " + meta.cls + (status === "operational" ? " isLive" : "");
+        const dot = document.createElement("span");
+        dot.className = "statusDot";
+        badge.appendChild(dot);
+        if (!compact) {
+          const txt = document.createElement("span");
+          txt.className = "statusLabel";
+          txt.textContent = meta.label;
+          badge.appendChild(txt);
+        }
+        badge.setAttribute("title", meta.label);
+        badge.setAttribute("role", "img");
+        badge.setAttribute("aria-label", "Status: " + meta.label);
+        return badge;
+      }
+
       // ── Shared row/card building blocks ───────────────────────────
       function makeDappLink(dapp) {
         const link = document.createElement("a");
@@ -2863,9 +2953,7 @@
         const nameGroup = document.createElement("div");
         nameGroup.className = "nameGroup";
 
-        const liveDot = document.createElement("span");
-        liveDot.className = "liveDot";
-        nameGroup.appendChild(liveDot);
+        nameGroup.appendChild(makeStatusBadge(dapp));
 
         const name = document.createElement("div");
         name.className = "name";
@@ -3208,6 +3296,46 @@
         }
       }
 
+      async function loadDappStatus() {
+        try {
+          const resp = await fetch("/api/dapp-status", {
+            headers: pinHeaders(false),
+            cache: "no-store",
+          });
+          if (!resp.ok) return; // store unavailable → everything stays operational
+          const data = await resp.json();
+          statusMap = (data && data.statuses) || {};
+          ownedSet = new Set(Array.isArray(data && data.owned) ? data.owned : []);
+          renderDapps(allApps);
+        } catch (e) {
+          console.warn("Could not load dapp status:", e);
+        }
+      }
+
+      // Persist a status change for a dapp the current user owns. Optimistic:
+      // updates the map + re-renders, reverting on a failed request.
+      async function setDappStatus(pubkey, status) {
+        if (!pubkey) return false;
+        const prev = statusMap[pubkey];
+        statusMap[pubkey] = status;
+        renderDapps(allApps);
+        try {
+          const resp = await fetch("/api/dapp-status", {
+            method: "POST",
+            headers: pinHeaders(true),
+            body: JSON.stringify({ pubkey, status }),
+          });
+          if (!resp.ok) throw new Error("status API " + resp.status);
+          return true;
+        } catch (e) {
+          console.warn("Could not save status:", e);
+          if (prev == null) delete statusMap[pubkey];
+          else statusMap[pubkey] = prev;
+          renderDapps(allApps);
+          return false;
+        }
+      }
+
       async function loadDappsJson() {
         const resp = await fetch("./dapps.json", { cache: "no-store" });
         if (!resp.ok) {
@@ -3429,6 +3557,7 @@
           renderDapps(allApps);
           loadAllStats(allApps);
           loadPins();
+          loadDappStatus();
         } catch (e) {
           // Log the technical detail for developers (the usernode-dev-console
           // forwarder relays this to the platform dev console); show the user a
@@ -3446,6 +3575,7 @@
       const previewNameEl = document.getElementById("previewName");
       const previewTagRow = document.getElementById("previewTagRow");
       const previewMeta = document.getElementById("previewMeta");
+      const previewStatus = document.getElementById("previewStatus");
       const previewDesc = document.getElementById("previewDesc");
       const previewDescBlock = document.getElementById("previewDescBlock");
       const previewSummary = document.getElementById("previewSummary");
@@ -3641,16 +3771,69 @@
         });
       }
 
-      function launchDapp(dapp) {
-        if (dapp && dapp.url) {
-          if (!isIncognito && dapp.pubkey) {
-            sessionBrowsingHistory.push({
-              pubkey: dapp.pubkey,
-              name: dapp.name,
-              timestamp: Date.now(),
-            });
+      // Actually open the dapp + show the launching overlay. Single place a
+      // launch "proceeds", so the overlay never flashes for a cancelled launch.
+      function doLaunch(dapp) {
+        if (!dapp || !dapp.url) return;
+        window.open(dapp.url, "_blank", "noopener");
+        showLaunchOverlay(dapp.name || "");
+      }
+
+      // ── Launch confirmation gate (non-operational dapps) ──
+      const _launchConfirmModal = document.getElementById("launchConfirmModal");
+      const _launchConfirmMsg = document.getElementById("launchConfirmMsg");
+      const _launchConfirmGo = document.getElementById("launchConfirmGo");
+      let _pendingLaunchDapp = null;
+
+      function hideLaunchConfirm() {
+        if (!_launchConfirmModal) return;
+        _launchConfirmModal.hidden = true;
+        _pendingLaunchDapp = null;
+      }
+      function showLaunchConfirm(dapp) {
+        if (!_launchConfirmModal) { doLaunch(dapp); return; }
+        const meta = DAPP_STATUS_META[statusOf(dapp)];
+        _pendingLaunchDapp = dapp;
+        _launchConfirmMsg.textContent =
+          `${dapp.name || "This dapp"} ${meta.warn} and may not work as expected. Open it anyway?`;
+        _launchConfirmModal.hidden = false;
+        if (_launchConfirmGo) _launchConfirmGo.focus();
+      }
+      if (_launchConfirmModal) {
+        const cancel = () => hideLaunchConfirm();
+        document.getElementById("launchConfirmCancel").addEventListener("click", cancel);
+        document.getElementById("launchConfirmClose").addEventListener("click", cancel);
+        _launchConfirmModal.addEventListener("click", (e) => {
+          if (e.target === _launchConfirmModal) cancel();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (!_launchConfirmModal.hidden && e.key === "Escape") {
+            e.preventDefault();
+            cancel();
           }
-          window.open(dapp.url, "_blank", "noopener");
+        });
+        _launchConfirmGo.addEventListener("click", () => {
+          const d = _pendingLaunchDapp;
+          hideLaunchConfirm();
+          doLaunch(d);
+        });
+      }
+
+      // All launch entry points funnel through here. Operational dapps open
+      // immediately; others require confirmation first.
+      function launchDapp(dapp) {
+        if (!dapp || !dapp.url) return;
+        if (!isIncognito && dapp.pubkey) {
+          sessionBrowsingHistory.push({
+            pubkey: dapp.pubkey,
+            name: dapp.name,
+            timestamp: Date.now(),
+          });
+        }
+        if (statusOf(dapp) === "operational") {
+          doLaunch(dapp);
+        } else {
+          showLaunchConfirm(dapp);
         }
       }
 
@@ -3819,6 +4002,48 @@
         );
       }
 
+      // Render the maintenance-status row in the preview panel: always the
+      // badge; for a dapp the current user owns, a select to change it.
+      function buildPreviewStatus(dapp) {
+        if (!previewStatus) return;
+        previewStatus.textContent = "";
+        if (!dapp || !dapp.pubkey) return;
+
+        const row = document.createElement("div");
+        row.className = "statusEditRow";
+
+        const label = document.createElement("label");
+        label.textContent = "Status";
+        row.appendChild(label);
+
+        const isOwner = ownedSet.has(dapp.pubkey);
+        if (isOwner) {
+          const sel = document.createElement("select");
+          sel.className = "statusSelect";
+          sel.setAttribute("aria-label", "Change dapp status");
+          for (const key of ["operational", "under_maintenance", "unavailable"]) {
+            const opt = document.createElement("option");
+            opt.value = key;
+            opt.textContent = DAPP_STATUS_META[key].label;
+            sel.appendChild(opt);
+          }
+          sel.value = statusOf(dapp);
+          sel.addEventListener("change", async () => {
+            const next = sel.value;
+            sel.disabled = true;
+            const ok = await setDappStatus(dapp.pubkey, next);
+            sel.disabled = false;
+            if (!ok) sel.value = statusOf(dapp);
+            else buildPreviewStatus(dapp); // refresh the badge beside the select
+          });
+          row.appendChild(makeStatusBadge(dapp));
+          row.appendChild(sel);
+        } else {
+          row.appendChild(makeStatusBadge(dapp));
+        }
+        previewStatus.appendChild(row);
+      }
+
       function openPreview(dapp, originEl) {
         if (!dapp) return;
         previewCurrentDapp = dapp;
@@ -3838,6 +4063,7 @@
 
         buildPreviewTag(dapp);
         buildPreviewMeta(dapp);
+        buildPreviewStatus(dapp);
 
         buildPreviewDesc(dapp);
 
@@ -4098,9 +4324,9 @@
             const dapp = li && li.__dapp;
             if (dapp) {
               if (downTarget.closest(".launchBtn")) {
-                // Tapped the Launch button → open the hosted dapp.
+                // Tapped the Launch button → open (or confirm, if not
+                // operational). launchDapp shows the overlay once it proceeds.
                 launchDapp(dapp);
-                showLaunchOverlay(dappDisplayName(dapp));
               } else {
                 // Tapped anywhere else on the card → open the preview.
                 openPreview(dapp, li);
@@ -4244,7 +4470,9 @@
           try {
             const resp = await fetch("/api/submissions", {
               method: "POST",
-              headers: { "content-type": "application/json" },
+              // Forward the session token (when present) so the server can
+              // record the submitter as the dapp's status owner.
+              headers: pinHeaders(true),
               body: JSON.stringify(body),
             });
             let data = null;
