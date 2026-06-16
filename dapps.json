@@ -160,6 +160,39 @@
           "body": "The simplest possible build — handy for debugging wallet connectivity."
         }
       ]
+    },
+    {
+      "name": "Mini Minecraft",
+      "description": "Place and break colored blocks in a tiny 2D voxel sandbox.",
+      "longDescription": "Mini Minecraft is a lightweight, browser-based block sandbox. Explore a freshly generated 2D world of grass, dirt, stone, and trees, then reshape it however you like: pick a block from the hotbar and click to place it, right-click (or grab the pickaxe) to break. Your world is saved in your browser, and you can roll a brand new one any time.",
+      "author": "Usernode Community",
+      "url": "/minecraft",
+      "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#5cab46'/><rect x='6' y='6' width='13' height='13' rx='2' fill='#8a5a32'/><rect x='21' y='6' width='13' height='13' rx='2' fill='#8d8d94'/><rect x='6' y='21' width='13' height='13' rx='2' fill='#e7d8a1'/><rect x='21' y='21' width='13' height='13' rx='2' fill='#3e7d3a'/></svg>",
+      "category": "Game",
+      "version": "1.0.0",
+      "updated": "2026-06-13",
+      "highlights": [
+        {
+          "icon": "🧱",
+          "title": "Place blocks",
+          "body": "Pick grass, stone, wood, water, and more from the hotbar and click to build."
+        },
+        {
+          "icon": "⛏️",
+          "title": "Break anything",
+          "body": "Right-click or grab the pickaxe to mine through dirt, stone, and trees."
+        },
+        {
+          "icon": "🌍",
+          "title": "Fresh worlds",
+          "body": "Every new world rolls its own hills, trees, and buried coal."
+        },
+        {
+          "icon": "💾",
+          "title": "Saved in your browser",
+          "body": "Your creation persists between visits — or reset for a clean slate."
+        }
+      ]
     }
   ]
 }

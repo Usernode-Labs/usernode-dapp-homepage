@@ -11,6 +11,17 @@ const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+
+// `pg` is the app's single runtime dependency (see package.json). Require it
+// lazily/defensively so a stray local run without `npm install` still serves
+// the public homepage — pin routes degrade to 503 when the client is absent.
+let PgPool = null;
+try {
+  PgPool = require("pg").Pool;
+} catch (_) {
+  console.warn("[pins] 'pg' module not available — pin features disabled");
+}
 
 // ── .env loader ──────────────────────────────────────────────────────────────
 (function loadDotEnv() {
@@ -32,6 +43,7 @@ const PORT = Number(process.env.PORT) || 8000;
 const INDEX_PATH = path.join(__dirname, "index.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
+const MINECRAFT_PATH = path.join(PUBLIC_DIR, "minecraft.html");
 
 // Static content-type lookup for screenshot assets served from public/.
 const STATIC_CONTENT_TYPES = {
@@ -52,6 +64,31 @@ const DAPPS_PATH = (() => {
   }
   return path.join(__dirname, "dapps.json");
 })();
+
+const JWT_SECRET = process.env.JWT_SECRET || "";
+const DATABASE_URL = process.env.DATABASE_URL || "";
+const IS_STAGING = process.env.USERNODE_ENV === "staging";
+
+// ── Submit-a-dapp config ──────────────────────────────────────────────────────
+// On-chain submission fee flow. All values are read from process.env with an
+// in-code default, mirroring USERNAMES_PUBKEY. The real values are provided by
+// the platform from dapp.json secrets at deploy time.
+const SUBMISSIONS_PATH = process.env.SUBMISSIONS_JSON_PATH
+  ? path.resolve(process.env.SUBMISSIONS_JSON_PATH)
+  : path.join(__dirname, "submissions.json");
+
+// Recipient of the submission fee (the Community Fund Reserve — may be a burn
+// address). When unset, the submit flow is effectively disabled (no recipient
+// to pay), and reconciliation has nothing to poll.
+const COMMUNITY_FUND_RESERVE_ADDRESS =
+  (process.env.COMMUNITY_FUND_RESERVE_ADDRESS || "").trim();
+
+// Required fee in tokens. A confirmed transfer must carry amount >= this.
+const SUBMISSION_FEE = Number(process.env.SUBMISSION_FEE) || 1000;
+
+// How long an unpaid submission stays in `awaiting_payment` before it is swept
+// to `expired` (the UI stops polling). A real late payment is still credited.
+const SUBMISSION_TTL_HOURS = Number(process.env.SUBMISSION_TTL_HOURS) || 24;
 
 const EXPLORER_PROD_HOST = "testnet-explorer.usernodelabs.org";
 const EXPLORER_PROD_BASE = "/api";
@@ -107,7 +144,10 @@ function proxyExplorer(req, res, subPath) {
       }
     );
     upReq.on("error", (err) => {
-      send(res, 502, { "content-type": "text/plain" }, `Explorer proxy error: ${err.message}`);
+      // Log the technical detail server-side; return a generic body so the
+      // upstream error text never leaks to the client.
+      console.warn(`[explorer-proxy] upstream error: ${err.message}`);
+      send(res, 502, { "content-type": "text/plain" }, "Upstream explorer unavailable");
     });
     if (bodyBuf) upReq.write(bodyBuf);
     upReq.end();
@@ -130,6 +170,83 @@ let statsChainId = null;
 const USERNAMES_PUBKEY =
   process.env.USERNAMES_PUBKEY ||
   "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az";
+
+// ── Submissions store ─────────────────────────────────────────────────────────
+// File-backed (submissions.json) so the app stays zero-dependency / stdlib-only,
+// mirroring dapps.json as the file source of truth. Loaded into memory on boot,
+// flushed atomically (temp file + rename) on every mutation.
+
+let submissions = [];                 // array of submission records
+const consumedTxIds = new Set();      // tx_id -> already credited to a submission
+
+const SUBMIT_MEMO_APP = "dapp-homepage";
+const SUBMIT_MEMO_TYPE = "submit";
+
+function atomicWriteJson(targetPath, value) {
+  const dir = path.dirname(targetPath);
+  const tmp = path.join(dir, "." + path.basename(targetPath) + ".tmp-" + crypto.randomBytes(6).toString("hex"));
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
+  fs.renameSync(tmp, targetPath);
+}
+
+function loadSubmissions() {
+  try {
+    if (!fs.existsSync(SUBMISSIONS_PATH)) {
+      submissions = [];
+      return;
+    }
+    const raw = fs.readFileSync(SUBMISSIONS_PATH, "utf8");
+    const data = JSON.parse(raw);
+    submissions = Array.isArray(data) ? data : (Array.isArray(data.submissions) ? data.submissions : []);
+  } catch (e) {
+    console.warn(`[submit] could not read submissions.json: ${e.message}`);
+    submissions = [];
+  }
+  // Re-seed the consumed-tx set so a restart can't double-credit a payment.
+  consumedTxIds.clear();
+  for (const s of submissions) {
+    if (s && s.payment_tx_hash) consumedTxIds.add(s.payment_tx_hash);
+  }
+}
+
+function saveSubmissions() {
+  try {
+    atomicWriteJson(SUBMISSIONS_PATH, submissions);
+  } catch (e) {
+    console.warn(`[submit] could not write submissions.json: ${e.message}`);
+  }
+}
+
+function findSubmission(id) {
+  return submissions.find((s) => s && s.id === id) || null;
+}
+
+// A submission is a live duplicate-blocker while it is still awaiting payment or
+// already published. Expired records do not block a fresh attempt.
+function isLiveSubmission(s) {
+  return s && (s.status === "awaiting_payment" || s.status === "published");
+}
+
+function submitMemoString(id) {
+  return JSON.stringify({ app: SUBMIT_MEMO_APP, type: SUBMIT_MEMO_TYPE, sid: id });
+}
+
+// Public-safe view returned to the submitter — a global, per-submission status
+// view with no user data beyond what the submitter already supplied.
+function publicSubmissionView(s) {
+  return {
+    id: s.id,
+    status: s.status,
+    pay_to: s.fee_recipient,
+    amount: SUBMISSION_FEE,
+    memo: submitMemoString(s.id),
+    payment_tx_hash: s.payment_tx_hash || null,
+    created_at: s.created_at,
+    expires_at: s.expires_at,
+    published_at: s.published_at || null,
+    dapp: s.dapp,
+  };
+}
 
 function httpJson(method, urlStr, body) {
   return new Promise((resolve, reject) => {
@@ -278,10 +395,16 @@ async function pollAllStats() {
   if (!statsChainId) return;
 
   const pubkeys = loadPubkeys();
-  const all = Array.from(new Set([...pubkeys, USERNAMES_PUBKEY]));
+  const extra = [USERNAMES_PUBKEY];
+  if (COMMUNITY_FUND_RESERVE_ADDRESS) extra.push(COMMUNITY_FUND_RESERVE_ADDRESS);
+  const all = Array.from(new Set([...pubkeys, ...extra]));
   for (const pk of all) {
     await pollPubkey(pk);
   }
+
+  // Credit confirmed submission payments and age out unpaid submissions.
+  reconcileSubmissionPayments();
+  expireStaleSubmissions();
 }
 
 // ── /user_activity derivation ────────────────────────────────────────────────
@@ -362,12 +485,377 @@ function buildUserActivity() {
   return out;
 }
 
+// ── Submission payment reconciliation + auto-publish ──────────────────────────
+// Runs each poll tick after the Reserve address has been polled. Scans the
+// Reserve's inbound transfers for confirmed payments whose memo `sid` matches a
+// submission still awaiting payment (or expired), appends the dapp to dapps.json,
+// and marks the record `published`. Confirmation IS publication — no validator.
+// Trusts only confirmed chain state — never a client claim of payment.
+
+function reconcileSubmissionPayments() {
+  if (!COMMUNITY_FUND_RESERVE_ADDRESS) return;
+  const txs = txCache[COMMUNITY_FUND_RESERVE_ADDRESS] || [];
+  let dirty = false;
+
+  for (const tx of txs) {
+    const txId = tx.tx_id || tx.id || tx.txid || tx.hash;
+    if (!txId || consumedTxIds.has(txId)) continue;
+
+    const status = tx.status;
+    if (status && status !== "confirmed") continue;
+
+    const amount = typeof tx.amount === "number" ? tx.amount : Number(tx.amount);
+    if (!(amount >= SUBMISSION_FEE)) continue;
+
+    let memo;
+    try { memo = JSON.parse(tx.memo || ""); } catch (_) { continue; }
+    if (!memo || memo.app !== SUBMIT_MEMO_APP || memo.type !== SUBMIT_MEMO_TYPE) continue;
+    if (typeof memo.sid !== "string" || !memo.sid) continue;
+
+    const sub = findSubmission(memo.sid);
+    if (!sub) continue;
+    // Credit a real confirmed payment even if the form already gave up (expired).
+    if (sub.status !== "awaiting_payment" && sub.status !== "expired") continue;
+
+    // Publish: append to dapps.json unless the dapp is already listed (race /
+    // manual add — idempotent skip). If the write fails (e.g. dapps.json not
+    // writable), leave the record unpublished and the tx unconsumed so the next
+    // tick retries — the fee is already burned regardless.
+    try {
+      if (!listingHas(sub.dapp.url, sub.dapp.pubkey)) {
+        appendDappToListing(sub.dapp);
+      }
+    } catch (e) {
+      console.warn(`[submit] could not publish ${sub.id} to dapps.json (will retry): ${e.message}`);
+      continue;
+    }
+
+    sub.payer = tx.source || tx.from_pubkey || tx.from || null;
+    sub.payment_tx_hash = txId;
+    sub.paid_amount = amount;
+    sub.published_at = Date.now();
+    sub.status = "published";
+    consumedTxIds.add(txId);
+    dirty = true;
+    console.log(`[submit] payment confirmed for ${sub.id} (${amount} tokens from ${sub.payer}) — published "${sub.dapp.name}"`);
+  }
+
+  if (dirty) saveSubmissions();
+}
+
+// Sweep `awaiting_payment` records past their TTL to `expired` so the form stops
+// polling. A genuine late payment can still re-credit an expired record.
+function expireStaleSubmissions() {
+  const now = Date.now();
+  let dirty = false;
+  for (const s of submissions) {
+    if (s.status === "awaiting_payment" && typeof s.expires_at === "number" && now > s.expires_at) {
+      s.status = "expired";
+      dirty = true;
+    }
+  }
+  if (dirty) saveSubmissions();
+}
+
+// Append a published submission's dapp entry into dapps.json so the homepage
+// shows it and the poller tracks its pubkey on the next tick. Atomic write.
+function appendDappToListing(dapp) {
+  const raw = fs.readFileSync(DAPPS_PATH, "utf8");
+  const data = JSON.parse(raw);
+  if (!Array.isArray(data.apps)) data.apps = data.apps || data.items || [];
+  data.apps.push(dapp);
+  atomicWriteJson(DAPPS_PATH, data);
+}
+
+// True if a url/pubkey is already present in the live listing.
+function listingHas(url, pubkey) {
+  const dapps = loadDapps(); // {name, pubkey}
+  if (pubkey && dapps.some((d) => d.pubkey === pubkey)) return true;
+  // loadDapps drops url; re-read raw for a url check.
+  try {
+    const data = JSON.parse(fs.readFileSync(DAPPS_PATH, "utf8"));
+    const apps = data.apps || data.items || [];
+    return apps.some((a) => (url && a.url === url) || (pubkey && a.pubkey === pubkey));
+  } catch (_) {
+    return false;
+  }
+}
+
 // Start background polling
+loadSubmissions();
 (async function startStatsPoller() {
   await pollAllStats();
   setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
 })();
 
+// ── Database (per-user dapp pins) ────────────────────────────────────────────
+// The homepage itself is public, but pinning a dapp is a per-user action, so it
+// needs the platform's Postgres (DATABASE_URL) + JWT auth (JWT_SECRET). Only the
+// /api/pins routes consult auth/DB; every existing route stays public.
+
+let pinsPool = null;   // pg.Pool once initialised
+let pinsReady = false; // true after a successful migration
+
+// dapp_pins is marked `staging:private` (see migration COMMENT) because a row
+// ties a Usernode identity to the dapps they personally favorite — that's
+// owner-only preference data, not public app content. Staging therefore gets
+// the table schema-only and must seed its own rows (IS_STAGING block below).
+const SEED_PINS = [
+  // Obviously-synthetic staging users pinning real dapps from dapps.json so the
+  // Pinned section + sorting can be exercised in a staging preview.
+  { user_id: "staging-demo-user-1", pubkey: "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms" }, // Opinion Market
+  { user_id: "staging-demo-user-1", pubkey: "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu" }, // Falling Sands
+  { user_id: "staging-demo-user-2", pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05" }, // Last One Wins
+];
+
+async function initPinsDb() {
+  if (!PgPool) return;
+  if (!DATABASE_URL) {
+    console.warn("[pins] DATABASE_URL not set — pin features disabled");
+    return;
+  }
+  try {
+    pinsPool = new PgPool({ connectionString: DATABASE_URL });
+    pinsPool.on("error", (err) => console.warn(`[pins] pool error: ${err.message}`));
+
+    await pinsPool.query(`
+      CREATE TABLE IF NOT EXISTS dapp_pins (
+        user_id     TEXT        NOT NULL,
+        dapp_pubkey TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, dapp_pubkey)
+      )
+    `);
+    await pinsPool.query(
+      `CREATE INDEX IF NOT EXISTS dapp_pins_user_id_idx ON dapp_pins (user_id)`
+    );
+    // staging:private — staging gets structure only, never prod rows.
+    await pinsPool.query(`COMMENT ON TABLE dapp_pins IS 'staging:private'`);
+
+    pinsReady = true;
+    console.log("[pins] dapp_pins table ready");
+
+    if (IS_STAGING) {
+      for (const p of SEED_PINS) {
+        await pinsPool.query(
+          `INSERT INTO dapp_pins (user_id, dapp_pubkey)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, dapp_pubkey) DO NOTHING`,
+          [p.user_id, p.pubkey]
+        );
+      }
+      console.log(`[pins] seeded ${SEED_PINS.length} staging demo pin(s)`);
+    }
+  } catch (e) {
+    pinsReady = false;
+    console.warn(`[pins] could not initialise database: ${e.message}`);
+  }
+}
+
+// ── JWT auth (built-in crypto, HS256 only) ───────────────────────────────────
+// The platform shell injects a `?token=…` JWT on iframe load; the frontend
+// forwards it via the `x-usernode-token` header. We verify HS256 against
+// JWT_SECRET without pulling in a `jsonwebtoken` dependency.
+
+function b64urlToBuf(str) {
+  const pad = str.length % 4 === 0 ? "" : "=".repeat(4 - (str.length % 4));
+  return Buffer.from(str.replace(/-/g, "+").replace(/_/g, "/") + pad, "base64");
+}
+
+function verifyJwt(token) {
+  if (!token || !JWT_SECRET) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+
+  let header;
+  try {
+    header = JSON.parse(b64urlToBuf(headerB64).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  if (!header || header.alg !== "HS256") return null;
+
+  const expected = crypto
+    .createHmac("sha256", JWT_SECRET)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest();
+  const got = b64urlToBuf(sigB64);
+  if (expected.length !== got.length || !crypto.timingSafeEqual(expected, got)) {
+    return null;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(b64urlToBuf(payloadB64).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  // Reject expired tokens (exp is seconds since epoch, per JWT spec).
+  if (payload && typeof payload.exp === "number" && payload.exp * 1000 <= Date.now()) {
+    return null;
+  }
+  return payload;
+}
+
+function getUser(req) {
+  const headerTok = req.headers["x-usernode-token"];
+  let token = Array.isArray(headerTok) ? headerTok[0] : headerTok;
+  if (!token) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      token = u.searchParams.get("token") || "";
+    } catch (_) {}
+  }
+  const payload = verifyJwt(token);
+  if (!payload || payload.id == null) return null;
+  return payload;
+}
+
+function jsonRes(res, status, obj) {
+  return send(
+    res,
+    status,
+    { "content-type": "application/json", "cache-control": "no-store" },
+    JSON.stringify(obj)
+  );
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      if (!chunks.length) return resolve(null);
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch (_) {
+        resolve(undefined); // signals malformed JSON
+      }
+    });
+    req.on("error", () => resolve(null));
+  });
+}
+
+async function handlePins(req, res, urlObj) {
+  const user = getUser(req);
+  if (!user) return jsonRes(res, 401, { error: "auth required" });
+  if (!pinsReady) return jsonRes(res, 503, { error: "pins unavailable" });
+  const userId = String(user.id);
+
+  try {
+    if (req.method === "GET") {
+      const { rows } = await pinsPool.query(
+        `SELECT dapp_pubkey FROM dapp_pins WHERE user_id = $1`,
+        [userId]
+      );
+      return jsonRes(res, 200, { pins: rows.map((r) => r.dapp_pubkey) });
+    }
+
+    if (req.method === "POST") {
+      const body = await readBody(req);
+      if (body === undefined) return jsonRes(res, 400, { error: "invalid JSON" });
+      const pubkey = body && typeof body.pubkey === "string" ? body.pubkey.trim() : "";
+      if (!pubkey) return jsonRes(res, 400, { error: "pubkey required" });
+      // Only honour pins for dapps we actually list; unknown keys are ignored
+      // (still 200 to keep the client simple).
+      if (loadPubkeys().includes(pubkey)) {
+        await pinsPool.query(
+          `INSERT INTO dapp_pins (user_id, dapp_pubkey)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, dapp_pubkey) DO NOTHING`,
+          [userId, pubkey]
+        );
+      }
+      return jsonRes(res, 200, { pinned: true });
+    }
+
+    if (req.method === "DELETE") {
+      const pubkey = (urlObj.searchParams.get("pubkey") || "").trim();
+      if (!pubkey) return jsonRes(res, 400, { error: "pubkey required" });
+      await pinsPool.query(
+        `DELETE FROM dapp_pins WHERE user_id = $1 AND dapp_pubkey = $2`,
+        [userId, pubkey]
+      );
+      return jsonRes(res, 200, { pinned: false });
+    }
+
+    return jsonRes(res, 405, { error: "method not allowed" });
+  } catch (e) {
+    console.warn(`[pins] request error: ${e.message}`);
+    return jsonRes(res, 500, { error: "internal error" });
+  }
+}
+
+// Kick off DB init (non-blocking — the homepage serves regardless).
+initPinsDb();
+
+// ── HTTP helpers for the submit/review API ───────────────────────────────────
+
+function sendJson(res, statusCode, obj) {
+  return send(res, statusCode, {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "access-control-allow-origin": "*",
+  }, JSON.stringify(obj));
+}
+
+function readJsonBody(req, limitBytes, cb) {
+  const chunks = [];
+  let size = 0;
+  let aborted = false;
+  req.on("data", (c) => {
+    if (aborted) return;
+    size += c.length;
+    if (size > limitBytes) {
+      aborted = true;
+      cb(new Error("body too large"), null);
+      req.destroy();
+      return;
+    }
+    chunks.push(c);
+  });
+  req.on("end", () => {
+    if (aborted) return;
+    const text = Buffer.concat(chunks).toString("utf8").trim();
+    if (!text) return cb(null, {});
+    try { cb(null, JSON.parse(text)); }
+    catch (e) { cb(new Error("invalid JSON body"), null); }
+  });
+  req.on("error", (e) => { if (!aborted) cb(e, null); });
+}
+
+const TX_PREFIX = "ut1";
+
+// Validate + normalize an incoming dapp submission. Returns { ok, dapp } or
+// { ok:false, error }.
+function validateSubmissionInput(body) {
+  if (!body || typeof body !== "object") return { ok: false, error: "Missing submission body." };
+  const str = (v) => (typeof v === "string" ? v.trim() : "");
+  const name = str(body.name);
+  const description = str(body.description);
+  const author = str(body.author);
+  const url = str(body.url);
+  const pubkey = str(body.pubkey);
+  const category = str(body.category);
+  const logo = str(body.logo);
+
+  if (!name) return { ok: false, error: "Name is required." };
+  if (name.length > 80) return { ok: false, error: "Name is too long (max 80 chars)." };
+  if (!url) return { ok: false, error: "URL is required." };
+  let parsed;
+  try { parsed = new URL(url); } catch (_) { return { ok: false, error: "URL is not valid." }; }
+  if (parsed.protocol !== "https:") return { ok: false, error: "URL must start with https://" };
+  if (!pubkey) return { ok: false, error: "Dapp pubkey (ut1…) is required." };
+  if (!pubkey.startsWith(TX_PREFIX)) return { ok: false, error: "Pubkey must be a Usernode address (starts with ut1)." };
+  if (description.length > 280) return { ok: false, error: "Description is too long (max 280 chars)." };
+  if (logo && logo.length > 8000) return { ok: false, error: "Logo SVG is too large." };
+
+  const dapp = { name, description, author: author || "unknown", url, pubkey };
+  if (category) dapp.category = category;
+  if (logo) dapp.logo = logo;
+  return { ok: true, dapp };
+}
 // ── HTTP server ──────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
@@ -383,6 +871,12 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith(EXPLORER_PROXY_PREFIX)) {
     const subPath = pathname.slice(EXPLORER_PROXY_PREFIX.length);
     return proxyExplorer(req, res, subPath);
+  }
+
+  if (pathname === "/api/pins") {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    handlePins(req, res, urlObj);
+    return;
   }
 
   if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
@@ -456,6 +950,79 @@ const server = http.createServer((req, res) => {
     }, body);
   }
 
+  // ── Submit-a-dapp API ──────────────────────────────────────────────────────
+
+  // Public config the form needs to render (fee amount, whether submissions are
+  // open). Never exposes the validator token.
+  if (pathname === "/api/submit-config" && req.method === "GET") {
+    return sendJson(res, 200, {
+      enabled: !!COMMUNITY_FUND_RESERVE_ADDRESS,
+      fee: SUBMISSION_FEE,
+      reserve_address: COMMUNITY_FUND_RESERVE_ADDRESS || null,
+    });
+  }
+
+  // Create a submission → returns on-chain payment instructions.
+  if (pathname === "/api/submissions" && req.method === "POST") {
+    if (!COMMUNITY_FUND_RESERVE_ADDRESS) {
+      return sendJson(res, 503, { error: "Submissions are not currently open (no Reserve address configured)." });
+    }
+    return readJsonBody(req, 64 * 1024, (err, body) => {
+      if (err) {
+        // Log the parse detail server-side; return a fixed, generic message.
+        console.warn(`[submit] invalid request body: ${err.message}`);
+        return sendJson(res, 400, { error: "Invalid request body." });
+      }
+      const v = validateSubmissionInput(body);
+      if (!v.ok) return sendJson(res, 400, { error: v.error });
+
+      // Pre-payment duplicate gate — block before the user spends tokens.
+      if (listingHas(v.dapp.url, v.dapp.pubkey)) {
+        return sendJson(res, 409, { error: "A dapp with this URL or pubkey is already listed." });
+      }
+      const dupe = submissions.find(
+        (s) => isLiveSubmission(s) && s.dapp &&
+          (s.dapp.url === v.dapp.url || s.dapp.pubkey === v.dapp.pubkey)
+      );
+      if (dupe) {
+        return sendJson(res, 409, { error: "A submission for this URL or pubkey is already in progress." });
+      }
+
+      const now = Date.now();
+      const id = crypto.randomUUID();
+      const record = {
+        id,
+        status: "awaiting_payment",
+        dapp: v.dapp,
+        payer: null,
+        payment_tx_hash: null,
+        paid_amount: null,
+        fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS,
+        created_at: now,
+        expires_at: now + SUBMISSION_TTL_HOURS * 3600 * 1000,
+        published_at: null,
+      };
+      submissions.push(record);
+      saveSubmissions();
+      return sendJson(res, 201, {
+        id,
+        pay_to: COMMUNITY_FUND_RESERVE_ADDRESS,
+        amount: SUBMISSION_FEE,
+        memo: submitMemoString(id),
+        status: record.status,
+        expires_at: record.expires_at,
+      });
+    });
+  }
+
+  // Per-submission status poll (public). /api/submissions/:id
+  if (pathname.startsWith("/api/submissions/") && req.method === "GET") {
+    const id = decodeURIComponent(pathname.slice("/api/submissions/".length));
+    const sub = findSubmission(id);
+    if (!sub) return sendJson(res, 404, { error: "Submission not found." });
+    return sendJson(res, 200, publicSubmissionView(sub));
+  }
+
   if (req.method !== "GET" && req.method !== "HEAD") {
     return send(res, 405, { "content-type": "text/plain" }, "Method Not Allowed");
   }
@@ -506,6 +1073,29 @@ const server = http.createServer((req, res) => {
           }
         })
         .pipe(res);
+    });
+  }
+
+  // Mini Minecraft — self-contained block-sandbox game page.
+  if (pathname === "/minecraft" || pathname === "/minecraft.html") {
+    return fs.readFile(MINECRAFT_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read minecraft.html: ${err.message}\n`
+        );
+      }
+      const headers = {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      };
+      if (req.method === "HEAD") {
+        res.writeHead(200, { ...headers, "content-length": buf.length });
+        return res.end();
+      }
+      return send(res, 200, headers, buf);
     });
   }
 
