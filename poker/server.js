@@ -243,7 +243,9 @@ async function loadRuntime(tableId) {
       access.whitelist = Array.isArray(a.rows[0].whitelist) ? a.rows[0].whitelist : [];
     }
   }
-  const runtime = { table, seats, access, spectators: new Set(), hand: null, lastHandNo: 0, button: -1, starting: false };
+  const hn = await pool.query(`SELECT COALESCE(MAX(hand_no), 0) AS n FROM hands WHERE table_id=$1`, [tableId]);
+  const lastHandNo = Number(hn.rows[0].n);
+  const runtime = { table, seats, access, spectators: new Set(), hand: null, lastHandNo, button: -1, starting: false };
   runtimes.set(tableId, runtime);
   return runtime;
 }
