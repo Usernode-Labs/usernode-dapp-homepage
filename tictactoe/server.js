@@ -1248,14 +1248,15 @@ const server = http.createServer((req, res) => {
 });
 
 if (require.main === module) {
-  boot().then(() => {
-    startIntervals();
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`[ttt] listening on http://localhost:${PORT}`);
-      console.log(`[ttt] DB: ${DB ? 'connected' : 'disabled'}`);
-      console.log(`[ttt] staging: ${IS_STAGING}`);
-    });
+  // Start listening immediately so /health responds before DB is ready.
+  startIntervals();
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[ttt] listening on http://localhost:${PORT}`);
+    console.log(`[ttt] DB: ${DB ? 'connected' : 'disabled'}`);
+    console.log(`[ttt] staging: ${IS_STAGING}`);
   });
+  // Migrate + seed in the background — errors are logged but don't crash the server.
+  boot();
 }
 
 module.exports = { server, boot };
