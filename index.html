@@ -251,6 +251,53 @@
           display: none;
         }
       }
+      /* Search bar: persistent input sitting above the DAPPS title row, inside
+         the sticky header so it stays visible while the list scrolls. */
+      .searchRow {
+        position: relative;
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .searchInput {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 9px 36px 9px 11px;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .searchInput:focus {
+        outline: 2px solid var(--accent);
+        border-color: transparent;
+      }
+      /* Hide the native search clear affordance; we render our own ✕. */
+      .searchInput::-webkit-search-cancel-button { -webkit-appearance: none; }
+      .searchClear {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        line-height: 1;
+      }
+      .searchClear:hover { color: var(--fg); background: var(--border); }
+      .searchClear[hidden] { display: none; }
       h1 {
         margin: 0;
         font-size: 18px;
@@ -1717,6 +1764,20 @@
           <button class="categoryTab" type="button" data-category="Market" aria-pressed="false">Market</button>
         </nav>
         <div class="header">
+          <div class="searchRow">
+            <input
+              class="searchInput"
+              id="dappSearch"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Search dApps…"
+              aria-label="Search dApps"
+            />
+            <button class="searchClear" id="dappSearchClear" type="button" aria-label="Clear search" title="Clear search" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
           <div class="headerRow">
             <div class="brand">
               <a class="brandLink" href="https://usernode.evanshapiro.dev" target="_blank" rel="noopener" aria-label="Usernode home">
@@ -2033,8 +2094,9 @@
 
       let allApps = [];
       let statsMap = {};
-      let currentSort = localStorage.getItem(SORT_KEY) || "popular";
-      let currentSearch = "";
+      let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
+      // Live search query (client-side only, not persisted across reloads).
+      let searchQuery = "";
       let currentView = VIEW_MODES.includes(localStorage.getItem(VIEW_KEY))
         ? localStorage.getItem(VIEW_KEY)
         : "detailed";
@@ -2161,6 +2223,20 @@
         return String(n);
       }
 
+      // Case-insensitive substring match across the visible/searchable text of
+      // each dapp. Returns the list unchanged when there's no active query.
+      function filterApps(apps) {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return apps;
+        return apps.filter((d) => {
+          const hay = [d.name, d.description, d.author, d.category]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(q);
+        });
+      }
+
       function sortApps(apps) {
         const sorted = apps.slice();
         sorted.sort((a, b) => {
@@ -2184,7 +2260,7 @@
       }
 
       function applySearchFilter() {
-        const normalized = currentSearch.trim().toLowerCase();
+        const normalized = searchQuery.trim().toLowerCase();
         const lis = list.querySelectorAll("li");
         let visibleCount = 0;
         lis.forEach((li) => {
@@ -2514,7 +2590,13 @@
           return;
         }
 
-        const sorted = sortApps(categorized);
+        const filtered = filterApps(categorized);
+        if (filtered.length === 0) {
+          addRow(`No dApps match "${searchQuery.trim()}"`);
+          return;
+        }
+
+        const sorted = sortApps(filtered);
 
         function buildLi(dapp) {
           if (currentView === "grid") return buildGridCard(dapp);
@@ -2630,51 +2712,36 @@
 
       updateSortUI();
 
-      // ── Search ────────────────────────────────────────────────────────────
-      const searchWrap = document.getElementById("searchWrap");
-      const searchBtn = document.getElementById("searchBtn");
-      const searchInput = document.getElementById("searchInput");
+      // ── Search ──────────────────────────────────────────────────────────────
+      const searchInput = document.getElementById("dappSearch");
+      const searchClear = document.getElementById("dappSearchClear");
 
-      function closeSearch() {
-        currentSearch = "";
-        searchInput.value = "";
-        searchWrap.hidden = true;
-        applySearchFilter();
-        searchBtn.focus();
+      function applySearchQuery(value) {
+        searchQuery = value || "";
+        if (searchClear) searchClear.hidden = searchQuery.length === 0;
+        renderDapps(allApps);
       }
 
-      function openSearch() {
-        searchWrap.hidden = false;
-        closeHamMenu();
-        searchInput.focus();
+      function clearSearch() {
+        if (searchInput) searchInput.value = "";
+        applySearchQuery("");
+        if (searchInput) searchInput.focus();
       }
 
-      searchBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (searchWrap.hidden) {
-          openSearch();
-        } else {
-          closeSearch();
-        }
-      });
-
-      searchInput.addEventListener("input", (e) => {
-        currentSearch = e.target.value;
-        applySearchFilter();
-      });
-
-      searchInput.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          closeSearch();
-        }
-      });
-
-      document.addEventListener("click", (e) => {
-        if (!searchWrap.hidden && !searchWrap.contains(e.target) && e.target !== searchBtn) {
-          closeSearch();
-        }
-      });
+      if (searchInput) {
+        searchInput.addEventListener("input", (e) => {
+          applySearchQuery(e.target.value);
+        });
+        searchInput.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            clearSearch();
+          }
+        });
+      }
+      if (searchClear) {
+        searchClear.addEventListener("click", clearSearch);
+      }
 
       // --- Category filter tabs ---
       const categoryBar = document.getElementById("categoryBar");
@@ -3033,7 +3100,6 @@
 
       function launchDapp(dapp) {
         if (dapp && dapp.url) {
-          if (!searchWrap.hidden) closeSearch();
           window.open(dapp.url, "_blank", "noopener");
         }
       }
@@ -3205,7 +3271,6 @@
 
       function openPreview(dapp, originEl) {
         if (!dapp) return;
-        if (!searchWrap.hidden) closeSearch();
         previewCurrentDapp = dapp;
         // Return focus to the card's link on close (the <li> itself isn't
         // focusable; the inner .dappLink anchor is).
