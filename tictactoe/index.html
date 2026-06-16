@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tic-Tac-Toe — Usernode</title>
+  <script>
+  // usernode-dev-console@1
+  (function () {
+    if (window.__usernodeDevConsole) return;
+    window.__usernodeDevConsole = true;
+    var S = '__usernodeDevConsole';
+    function serialize(v, depth) {
+      depth = depth || 0;
+      try {
+        if (v === undefined) return 'undefined';
+        if (v === null) return 'null';
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        if (typeof v === 'function') return '[Function ' + (v.name || 'anonymous') + ']';
+        if (v instanceof Error) return (v.stack || (v.name + ': ' + v.message));
+        if (depth > 3) return '[…]';
+        var seen = new WeakSet();
+        return JSON.stringify(v, function (k, val) {
+          if (typeof val === 'object' && val !== null) {
+            if (seen.has(val)) return '[Circular]';
+            seen.add(val);
+          }
+          if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
+          if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+          return val;
+        });
+      } catch (e) { try { return String(v); } catch (_) { return '[unserializable]'; } }
+    }
+    function post(level, args, meta) {
+      try {
+        var payload = {
+          sentinel: S, level: level,
+          args: Array.prototype.slice.call(args).map(function (a) { return serialize(a); }),
+          ts: Date.now(), url: location.href,
+        };
+        if (meta) for (var k in meta) payload[k] = meta[k];
+        if (window.parent && window.parent !== window) window.parent.postMessage(payload, '*');
+      } catch (_) {}
+    }
+    ['log','info','warn','error','debug'].forEach(function (level) {
+      var orig = console[level] ? console[level].bind(console) : function () {};
+      console[level] = function () { post(level, arguments); orig.apply(null, arguments); };
+    });
+    window.addEventListener('error', function (e) {
+      var msg = (e.error && (e.error.stack || e.error.message)) || e.message || 'Error';
+      post('error', [msg], { source: e.filename || '', line: e.lineno || 0, col: e.colno || 0, kind: 'error' });
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      var msg = (r && (r.stack || r.message)) || String(r);
+      post('error', [msg], { kind: 'unhandledrejection' });
+    });
+    try { post('info', ['[dev-console ready]'], { kind: 'ready' }); } catch (_) {}
+  })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f0f4ff;
+      --surface: #ffffff;
+      --surface2: #eef1f8;
+      --border: #d0d8ee;
+      --text: #1a1e2e;
+      --text2: #6b7280;
+      --accent: #0891b2;
+      --accent2: #0e7490;
+      --x-color: #e11d48;
+      --o-color: #0891b2;
+      --win-bg: #dcfce7;
+      --danger: #dc2626;
+      --warn: #d97706;
+      --radius: 12px;
+      --radius-sm: 6px;
+      --shadow: 0 2px 12px rgba(0,0,0,.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --surface2: #22263a;
+        --border: #2e3349;
+        --text: #e8ecf7;
+        --text2: #8b92a8;
+        --win-bg: #14532d44;
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+    body { display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Nav */
+    #nav { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #nav h1 { font-size: 1.1rem; font-weight: 700; flex: 1; }
+    #nav h1 span { color: var(--x-color); }
+    .nav-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 12px; cursor: pointer; color: var(--text); font-size: .85rem; }
+    .nav-btn:hover { background: var(--surface2); }
+    .nav-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #user-badge { font-size: .78rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+
+    /* Main area */
+    #main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .view { display: none; flex: 1; overflow: hidden; }
+    .view.active { display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Lobby */
+    #lobby { flex: 1; overflow-y: auto; padding: 16px; gap: 16px; }
+    .lobby-top { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .lobby-top input { flex: 1; min-width: 140px; padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface2); color: var(--text); font-size: .9rem; }
+    .btn { padding: 7px 16px; border-radius: var(--radius-sm); border: none; cursor: pointer; font-size: .9rem; font-weight: 600; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent2); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-sm { padding: 4px 10px; font-size: .8rem; font-weight: 500; }
+    .btn-outline { background: none; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover { background: var(--surface2); }
+
+    #queue-strip { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    #queue-strip span { flex: 1; font-size: .88rem; }
+    #queue-strip.hidden { display: none; }
+
+    .room-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+    .room-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; cursor: pointer; transition: border-color .15s; }
+    .room-card:hover { border-color: var(--accent); }
+    .room-card h3 { font-size: .95rem; margin-bottom: 6px; }
+    .room-card .meta { font-size: .78rem; color: var(--text2); display: flex; gap: 8px; flex-wrap: wrap; }
+    .room-card .meta span { background: var(--surface2); padding: 2px 7px; border-radius: 100px; }
+    .empty-state { text-align: center; padding: 48px 16px; color: var(--text2); }
+
+    /* Lobby tabs */
+    .tab-bar { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    .tab { padding: 10px 18px; border: none; background: none; color: var(--text2); cursor: pointer; font-size: .88rem; border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* Leaderboard */
+    #leaderboard { flex: 1; overflow-y: auto; padding: 16px; }
+    .lb-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    .lb-table th { text-align: left; color: var(--text2); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    .lb-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .lb-table tr:hover td { background: var(--surface2); cursor: pointer; }
+    .rank-medal { font-size: 1.1rem; }
+
+    /* Room */
+    #room { flex: 1; display: flex; overflow: hidden; }
+    .room-left { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+    .room-info { padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .room-info h2 { font-size: .95rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status-badge { font-size: .75rem; padding: 2px 8px; border-radius: 100px; font-weight: 600; }
+    .status-badge.waiting { background: #fef3c7; color: #92400e; }
+    .status-badge.playing { background: #dcfce7; color: #166534; }
+    .status-badge.finished { background: var(--surface2); color: var(--text2); }
+
+    .players-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .player-slot { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
+    .player-slot.active { font-weight: 700; }
+    .player-mark { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 900; flex-shrink: 0; }
+    .mark-x { background: #fee2e2; color: var(--x-color); }
+    .mark-o { background: #e0f2fe; color: var(--o-color); }
+    .player-name { font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vs-sep { color: var(--text2); font-size: .8rem; }
+
+    .timer-bar-wrap { padding: 0 16px 8px; background: var(--surface); flex-shrink: 0; }
+    .timer-bar { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+    .timer-fill { height: 100%; background: var(--accent); transition: width .9s linear; border-radius: 2px; }
+    .timer-fill.urgent { background: var(--danger); }
+
+    .board-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 16px; overflow: hidden; }
+    .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: min(300px, 80vw, 50vh); aspect-ratio: 1; }
+    .cell { background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 900; cursor: pointer; transition: background .1s; user-select: none; }
+    .cell:hover:not(.taken) { background: var(--surface2); }
+    .cell.taken { cursor: default; }
+    .cell.x { color: var(--x-color); }
+    .cell.o { color: var(--o-color); }
+    .cell.win-cell { background: var(--win-bg); border-color: #22c55e; }
+
+    /* Result overlay */
+    .result-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 10; }
+    .result-card { background: var(--surface); border-radius: var(--radius); padding: 28px 36px; text-align: center; max-width: 280px; }
+    .result-card h2 { font-size: 1.4rem; margin-bottom: 6px; }
+    .result-card p { color: var(--text2); margin-bottom: 18px; font-size: .9rem; }
+    .result-card .btn-row { display: flex; gap: 10px; justify-content: center; }
+    .result-overlay.hidden, .result-card.hidden { display: none; }
+
+    /* Chat */
+    .chat-panel { width: 240px; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    .chat-header { padding: 10px 14px; font-size: .8rem; font-weight: 700; color: var(--text2); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .05em; }
+    .chat-msgs { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .chat-msg { font-size: .82rem; line-height: 1.4; }
+    .chat-msg .chat-user { font-weight: 700; color: var(--accent); }
+    .chat-msg .chat-text { color: var(--text); }
+    .chat-msg.system { color: var(--text2); font-style: italic; }
+    .chat-form { display: flex; border-top: 1px solid var(--border); }
+    .chat-form input { flex: 1; padding: 8px 10px; border: none; background: transparent; color: var(--text); font-size: .85rem; outline: none; }
+    .chat-form button { padding: 0 12px; border: none; background: var(--accent); color: #fff; cursor: pointer; font-size: .85rem; }
+    .chat-panel.hidden { display: none; }
+
+    /* Stats */
+    #stats { flex: 1; overflow-y: auto; padding: 16px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; text-align: center; }
+    .stat-card .val { font-size: 1.6rem; font-weight: 800; }
+    .stat-card .lbl { font-size: .75rem; color: var(--text2); margin-top: 2px; }
+    .achievement-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .ach-badge { background: var(--surface2); border: 1px solid var(--border); border-radius: 100px; padding: 4px 12px; font-size: .78rem; }
+
+    /* Modal */
+    .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .modal-back.hidden { display: none; }
+    .modal { background: var(--surface); border-radius: var(--radius); padding: 24px; width: min(380px, 95vw); }
+    .modal h3 { margin-bottom: 16px; }
+    .form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+    .form-row label { font-size: .82rem; color: var(--text2); }
+    .form-row input, .form-row select { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface2); color: var(--text); font-size: .9rem; }
+    .form-row select option { background: var(--surface); }
+    .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+    .join-pw-row { display: none; }
+
+    /* Waiting room pulse */
+    .waiting-room { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; padding: 24px; }
+    .waiting-room p { color: var(--text2); text-align: center; font-size: .9rem; }
+    .pulse-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.8); } }
+
+    /* Replay */
+    .replay-controls { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
+    .replay-controls span { flex: 1; text-align: center; font-size: .85rem; color: var(--text2); }
+
+    /* Misc */
+    .sep { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: var(--radius-sm); font-size: .88rem; z-index: 200; transition: opacity .3s; }
+    .toast.hidden { opacity: 0; pointer-events: none; }
+    #room-wrap { position: relative; display: flex; flex: 1; overflow: hidden; }
+    @media (max-width: 540px) {
+      .chat-panel { width: 100%; position: absolute; bottom: 0; left: 0; right: 0; height: 200px; border-left: none; border-top: 1px solid var(--border); transform: translateY(200px); transition: transform .2s; z-index: 5; }
+      .chat-panel.open { transform: translateY(0); }
+      .chat-toggle-btn { display: inline-flex; }
+    }
+    .chat-toggle-btn { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<div id="nav">
+  <h1>Tic-<span>X</span>-Toe</h1>
+  <button class="nav-btn active" id="nav-lobby" onclick="showTab('lobby')">Lobby</button>
+  <button class="nav-btn" id="nav-stats" onclick="showTab('stats')">Leaderboard</button>
+  <span id="user-badge">Not signed in</span>
+</div>
+
+<!-- Main -->
+<div id="main">
+
+  <!-- Lobby view -->
+  <div class="view active" id="view-lobby">
+    <div class="tab-bar">
+      <button class="tab active" id="tab-rooms" onclick="switchLobbyTab('rooms')">Public Rooms</button>
+      <button class="tab" id="tab-queue" onclick="switchLobbyTab('queue')">Quick Match</button>
+    </div>
+    <div id="lobby-rooms-pane" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+      <div id="lobby" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;">
+        <div class="lobby-top">
+          <input id="room-search" type="text" placeholder="Search rooms…" oninput="filterRooms()" />
+          <button class="btn btn-primary" onclick="openCreateModal()">+ Create Room</button>
+          <button class="btn btn-outline btn-sm" onclick="loadRooms()">Refresh</button>
+        </div>
+        <div id="room-cards" class="room-cards"></div>
+      </div>
+    </div>
+    <div id="lobby-queue-pane" style="display:none;flex:1;align-items:center;justify-content:center;padding:24px;">
+      <div style="text-align:center;max-width:320px;display:flex;flex-direction:column;gap:16px;align-items:center;">
+        <div style="font-size:2.5rem;">⚡</div>
+        <h2 style="font-size:1.1rem;">Quick Match</h2>
+        <p style="color:var(--text2);font-size:.9rem;">Get matched with another player instantly. Your current rating and win rate are visible on the leaderboard.</p>
+        <div id="queue-strip" class="hidden" style="width:100%;">
+          <div class="pulse-dot"></div>
+          <span>Finding opponent…</span>
+          <button class="btn btn-outline btn-sm" onclick="leaveQueue()">Cancel</button>
+        </div>
+        <button id="queue-join-btn" class="btn btn-primary" style="width:100%;padding:12px;" onclick="joinQueue()">Find Match</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Room view -->
+  <div class="view" id="view-room">
+    <div id="room-wrap">
+      <div class="room-left">
+        <div class="room-info">
+          <button class="btn btn-outline btn-sm" onclick="leaveRoom()">← Back</button>
+          <h2 id="room-name">Room</h2>
+          <span class="status-badge" id="room-status-badge">waiting</span>
+          <button class="btn btn-outline btn-sm chat-toggle-btn" id="chat-toggle" onclick="toggleChatMobile()">💬</button>
+        </div>
+        <div class="players-bar" id="players-bar">
+          <div class="player-slot" id="slot-x">
+            <div class="player-mark mark-x">✕</div>
+            <span class="player-name" id="player-x-name">Waiting…</span>
+          </div>
+          <span class="vs-sep">vs</span>
+          <div class="player-slot" id="slot-o">
+            <div class="player-mark mark-o">○</div>
+            <span class="player-name" id="player-o-name">Waiting…</span>
+          </div>
+        </div>
+        <div class="timer-bar-wrap" id="timer-wrap" style="display:none;">
+          <div class="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
+        </div>
+
+        <div class="board-wrap" id="board-wrap">
+          <!-- waiting state shown when status=waiting -->
+          <div class="waiting-room" id="waiting-state">
+            <div class="pulse-dot"></div>
+            <p id="waiting-msg">Waiting for opponent to join…</p>
+            <button class="btn btn-outline btn-sm" id="copy-link-btn" onclick="copyRoomLink()">Copy Invite Link</button>
+          </div>
+          <!-- board shown when status=playing -->
+          <div class="board" id="board" style="display:none;"></div>
+        </div>
+
+        <!-- Replay controls (hidden unless replaying) -->
+        <div class="replay-controls" id="replay-controls" style="display:none;">
+          <button class="btn btn-outline btn-sm" id="replay-prev" onclick="replayStep(-1)">‹ Prev</button>
+          <span id="replay-label">Move 0 / 0</span>
+          <button class="btn btn-outline btn-sm" id="replay-next" onclick="replayStep(1)">Next ›</button>
+          <button class="btn btn-outline btn-sm" onclick="exitReplay()">Exit Replay</button>
+        </div>
+      </div>
+
+      <div class="chat-panel" id="chat-panel">
+        <div class="chat-header">Chat</div>
+        <div class="chat-msgs" id="chat-msgs"></div>
+        <div class="chat-form" id="chat-form">
+          <input id="chat-input" type="text" placeholder="Message…" maxlength="200" onkeydown="chatKeydown(event)" />
+          <button onclick="sendChat()">Send</button>
+        </div>
+      </div>
+
+      <!-- Result overlay -->
+      <div class="result-overlay hidden" id="result-overlay">
+        <div class="result-card">
+          <h2 id="result-title">Game Over</h2>
+          <p id="result-sub"></p>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="rematch-btn" onclick="requestRematch()">Rematch</button>
+            <button class="btn btn-outline" onclick="leaveRoom()">Leave</button>
+            <button class="btn btn-outline btn-sm" onclick="startReplay()">Replay</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats/Leaderboard view -->
+  <div class="view" id="view-stats">
+    <div style="padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;">
+      <input id="stats-search" type="text" placeholder="Search player…" style="flex:1;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:.9rem;" />
+      <button class="btn btn-primary btn-sm" onclick="searchPlayer()">Go</button>
+      <button class="btn btn-outline btn-sm" onclick="showLeaderboard()">Leaderboard</button>
+    </div>
+    <div id="stats" style="flex:1;overflow-y:auto;padding:16px;">
+      <div id="stats-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Room Modal -->
+<div class="modal-back hidden" id="create-modal">
+  <div class="modal">
+    <h3>Create Room</h3>
+    <div class="form-row">
+      <label>Room name</label>
+      <input id="create-name" type="text" maxlength="40" placeholder="My room" />
+    </div>
+    <div class="form-row">
+      <label>Opponent</label>
+      <select id="create-opponent">
+        <option value="human">Human</option>
+        <option value="ai_easy">AI — Easy</option>
+        <option value="ai_medium">AI — Medium</option>
+        <option value="ai_hard">AI — Hard</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Turn timer</label>
+      <select id="create-timer">
+        <option value="15">15 seconds</option>
+        <option value="30" selected>30 seconds</option>
+        <option value="60">60 seconds</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Visibility</label>
+      <select id="create-visibility" onchange="togglePasswordRow()">
+        <option value="public">Public</option>
+        <option value="private">Private</option>
+      </select>
+    </div>
+    <div class="form-row join-pw-row" id="create-pw-row">
+      <label>Room password</label>
+      <input id="create-password" type="password" placeholder="Optional password" />
+    </div>
+    <div class="form-row" style="flex-direction:row;align-items:center;gap:10px;">
+      <input type="checkbox" id="create-chat" checked />
+      <label for="create-chat" style="font-size:.9rem;">Enable chat</label>
+      <input type="checkbox" id="create-specs" checked style="margin-left:12px;" />
+      <label for="create-specs" style="font-size:.9rem;">Allow spectators</label>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="closeModal('create-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createRoom()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Join Private Room Modal -->
+<div class="modal-back hidden" id="join-modal">
+  <div class="modal">
+    <h3 id="join-modal-title">Join Room</h3>
+    <div class="form-row join-pw-row" id="join-pw-row" style="display:flex;">
+      <label>Password</label>
+      <input id="join-password" type="password" placeholder="Room password" />
+    </div>
+    <div class="form-row">
+      <label>Join as</label>
+      <select id="join-role">
+        <option value="player">Player</option>
+        <option value="spectator">Spectator</option>
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="closeModal('join-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmJoin()">Join</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast hidden" id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let token = '';
+let currentUser = null;
+let currentView = 'lobby';
+let currentTab = 'rooms';
+let rooms = [];
+let roomState = null;
+let myRole = null; // 'X' | 'O' | 'spectator' | null
+let eventSource = null;
+let pendingJoin = null; // { roomId, hasPassword, spectatorsAllowed }
+let replayMoves = null;
+let replayStep_ = 0;
+let timerInterval = null;
+let inQueue = false;
+let queuePoll = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(function init() {
+  const params = new URLSearchParams(location.search);
+  token = params.get('token') || sessionStorage.getItem('ttt_token') || '';
+  if (token) sessionStorage.setItem('ttt_token', token);
+
+  if (token) {
+    try {
+      const parts = token.split('.');
+      const payload = JSON.parse(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')));
+      currentUser = { id: String(payload.id || ''), username: payload.username || payload.preferred_username || `user_${String(payload.id||'').slice(0,6)}` };
+      document.getElementById('user-badge').textContent = currentUser.username;
+    } catch (_) {}
+  }
+
+  // Deep-link: if URL has ?room=<id>, open that room
+  const roomParam = params.get('room');
+  if (roomParam) {
+    openRoom(roomParam);
+  } else {
+    loadRooms();
+  }
+})();
+
+// ── API helper ────────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'content-type': 'application/json', 'x-usernode-token': token },
+  };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  try {
+    const r = await fetch(path, opts);
+    const ct = r.headers.get('content-type') || '';
+    const data = ct.includes('json') ? await r.json() : await r.text();
+    return { ok: r.ok, status: r.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, data: { error: e.message } };
+  }
+}
+
+// ── View routing ──────────────────────────────────────────────────────────────
+function showTab(tab) {
+  currentView = tab;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + tab).classList.add('active');
+  document.getElementById('nav-' + tab).classList.add('active');
+  if (tab === 'stats') showLeaderboard();
+}
+
+function switchLobbyTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-rooms').classList.toggle('active', tab === 'rooms');
+  document.getElementById('tab-queue').classList.toggle('active', tab === 'queue');
+  document.getElementById('lobby-rooms-pane').style.display = tab === 'rooms' ? 'flex' : 'none';
+  document.getElementById('lobby-queue-pane').style.display = tab === 'queue' ? 'flex' : 'none';
+}
+
+// ── Rooms ─────────────────────────────────────────────────────────────────────
+async function loadRooms() {
+  const r = await api('GET', '/api/ttt/rooms');
+  if (!r.ok) return;
+  rooms = r.data.rooms || [];
+  renderRooms(rooms);
+}
+
+function filterRooms() {
+  const q = document.getElementById('room-search').value.toLowerCase();
+  renderRooms(rooms.filter(r => r.name.toLowerCase().includes(q)));
+}
+
+function renderRooms(list) {
+  const el = document.getElementById('room-cards');
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-state">No public rooms right now.<br>Create one!</div>';
+    return;
+  }
+  el.innerHTML = list.map(r => `
+    <div class="room-card" onclick="clickRoom('${r.roomId}', ${!!r.hasPassword}, ${r.spectatorsAllowed})">
+      <h3>${esc(r.name)}</h3>
+      <div class="meta">
+        ${r.hasPassword ? '<span>🔒 Password</span>' : '<span>🌐 Open</span>'}
+        <span>👤 ${r.playerCount}/2</span>
+        ${r.opponentType !== 'human' ? `<span>🤖 ${r.opponentType.replace('ai_','')}</span>` : ''}
+        <span>⏱ ${r.turnTimerSeconds}s</span>
+        ${r.chatEnabled ? '<span>💬</span>' : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function clickRoom(roomId, hasPassword, spectatorsAllowed) {
+  if (!currentUser) return toast('Sign in to join a room');
+  pendingJoin = { roomId, hasPassword, spectatorsAllowed };
+  if (hasPassword) {
+    document.getElementById('join-modal-title').textContent = 'Join Room';
+    document.getElementById('join-pw-row').style.display = 'flex';
+    document.getElementById('join-password').value = '';
+    openModal('join-modal');
+  } else {
+    document.getElementById('join-pw-row').style.display = 'none';
+    openModal('join-modal');
+  }
+}
+
+async function confirmJoin() {
+  if (!pendingJoin) return;
+  closeModal('join-modal');
+  const password = document.getElementById('join-password').value.trim();
+  const role = document.getElementById('join-role').value;
+  await openRoom(pendingJoin.roomId, password, role);
+}
+
+async function openRoom(roomId, password, role) {
+  // Join via API first
+  if (currentUser) {
+    const body = { role: role || 'player' };
+    if (password) body.password = password;
+    const r = await api('POST', `/api/ttt/rooms/${roomId}/join`, body);
+    if (!r.ok) {
+      if (r.status === 403) return toast(r.data.error || 'Incorrect password');
+      if (r.status === 409 && r.data && r.data.error && r.data.error.includes('full')) {
+        body.role = 'spectator';
+        const r2 = await api('POST', `/api/ttt/rooms/${roomId}/join`, body);
+        if (!r2.ok) return toast(r2.data.error || 'Cannot join room');
+        myRole = 'spectator';
+        initRoom(r2.data.state);
+      } else {
+        if (!r.ok) return toast(r.data.error || 'Cannot join room');
+      }
+      if (r.ok) {
+        myRole = determineMyRole(r.data.state);
+        initRoom(r.data.state);
+      }
+      return;
+    }
+    myRole = determineMyRole(r.data.state);
+    initRoom(r.data.state);
+  } else {
+    // Spectator/unauthenticated view
+    const r = await api('GET', `/api/ttt/rooms/${roomId}`);
+    if (!r.ok) return toast('Room not found');
+    myRole = 'spectator';
+    initRoom(r.data);
+  }
+
+  connectSSE(roomId);
+  showRoomView();
+}
+
+function determineMyRole(state) {
+  if (!currentUser || !state) return 'spectator';
+  if (state.playerX && state.playerX.id === currentUser.id) return 'X';
+  if (state.playerO && state.playerO.id === currentUser.id) return 'O';
+  return 'spectator';
+}
+
+function showRoomView() {
+  currentView = 'room';
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-room').classList.add('active');
+}
+
+function leaveRoom() {
+  disconnectSSE();
+  stopTimerUI();
+  roomState = null;
+  myRole = null;
+  replayMoves = null;
+  document.getElementById('result-overlay').classList.add('hidden');
+  document.getElementById('replay-controls').style.display = 'none';
+  document.getElementById('chat-msgs').innerHTML = '';
+  showTab('lobby');
+  loadRooms();
+}
+
+// ── SSE ───────────────────────────────────────────────────────────────────────
+function connectSSE(roomId) {
+  disconnectSSE();
+  const url = `/api/ttt/rooms/${roomId}/events${token ? '?token=' + encodeURIComponent(token) : ''}`;
+  eventSource = new EventSource(url);
+
+  eventSource.addEventListener('game_state', e => {
+    roomState = JSON.parse(e.data);
+    renderRoom(roomState);
+  });
+  eventSource.addEventListener('timer_tick', e => {
+    const d = JSON.parse(e.data);
+    if (roomState) { roomState.turnDeadline = d.turnDeadline; updateTimerUI(); }
+  });
+  eventSource.addEventListener('game_over', e => {
+    const d = JSON.parse(e.data);
+    if (roomState) {
+      roomState.status = 'finished';
+      roomState.result = d.result;
+      roomState.winLine = d.winLine;
+      roomState.board = d.board;
+      renderBoard(roomState.board, roomState.winLine);
+      stopTimerUI();
+      showResult(d.result, d.winnerId);
+    }
+  });
+  eventSource.addEventListener('player_joined', e => {
+    const d = JSON.parse(e.data);
+    addChatMsg({ system: true, text: `${d.username} joined as ${d.seat}` });
+  });
+  eventSource.addEventListener('player_left', e => {
+    const d = JSON.parse(e.data);
+    addChatMsg({ system: true, text: `Player left (${d.seat})` });
+  });
+  eventSource.addEventListener('chat', e => {
+    const d = JSON.parse(e.data);
+    addChatMsg({ username: d.username, text: d.message });
+  });
+  eventSource.addEventListener('achievement_unlocked', e => {
+    const d = JSON.parse(e.data);
+    if (currentUser && d.userId === currentUser.id) {
+      toast('🏆 Achievement unlocked: ' + d.achievements.join(', '));
+    }
+  });
+  eventSource.addEventListener('rematch_vote', e => {
+    const d = JSON.parse(e.data);
+    addChatMsg({ system: true, text: `Rematch requested (${d.votes} vote${d.votes!==1?'s':''})` });
+  });
+  eventSource.addEventListener('rematch_expired', () => {
+    addChatMsg({ system: true, text: 'Rematch window expired' });
+  });
+  eventSource.addEventListener('error', e => {
+    if (e.data) {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.message) toast(d.message);
+      } catch (_) {}
+    }
+  });
+}
+
+function disconnectSSE() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
+}
+
+// ── Room render ───────────────────────────────────────────────────────────────
+function initRoom(state) {
+  roomState = state;
+  renderRoom(state);
+}
+
+function renderRoom(state) {
+  if (!state) return;
+
+  document.getElementById('room-name').textContent = state.name;
+
+  const badge = document.getElementById('room-status-badge');
+  badge.textContent = state.status;
+  badge.className = 'status-badge ' + state.status;
+
+  // Players
+  const px = state.playerX;
+  const po = state.playerO;
+  document.getElementById('player-x-name').textContent = px ? px.username : 'Waiting…';
+  document.getElementById('player-o-name').textContent = po ? po.username : 'Waiting…';
+
+  // Highlight active turn
+  document.getElementById('slot-x').classList.toggle('active', state.status === 'playing' && state.currentTurn === 'X');
+  document.getElementById('slot-o').classList.toggle('active', state.status === 'playing' && state.currentTurn === 'O');
+
+  // Chat panel
+  document.getElementById('chat-panel').classList.toggle('hidden', !state.chatEnabled);
+
+  if (state.status === 'waiting') {
+    document.getElementById('waiting-state').style.display = 'flex';
+    document.getElementById('board').style.display = 'none';
+    document.getElementById('timer-wrap').style.display = 'none';
+    stopTimerUI();
+    const waitMsg = document.getElementById('waiting-msg');
+    if (myRole === 'X' && !state.playerO) {
+      waitMsg.textContent = 'Waiting for opponent…';
+    } else {
+      waitMsg.textContent = 'Room is open — joining as ' + (myRole || 'spectator');
+    }
+  } else if (state.status === 'playing') {
+    document.getElementById('waiting-state').style.display = 'none';
+    document.getElementById('board').style.display = 'grid';
+    document.getElementById('timer-wrap').style.display = 'block';
+    document.getElementById('result-overlay').classList.add('hidden');
+    renderBoard(state.board, state.winLine);
+    updateTimerUI();
+  } else if (state.status === 'finished') {
+    document.getElementById('waiting-state').style.display = 'none';
+    document.getElementById('board').style.display = 'grid';
+    document.getElementById('timer-wrap').style.display = 'none';
+    renderBoard(state.board, state.winLine);
+    stopTimerUI();
+    if (state.result) showResult(state.result, state.playerX && state.playerO ? (
+      state.result === 'x_wins' || state.result === 'o_forfeit' ? state.playerX.id :
+      state.result === 'o_wins' || state.result === 'x_forfeit' ? state.playerO.id : null
+    ) : null);
+  }
+}
+
+function renderBoard(board, winLine) {
+  const el = document.getElementById('board');
+  el.innerHTML = '';
+  const winSet = new Set(winLine || []);
+  for (let i = 0; i < 9; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (board[i] ? ' taken ' + board[i].toLowerCase() : '') + (winSet.has(i) ? ' win-cell' : '');
+    cell.textContent = board[i] === 'X' ? '✕' : board[i] === 'O' ? '○' : '';
+    if (!board[i] && roomState && roomState.status === 'playing') {
+      const isMyTurn = (myRole === roomState.currentTurn);
+      if (isMyTurn) cell.onclick = () => makeMove(i);
+      else cell.style.cursor = 'default';
+    }
+    el.appendChild(cell);
+  }
+}
+
+// ── Timer UI ──────────────────────────────────────────────────────────────────
+function updateTimerUI() {
+  if (!roomState || roomState.status !== 'playing' || !roomState.turnDeadline) return;
+  const totalMs = (roomState.turnTimerSeconds || 30) * 1000;
+  const remaining = Math.max(0, roomState.turnDeadline - Date.now());
+  const pct = Math.min(100, (remaining / totalMs) * 100);
+  const fill = document.getElementById('timer-fill');
+  fill.style.width = pct + '%';
+  fill.className = 'timer-fill' + (pct < 25 ? ' urgent' : '');
+}
+
+function stopTimerUI() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  const fill = document.getElementById('timer-fill');
+  fill.style.width = '0%';
+}
+
+// Start a local interval to keep the timer bar smooth
+setInterval(() => { if (roomState && roomState.status === 'playing') updateTimerUI(); }, 500);
+
+// ── Result ────────────────────────────────────────────────────────────────────
+function showResult(result, winnerId) {
+  const overlay = document.getElementById('result-overlay');
+  const title = document.getElementById('result-title');
+  const sub = document.getElementById('result-sub');
+
+  let t = '', s = '';
+  if (result === 'draw') { t = 'Draw!'; s = 'No winner this time.'; }
+  else if (result === 'x_wins') { t = '✕ Wins!'; s = (roomState && roomState.playerX ? roomState.playerX.username : 'X') + ' wins!'; }
+  else if (result === 'o_wins') { t = '○ Wins!'; s = (roomState && roomState.playerO ? roomState.playerO.username : 'O') + ' wins!'; }
+  else if (result === 'x_forfeit') { t = '○ Wins'; s = 'X ran out of time.'; }
+  else if (result === 'o_forfeit') { t = '✕ Wins'; s = 'O ran out of time.'; }
+
+  if (currentUser && winnerId === currentUser.id) { t = '🎉 You Win!'; }
+  else if (currentUser && (result === 'x_wins' && myRole === 'O' || result === 'o_wins' && myRole === 'X')) { t = 'You Lost'; }
+
+  title.textContent = t;
+  sub.textContent = s;
+
+  const isPlayer = myRole === 'X' || myRole === 'O';
+  document.getElementById('rematch-btn').style.display = isPlayer ? '' : 'none';
+
+  overlay.classList.remove('hidden');
+}
+
+// ── Move ──────────────────────────────────────────────────────────────────────
+async function makeMove(cell) {
+  if (!roomState || roomState.status !== 'playing') return;
+  if (!currentUser) return toast('Not authenticated');
+  const r = await api('POST', `/api/ttt/rooms/${roomState.roomId}/move`, { cell });
+  if (!r.ok) toast(r.data.error || 'Invalid move');
+  // State will update via SSE
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+function chatKeydown(e) {
+  if (e.key === 'Enter') sendChat();
+}
+
+async function sendChat() {
+  if (!currentUser || !roomState) return;
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  await api('POST', `/api/ttt/rooms/${roomState.roomId}/chat`, { message: msg });
+}
+
+function addChatMsg({ username, text, system }) {
+  const el = document.getElementById('chat-msgs');
+  const div = document.createElement('div');
+  div.className = 'chat-msg' + (system ? ' system' : '');
+  if (system) {
+    div.textContent = text;
+  } else {
+    div.innerHTML = `<span class="chat-user">${esc(username)}</span> <span class="chat-text">${esc(text)}</span>`;
+  }
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function toggleChatMobile() {
+  document.getElementById('chat-panel').classList.toggle('open');
+}
+
+// ── Rematch ───────────────────────────────────────────────────────────────────
+async function requestRematch() {
+  if (!roomState) return;
+  const r = await api('POST', `/api/ttt/rooms/${roomState.roomId}/rematch`);
+  if (!r.ok) return toast(r.data.error || 'Cannot request rematch');
+  if (r.data.matched) {
+    document.getElementById('result-overlay').classList.add('hidden');
+  } else {
+    toast('Rematch requested — waiting for opponent…');
+  }
+}
+
+// ── Replay ────────────────────────────────────────────────────────────────────
+function startReplay() {
+  if (!roomState || !roomState.board) return;
+  document.getElementById('result-overlay').classList.add('hidden');
+
+  // Fetch full game data for moves
+  if (roomState.gameId) {
+    api('GET', `/api/ttt/games/${roomState.gameId}`).then(r => {
+      if (r.ok && r.data.moves) {
+        replayMoves = r.data.moves;
+        replayStep_ = replayMoves.length;
+        renderReplay(replayStep_);
+        document.getElementById('replay-controls').style.display = 'flex';
+      }
+    });
+  }
+}
+
+function renderReplay(step) {
+  if (!replayMoves) return;
+  const board = Array(9).fill(null);
+  for (let i = 0; i < step; i++) {
+    const m = replayMoves[i];
+    board[m.cell] = m.player;
+  }
+  const winResult = step === replayMoves.length && roomState ? (roomState.winLine || null) : null;
+  renderBoard(board, winResult);
+  document.getElementById('replay-label').textContent = `Move ${step} / ${replayMoves.length}`;
+  document.getElementById('replay-prev').disabled = step <= 0;
+  document.getElementById('replay-next').disabled = step >= replayMoves.length;
+  document.getElementById('board').style.display = 'grid';
+}
+
+function replayStep(delta) {
+  if (!replayMoves) return;
+  replayStep_ = Math.max(0, Math.min(replayMoves.length, replayStep_ + delta));
+  renderReplay(replayStep_);
+}
+
+function exitReplay() {
+  replayMoves = null;
+  document.getElementById('replay-controls').style.display = 'none';
+  if (roomState) renderRoom(roomState);
+}
+
+// ── Queue ─────────────────────────────────────────────────────────────────────
+async function joinQueue() {
+  if (!currentUser) return toast('Sign in to use Quick Match');
+  inQueue = true;
+  document.getElementById('queue-join-btn').style.display = 'none';
+  document.getElementById('queue-strip').classList.remove('hidden');
+
+  const poll = async () => {
+    if (!inQueue) return;
+    const r = await api('POST', '/api/ttt/queue');
+    if (r.ok && r.data.matched && r.data.roomId) {
+      inQueue = false;
+      clearTimeout(queuePoll);
+      document.getElementById('queue-strip').classList.add('hidden');
+      document.getElementById('queue-join-btn').style.display = '';
+      await openRoom(r.data.roomId);
+      return;
+    }
+    if (!inQueue) return;
+    queuePoll = setTimeout(poll, 2000);
+  };
+  poll();
+}
+
+async function leaveQueue() {
+  inQueue = false;
+  clearTimeout(queuePoll);
+  await api('DELETE', '/api/ttt/queue');
+  document.getElementById('queue-strip').classList.add('hidden');
+  document.getElementById('queue-join-btn').style.display = '';
+}
+
+// ── Create room ───────────────────────────────────────────────────────────────
+function openCreateModal() {
+  if (!currentUser) return toast('Sign in to create a room');
+  openModal('create-modal');
+}
+
+function togglePasswordRow() {
+  const vis = document.getElementById('create-visibility').value;
+  document.getElementById('create-pw-row').style.display = vis === 'private' ? 'flex' : 'none';
+}
+
+async function createRoom() {
+  const name       = document.getElementById('create-name').value.trim() || `${currentUser.username}'s Room`;
+  const opponent   = document.getElementById('create-opponent').value;
+  const timer      = Number(document.getElementById('create-timer').value);
+  const visibility = document.getElementById('create-visibility').value;
+  const password   = document.getElementById('create-password').value.trim();
+  const chatEnabled = document.getElementById('create-chat').checked;
+  const spectatorsAllowed = document.getElementById('create-specs').checked;
+
+  const body = { name, opponentType: opponent, turnTimerSeconds: timer, visibility, chatEnabled, spectatorsAllowed };
+  if (visibility === 'private' && password) body.password = password;
+
+  closeModal('create-modal');
+  const r = await api('POST', '/api/ttt/rooms', body);
+  if (!r.ok) return toast(r.data.error || 'Could not create room');
+
+  myRole = 'X';
+  await openRoom(r.data.roomId);
+}
+
+// ── Leaderboard & Stats ───────────────────────────────────────────────────────
+async function showLeaderboard() {
+  const el = document.getElementById('stats-content');
+  el.innerHTML = '<p style="color:var(--text2)">Loading…</p>';
+  const r = await api('GET', '/api/ttt/leaderboard');
+  if (!r.ok) { el.innerHTML = '<p style="color:var(--text2)">Leaderboard unavailable</p>'; return; }
+  const leaders = r.data.leaders || [];
+  if (!leaders.length) { el.innerHTML = '<p style="color:var(--text2)">No players yet</p>'; return; }
+
+  const medals = ['🥇','🥈','🥉'];
+  el.innerHTML = `
+    <table class="lb-table">
+      <thead><tr><th>#</th><th>Player</th><th>Points</th><th>W</th><th>L</th><th>D</th></tr></thead>
+      <tbody>${leaders.map(p => `
+        <tr onclick="loadPlayerStats('${p.userId}')">
+          <td>${medals[p.rank-1] || p.rank}</td>
+          <td>${esc(p.username)}</td>
+          <td><strong>${p.points}</strong></td>
+          <td>${p.wins}</td>
+          <td>${p.losses}</td>
+          <td>${p.draws}</td>
+        </tr>
+      `).join('')}</tbody>
+    </table>
+    <p style="margin-top:10px;font-size:.75rem;color:var(--text2)">Points: 3 per win, 1 per draw</p>
+  `;
+}
+
+async function searchPlayer() {
+  const q = document.getElementById('stats-search').value.trim();
+  if (!q) return showLeaderboard();
+  // Simple: try to load by userId directly (no search endpoint in Phase 1)
+  await loadPlayerStats(q);
+}
+
+async function loadPlayerStats(userId) {
+  showTab('stats');
+  const el = document.getElementById('stats-content');
+  el.innerHTML = '<p style="color:var(--text2)">Loading…</p>';
+  const r = await api('GET', `/api/ttt/stats/${encodeURIComponent(userId)}`);
+  if (!r.ok) { el.innerHTML = '<p style="color:var(--text2)">Player not found</p>'; return; }
+  const s = r.data;
+  const achMap = {
+    first_win: '🏆 First Win', hat_trick: '🔥 Hat Trick (3-streak)', decade: '⭐ 10 Wins',
+    centurion: '💯 100 Wins', ai_crusher: '🤖 AI Crusher (beat Hard)', blitz: '⚡ Blitz Win (≥20s left)',
+    social: '💬 Social (5 games with chat)', draw_specialist: '🤝 Draw Specialist (10 draws)',
+  };
+  el.innerHTML = `
+    <h2 style="margin-bottom:12px;">${esc(s.username)}</h2>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="val">${s.gamesPlayed}</div><div class="lbl">Games</div></div>
+      <div class="stat-card"><div class="val" style="color:var(--accent)">${s.wins}</div><div class="lbl">Wins</div></div>
+      <div class="stat-card"><div class="val" style="color:var(--danger)">${s.losses}</div><div class="lbl">Losses</div></div>
+      <div class="stat-card"><div class="val">${s.draws}</div><div class="lbl">Draws</div></div>
+      <div class="stat-card"><div class="val">${s.winRate}%</div><div class="lbl">Win rate</div></div>
+      <div class="stat-card"><div class="val">${s.currentStreak}</div><div class="lbl">Streak</div></div>
+    </div>
+    ${s.achievements.length ? `
+      <h3 style="margin-bottom:8px;font-size:.9rem;">Achievements</h3>
+      <div class="achievement-list">${s.achievements.map(a => `<span class="ach-badge">${achMap[a.id] || a.id}</span>`).join('')}</div>
+    ` : ''}
+    ${s.recentGames.length ? `
+      <h3 style="margin-bottom:8px;font-size:.9rem;">Recent Games</h3>
+      <table class="lb-table">
+        <thead><tr><th>Opponent</th><th>Result</th><th>Date</th></tr></thead>
+        <tbody>${s.recentGames.map(g => `
+          <tr onclick="viewGame('${g.gameId}')">
+            <td>${esc(g.opponent)}</td>
+            <td>${resultLabel(g.result)}</td>
+            <td style="color:var(--text2)">${new Date(g.endedAt).toLocaleDateString()}</td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    ` : ''}
+    <div style="margin-top:14px;display:flex;gap:8px;">
+      <button class="btn btn-outline btn-sm" onclick="showLeaderboard()">← Leaderboard</button>
+    </div>
+  `;
+}
+
+async function viewGame(gameId) {
+  const r = await api('GET', `/api/ttt/games/${gameId}`);
+  if (!r.ok) return toast('Game not found');
+  const g = r.data;
+  // Navigate to the room if we can find it, or show a simple replay modal
+  showTab('stats');
+  const el = document.getElementById('stats-content');
+  el.innerHTML = `
+    <h2 style="margin-bottom:12px;">Game Replay</h2>
+    <p style="color:var(--text2);margin-bottom:12px;">${esc(g.playerX.username)} (✕) vs ${esc(g.playerO.username)} (○) — ${resultLabel(g.result)}</p>
+    <div id="mini-replay-board" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;width:180px;margin-bottom:16px;"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+      <button class="btn btn-outline btn-sm" onclick="miniReplayStep(-1)">‹</button>
+      <span id="mini-replay-lbl" style="font-size:.85rem;color:var(--text2)"></span>
+      <button class="btn btn-outline btn-sm" onclick="miniReplayStep(1)">›</button>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="showLeaderboard()">← Back</button>
+  `;
+  replayMoves = g.moves || [];
+  replayStep_ = replayMoves.length;
+  renderMiniReplay(replayStep_, g.winLine);
+}
+
+function renderMiniReplay(step, winLine) {
+  const board = Array(9).fill(null);
+  for (let i = 0; i < step; i++) {
+    const m = replayMoves[i];
+    board[m.cell] = m.player;
+  }
+  const winSet = new Set(winLine || []);
+  const el = document.getElementById('mini-replay-board');
+  if (!el) return;
+  el.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const c = document.createElement('div');
+    c.style.cssText = 'aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;border:2px solid var(--border);border-radius:4px;background:' +
+      (winSet.has(i) ? 'var(--win-bg)' : 'var(--surface)');
+    c.textContent = board[i] === 'X' ? '✕' : board[i] === 'O' ? '○' : '';
+    c.style.color = board[i] === 'X' ? 'var(--x-color)' : board[i] === 'O' ? 'var(--o-color)' : '';
+    el.appendChild(c);
+  }
+  const lbl = document.getElementById('mini-replay-lbl');
+  if (lbl) lbl.textContent = `Move ${step} / ${replayMoves.length}`;
+}
+
+function miniReplayStep(delta) {
+  if (!replayMoves) return;
+  replayStep_ = Math.max(0, Math.min(replayMoves.length, replayStep_ + delta));
+  renderMiniReplay(replayStep_);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function copyRoomLink() {
+  if (!roomState) return;
+  const url = location.origin + location.pathname + '?room=' + roomState.roomId;
+  navigator.clipboard.writeText(url).then(() => toast('Link copied!')).catch(() => toast(url));
+}
+
+function resultLabel(result) {
+  return { x_wins: '✕ Won', o_wins: '○ Won', draw: 'Draw', x_forfeit: '✕ Forfeit', o_forfeit: '○ Forfeit' }[result] || result;
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toast(msg, dur) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.add('hidden'), dur || 3000);
+}
+
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+// Close modals on backdrop click
+document.querySelectorAll('.modal-back').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
+});
+</script>
+<script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+</body>
+</html>
