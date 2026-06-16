@@ -75,12 +75,56 @@ function checkTableAccess(rt, { wallet, password }) {
   return { code: 403, error: `This is a private table — ${how} required to join.` };
 }
 
+// ── Activity event logging ───────────────────────────────────────────────────
+async function insertActivityEvent(tableId, eventType, userId, seatNo, handId, metadata) {
+  if (!pool) return;
+  const id = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO activity_events (id, table_id, event_type, user_id, seat_no, hand_id, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [id, tableId, eventType, userId || null, seatNo != null ? seatNo : null, handId || null, metadata ? JSON.stringify(metadata) : null]
+  );
+  // Invalidate cache so the next broadcast re-queries.
+  activityCache.delete(tableId);
+}
+
+async function getRecentActivity(tableId) {
+  if (!pool) return { events: [], hasMore: false };
+  const now = Date.now();
+  const cached = activityCache.get(tableId);
+  if (cached && now - cached.ts < ACTIVITY_CACHE_STALE_MS) {
+    return cached.data;
+  }
+  const r = await pool.query(
+    `SELECT id, event_type, user_id, seat_no, metadata, created_at FROM activity_events
+     WHERE table_id=$1 ORDER BY created_at DESC LIMIT 26`,
+    [tableId]
+  );
+  const all = r.rows.map((row) => ({
+    id: row.id,
+    type: row.event_type,
+    user_id: row.user_id,
+    seat_no: row.seat_no,
+    metadata: row.metadata ? JSON.parse(row.metadata) : null,
+    created_at: row.created_at,
+  }));
+  const events = all.slice(0, 25);
+  const hasMore = all.length > 25;
+  const data = { events, hasMore };
+  activityCache.set(tableId, { ts: now, data });
+  return data;
+}
+
 // ── In-memory table runtimes + chain idempotency ─────────────────────────────
 const runtimes = new Map();           // tableId -> runtime
 const sseClients = new Map();         // tableId -> Set<{res, userId}>
 const consumedTxIds = new Set();      // buy-in tx already credited
 let chainId = null;
 const lastHeight = {};                // recipient -> from_height
+
+// Activity event caching (per table: timestamp + event list)
+const activityCache = new Map();      // tableId -> {ts, events}
+const ACTIVITY_CACHE_STALE_MS = 5000; // re-query after 5s
 
 // ── Boot: schema + seed ──────────────────────────────────────────────────────
 async function migrate() {
@@ -195,6 +239,20 @@ async function seedStaging() {
        VALUES ($1,0,'staging-demo-dave','Staging demo Dave','ut1stagingdemowalletdave',2500,'active', now())
        ON CONFLICT (table_id, seat_no) DO NOTHING`,
       [DEMO_PRIVATE_TABLE_ID]
+    );
+  }
+
+  // Seed activity feed events for the demo table so the feed isn't empty.
+  const demoEvents = [
+    ["staging-demo-alice-join", "join", "staging-demo-alice", 0, null, { amount: 4200 }],
+    ["staging-demo-bob-join", "join", "staging-demo-bob", 1, null, { amount: 6100 }],
+    ["staging-demo-carol-join", "join", "staging-demo-carol", 3, null, { amount: 1850 }],
+  ];
+  for (const [id, type, userId, seatNo, handId, metadata] of demoEvents) {
+    await pool.query(
+      `INSERT INTO activity_events (id, table_id, event_type, user_id, seat_no, hand_id, metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING`,
+      [id, DEMO_TABLE_ID, type, userId, seatNo, handId, JSON.stringify(metadata)]
     );
   }
 }
@@ -492,7 +550,7 @@ app.post("/api/tables/:id/action-pending", async (req, res) => {
     // Resume: give the player a fresh remainder so chain latency isn't punished.
     rt.hand.deadline = Date.now() + rt.table.action_timer_seconds * 1000;
   }
-  broadcast(rt);
+  await broadcast(rt);
   res.json({ ok: true, paused: pending });
 });
 
@@ -513,7 +571,7 @@ app.post("/api/tables/:id/sitin", async (req, res) => {
   s.status = "active"; s.sitOutCount = 0;
   await pool.query(`UPDATE seats SET status='active', sit_out_count=0 WHERE table_id=$1 AND seat_no=$2`, [rt.table.id, s.seat_no]);
   maybeStartHand(rt);
-  broadcast(rt);
+  await broadcast(rt);
   res.json({ ok: true });
 });
 
@@ -531,6 +589,12 @@ app.post("/api/tables/:id/cashout", async (req, res) => {
   const amount = s.stack;
   rt.seats.delete(s.seat_no);
   await pool.query(`UPDATE seats SET user_id=NULL, username=NULL, wallet=NULL, stack=0, status='empty' WHERE table_id=$1 AND seat_no=$2`, [rt.table.id, s.seat_no]);
+
+  // Log activity event
+  if (amount > 0) {
+    await insertActivityEvent(rt.table.id, "cashout", s.userId, s.seat_no, null, { amount, final_stack: amount });
+  }
+
   let payout = null;
   if (amount > 0 && s.wallet) {
     const id = crypto.randomUUID();
@@ -541,7 +605,7 @@ app.post("/api/tables/:id/cashout", async (req, res) => {
     payout = { id, amount, status: "pending" };
     settlePayoutsSoon();
   }
-  broadcast(rt);
+  await broadcast(rt);
   res.json({ ok: true, cashed_out: amount, payout });
 });
 
@@ -591,6 +655,9 @@ app.get("/api/tables/:id/stream", async (req, res) => {
   const rt = await loadRuntime(req.params.id);
   if (!rt) return res.status(404).json({ error: "table not found" });
 
+  // Load recent activity events.
+  rt.recentActivity = await getRecentActivity(rt.table.id);
+
   // Determine if this connection is from a spectator or a seated player.
   const isSeated = [...rt.seats.values()].some((s) => s.userId === req.user.id);
   const isSpectator = !isSeated;
@@ -623,9 +690,11 @@ app.get("/api/tables/:id/stream", async (req, res) => {
   });
 });
 
-function broadcast(rt) {
+async function broadcast(rt) {
   const set = sseClients.get(rt.table.id);
   if (!set) return;
+  // Reload activity cache if stale.
+  rt.recentActivity = await getRecentActivity(rt.table.id);
   // Broadcast to seated players first (they see the reveal), then spectators
   // (permanently redacted). Order matters at showdown so seated viewers get
   // hole cards in the same tick that the hand completes.
@@ -728,7 +797,7 @@ async function startHand(rt, players) {
   // see Considerations — the commitment is fixed before any card is revealed).
   anchorCommit(handId, commitment).catch(() => {});
 
-  broadcast(rt);
+  await broadcast(rt);
   if (engineState.complete) {
     finishHand(rt); // e.g. everyone all-in from blinds
   } else {
@@ -745,7 +814,7 @@ function advanceHand(rt, action) {
     finishHand(rt);
   } else {
     rt.hand.deadline = Date.now() + rt.table.action_timer_seconds * 1000;
-    broadcast(rt);
+    broadcast(rt).catch(() => {});
     scheduleBot(rt, advanceHand, scheduleBot);
   }
 }
@@ -764,6 +833,8 @@ async function finishHand(rt) {
       if (seat.stack === 0) {
         seat.status = "sitting_out";
         await pool.query(`UPDATE seats SET status='sitting_out' WHERE table_id=$1 AND seat_no=$2`, [rt.table.id, p.seat]);
+        // Log sit-out event
+        await insertActivityEvent(rt.table.id, "sitout", seat.userId, p.seat, null, { reason: "broke" });
       }
     }
   }
@@ -773,10 +844,24 @@ async function finishHand(rt) {
     [engine.board, await secretOf(hand.id), JSON.stringify(engine.result), hand.id]);
   await pool.query(`UPDATE hand_secrets SET revealed=true WHERE hand_id=$1`, [hand.id]);
 
+  // Log hand completion and winner events
+  if (engine.result && engine.result.winners) {
+    for (const winner of engine.result.winners) {
+      const seat = rt.seats.get(winner.seat);
+      await insertActivityEvent(rt.table.id, "win", seat ? seat.userId : null, winner.seat, hand.id,
+        { amount: winner.amount, hand_name: winner.name, board: engine.board, competing_count: engine.players.length });
+    }
+  }
+  const pot = engine.result && engine.result.pots
+    ? engine.result.pots.reduce((a, p) => a + p.amount, 0)
+    : engine.players.reduce((a, p) => a + p.committedTotal, 0);
+  await insertActivityEvent(rt.table.id, "hand_complete", null, null, hand.id,
+    { board: engine.board, pot, winner_count: (engine.result && engine.result.winners ? engine.result.winners.length : 0) });
+
   // Write the seed reveal on-chain (best-effort, retried by the poller).
   anchorReveal(hand.id).catch(() => {});
 
-  broadcast(rt);
+  await broadcast(rt);
 
   // Start the next hand shortly so showdown is visible.
   setTimeout(() => { maybeStartHand(rt); }, 4000);
@@ -914,18 +999,28 @@ async function creditBuyin(tx) {
   await pool.query(
     `UPDATE seat_sessions SET status='credited', payment_tx_hash=$1, paid_amount=$2 WHERE id=$3`,
     [id, amount, sess.id]);
+
+  const prevStack = await pool.query(
+    `SELECT stack FROM seats WHERE table_id=$1 AND seat_no=$2`, [sess.table_id, sess.seat_no]);
+  const oldStack = prevStack.rowCount ? Number(prevStack.rows[0].stack) : 0;
+
   await pool.query(
     `UPDATE seats SET stack = stack + $1, status='active' WHERE table_id=$2 AND seat_no=$3 AND user_id=$4`,
     [amount, sess.table_id, sess.seat_no, sess.user_id]);
   consumedTxIds.add(id);
   console.log(`[buyin] credited ${amount} to ${sess.user_id} seat ${sess.seat_no} (${sess.table_id})`);
 
+  // Log activity event (join if first buy-in, buyin if adding to existing).
+  const eventType = oldStack === 0 ? "join" : "buyin";
+  await insertActivityEvent(sess.table_id, eventType, sess.user_id, sess.seat_no, null,
+    { amount, old_stack: oldStack, new_stack: oldStack + amount });
+
   const rt = await loadRuntime(sess.table_id);
   if (rt) {
     const seat = rt.seats.get(sess.seat_no);
     if (seat) { seat.stack += amount; seat.status = "active"; }
     maybeStartHand(rt);
-    broadcast(rt);
+    await broadcast(rt);
   }
 }
 
@@ -959,7 +1054,7 @@ async function expireStaleSessions() {
     await pool.query(`UPDATE seats SET user_id=NULL, username=NULL, wallet=NULL, status='empty' WHERE table_id=$1 AND seat_no=$2`,
       [row.table_id, row.seat_no]);
     const rt = runtimes.get(row.table_id);
-    if (rt) { rt.seats.delete(row.seat_no); broadcast(rt); }
+    if (rt) { rt.seats.delete(row.seat_no); await broadcast(rt); }
   }
 }
 

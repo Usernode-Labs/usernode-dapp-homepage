@@ -19,6 +19,7 @@ function buildTableView(runtime, viewerUserId, isSpectator = false) {
 
   const actorSeat = engine && !engine.complete ? seatOfActor(engine) : null;
 
+  const seatsMap = runtime.seats;
   const seats = [];
   for (let n = 0; n < t.max_seats; n++) {
     const s = runtime.seats.get(n) || null;
@@ -73,6 +74,25 @@ function buildTableView(runtime, viewerUserId, isSpectator = false) {
     isSpectator,
     you: { seat: youSeat(runtime, viewerUserId) },
   };
+
+  // Include activity feed.
+  if (runtime.recentActivity) {
+    view.activity = {
+      events: runtime.recentActivity.events.map((e) => {
+        const seat = seatsMap.get(e.seat_no);
+        return {
+          id: e.id,
+          type: e.type,
+          user_id: e.user_id,
+          username: seat ? seat.username : null,
+          seat_no: e.seat_no,
+          metadata: e.metadata,
+          created_at: e.created_at,
+        };
+      }),
+      hasMore: runtime.recentActivity.hasMore,
+    };
+  }
 
   if (engine) {
     view.hand = {
@@ -141,4 +161,25 @@ function derivePots(engine) {
   return total > 0 ? [{ amount: total, eligible: [] }] : [];
 }
 
-module.exports = { buildTableView };
+// Inject activity feed data (if available via rt.recentActivity).
+async function enrichActivityData(events, seats) {
+  // Resolve user_id to username where available.
+  const seatsByUserId = new Map();
+  for (const [seatNo, s] of seats) {
+    if (s && s.userId) seatsByUserId.set(s.userId, s);
+  }
+  return events.map((e) => {
+    const seat = seats.get(e.seat_no);
+    return {
+      id: e.id,
+      type: e.type,
+      user_id: e.user_id,
+      username: seat ? seat.username : null,
+      seat_no: e.seat_no,
+      metadata: e.metadata,
+      created_at: e.created_at,
+    };
+  });
+}
+
+module.exports = { buildTableView, enrichActivityData };

@@ -139,3 +139,17 @@ CREATE TABLE IF NOT EXISTS treasury_ledger (
   sent_at         TIMESTAMPTZ
 );
 COMMENT ON TABLE treasury_ledger IS 'staging:private';
+
+-- Player activity feed: joins, buy-ins, wins, cash-outs, sit-outs. Public.
+-- Mirrors the in-app table state (chip counts, names, hand results) so is
+-- safe for public consumption. No private info (wallets, deposits, etc.).
+CREATE TABLE IF NOT EXISTS activity_events (
+  id           TEXT PRIMARY KEY,
+  table_id     TEXT NOT NULL REFERENCES tables(id),
+  event_type   TEXT NOT NULL,  -- 'join', 'buyin', 'win', 'cashout', 'sitout', 'hand_complete'
+  user_id      TEXT,           -- player who triggered event (nullable for table-wide events)
+  seat_no      INT,            -- seat number (nullable for non-seat events)
+  hand_id      TEXT REFERENCES hands(id),
+  metadata     JSONB,          -- {amount, old_stack, new_stack, hand_name, winners_count, pot, ...}
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
