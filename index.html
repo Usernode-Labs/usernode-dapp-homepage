@@ -251,6 +251,53 @@
           display: none;
         }
       }
+      /* Search bar: persistent input sitting above the DAPPS title row, inside
+         the sticky header so it stays visible while the list scrolls. */
+      .searchRow {
+        position: relative;
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .searchInput {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 9px 36px 9px 11px;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .searchInput:focus {
+        outline: 2px solid var(--accent);
+        border-color: transparent;
+      }
+      /* Hide the native search clear affordance; we render our own ✕. */
+      .searchInput::-webkit-search-cancel-button { -webkit-appearance: none; }
+      .searchClear {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        line-height: 1;
+      }
+      .searchClear:hover { color: var(--fg); background: var(--border); }
+      .searchClear[hidden] { display: none; }
       h1 {
         margin: 0;
         font-size: 18px;
@@ -1421,6 +1468,246 @@
       .statusExpired .dot { background: var(--muted); }
       @keyframes spin { to { transform: rotate(360deg); } }
 
+      /* The .card rule sets display:flex, which beats the default [hidden]
+         UA rule — force hidden cards (the inactive route) to actually hide. */
+      .card[hidden] { display: none; }
+
+      /* ── Header nav button (Explorer / Dapps) ─────────────────────────────── */
+      .navBtn {
+        appearance: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        font-family: inherit;
+        padding: 6px 10px;
+        height: 34px;
+        box-sizing: border-box;
+        cursor: pointer;
+        text-decoration: none;
+        white-space: nowrap;
+        flex: 0 0 auto;
+      }
+      .navBtn:hover { color: var(--fg); border-color: var(--accent); }
+      .navBtn svg { width: 15px; height: 15px; flex-shrink: 0; }
+      @media (max-width: 520px) {
+        .navBtnLabel { display: none; }
+        .navBtn { padding: 6px 9px; }
+      }
+
+      /* ── Explorer search row ──────────────────────────────────────────────── */
+      .exSearchRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 0 10px;
+      }
+      .exSearchRow:focus-within { border-color: var(--accent); }
+      .exSearchIcon { width: 16px; height: 16px; color: var(--muted); flex: 0 0 auto; }
+      .exSearchInput {
+        flex: 1 1 auto;
+        min-width: 0;
+        appearance: none;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 10px 0;
+      }
+      .exSearchInput::placeholder { color: var(--muted); opacity: 0.8; }
+      .exSearchClear {
+        appearance: none;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 2px 6px;
+        flex: 0 0 auto;
+      }
+      .exSearchClear:hover { color: var(--fg); }
+
+      .exLive {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+        flex: 0 0 auto;
+      }
+      .exLive .liveDot { margin-right: 0; }
+      @media (max-width: 520px) { .exLiveLabel { display: none; } }
+
+      /* ── Explorer body + lists ────────────────────────────────────────────── */
+      .exBody {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 14px;
+        display: grid;
+        gap: 18px;
+        align-content: start;
+      }
+      #exLive { display: grid; gap: 18px; }
+      .exSection { display: grid; gap: 8px; }
+      .exSectionHead {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--muted);
+        padding: 0 2px;
+      }
+      .exList { display: grid; gap: 8px; }
+      .exRow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid var(--card-item-border);
+        box-shadow: var(--card-item-shadow);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: var(--card);
+        cursor: pointer;
+        transition: border-color 120ms ease, transform 120ms ease;
+        text-align: left;
+        width: 100%;
+        box-sizing: border-box;
+        font-family: inherit;
+        color: inherit;
+        appearance: none;
+      }
+      .exRow:hover { border-color: var(--card-hover-border); transform: translateY(-1px); }
+      .exRowMain { display: grid; gap: 3px; min-width: 0; flex: 1 1 auto; }
+      .exRowTop { display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .exRowTitle {
+        font-weight: 600;
+        font-size: 14px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .exRowSub {
+        font-size: 12.5px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .exMono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .exRowMeta {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 3px;
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .exAmount { color: var(--fg); font-weight: 600; }
+      .exPill {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: var(--border);
+        color: var(--muted);
+      }
+      .exPill.tx { background: rgba(99,102,241,0.16); color: var(--accent); }
+
+      /* ── Search result / detail panel ─────────────────────────────────────── */
+      .exDetail { display: grid; gap: 14px; }
+      .exDetailHead { display: flex; align-items: center; gap: 10px; }
+      .exDetailTitle { font-size: 16px; font-weight: 700; }
+      .exDetailNote { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+      .exBackBtn {
+        appearance: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 5px 10px;
+        cursor: pointer;
+      }
+      .exBackBtn:hover { color: var(--fg); border-color: var(--accent); }
+      .exKv {
+        display: grid;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--card);
+        padding: 12px 14px;
+      }
+      .exKvRow { display: flex; gap: 10px; align-items: baseline; }
+      .exKvKey {
+        flex: 0 0 auto;
+        min-width: 108px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--muted);
+      }
+      .exKvVal {
+        min-width: 0;
+        font-size: 13px;
+        color: var(--fg);
+        word-break: break-all;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .exKvVal.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .exLinkVal {
+        appearance: none;
+        background: transparent;
+        border: none;
+        padding: 0;
+        margin: 0;
+        color: var(--accent);
+        font: inherit;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        cursor: pointer;
+        word-break: break-all;
+        text-align: left;
+      }
+      .exLinkVal:hover { text-decoration: underline; }
+      .exCopyBtn {
+        appearance: none;
+        font-size: 11px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--accent);
+        border-radius: 6px;
+        padding: 1px 7px;
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .exCopyBtn:hover { border-color: var(--accent); }
+      .exMsg { font-size: 13.5px; color: var(--muted); padding: 18px 4px; text-align: center; line-height: 1.5; }
+      .exMsg.error { color: #ef4444; }
+
       /* ── Micro-blog: view tabs + staging badge ─────────────────────── */
       .viewTabs {
         display: flex;
@@ -1642,7 +1929,7 @@
   </head>
   <body>
     <main>
-      <div class="card">
+      <div class="card" id="dappCard">
         <nav class="categoryBar" id="categoryBar" aria-label="Filter dapps by category">
           <button class="categoryTab active" type="button" data-category="All" aria-pressed="true">All</button>
           <button class="categoryTab" type="button" data-category="Game" aria-pressed="false">Game</button>
@@ -1650,6 +1937,20 @@
           <button class="categoryTab" type="button" data-category="Market" aria-pressed="false">Market</button>
         </nav>
         <div class="header">
+          <div class="searchRow">
+            <input
+              class="searchInput"
+              id="dappSearch"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Search dApps…"
+              aria-label="Search dApps"
+            />
+            <button class="searchClear" id="dappSearchClear" type="button" aria-label="Clear search" title="Clear search" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
           <div class="headerRow">
             <div class="brand">
               <a class="brandLink" href="https://usernode.evanshapiro.dev" target="_blank" rel="noopener" aria-label="Usernode home">
@@ -1661,6 +1962,10 @@
               </a>
             </div>
             <div class="headerButtonRow">
+              <a class="navBtn" id="goExplorerBtn" href="#/explorer" title="Open the block explorer">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                <span class="navBtnLabel">Explorer</span>
+              </a>
               <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span class="submitBtnLabel">Submit</span>
@@ -1757,6 +2062,58 @@
           </div>
         </div>
       </div>
+
+      <!-- ── Block Explorer view ───────────────────────────────────────────── -->
+      <div class="card" id="explorerCard" hidden>
+        <div class="header">
+          <div class="headerRow">
+            <div class="brand">
+              <a class="brandLink" href="#/" aria-label="Back to dapps" id="goDappsBtn">
+                <svg class="brandMark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <rect x="2" y="2" width="20" height="20" rx="6" fill="currentColor" />
+                  <path d="M14 8l-4 4 4 4" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span class="brandName">EXPLORER</span>
+              </a>
+            </div>
+            <div class="headerActions">
+              <span class="exLive" id="exLiveDot" title="Auto-refreshing"><span class="liveDot"></span><span class="exLiveLabel">Live</span></span>
+              <button class="navBtn" id="exRefreshBtn" type="button" title="Refresh now">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                <span class="navBtnLabel">Refresh</span>
+              </button>
+              <a class="navBtn" id="backToDappsBtn" href="#/" title="Back to dapps">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                <span class="navBtnLabel">Dapps</span>
+              </a>
+            </div>
+          </div>
+          <div class="exSearchRow">
+            <svg class="exSearchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input class="exSearchInput" id="exSearchInput" type="text" autocomplete="off" spellcheck="false"
+              placeholder="Search block #, tx hash (utx1…), or address (ut1…)" aria-label="Search the block explorer" />
+            <button class="exSearchClear" id="exSearchClear" type="button" aria-label="Clear search" hidden>&times;</button>
+          </div>
+        </div>
+
+        <div class="exBody" id="exBody">
+          <!-- Search result panel (shown when a search is active) -->
+          <div id="exSearchResult" hidden></div>
+
+          <!-- Live lists (recent blocks + recent transactions) -->
+          <div id="exLive">
+            <div class="exSection">
+              <div class="exSectionHead">Recent blocks</div>
+              <div class="exList" id="exBlocks"></div>
+            </div>
+            <div class="exSection">
+              <div class="exSectionHead">Recent transactions</div>
+              <div class="exList" id="exTxs"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div id="launchOverlay" role="status" aria-live="polite" aria-label="Launching dapp" hidden>
         <div class="launchCard">
           <div class="launchSpinner"></div>
@@ -1972,7 +2329,9 @@
 
       let allApps = [];
       let statsMap = {};
-      let currentSort = localStorage.getItem(SORT_KEY) || "popular";
+      let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
+      // Live search query (client-side only, not persisted across reloads).
+      let searchQuery = "";
       let currentView = VIEW_MODES.includes(localStorage.getItem(VIEW_KEY))
         ? localStorage.getItem(VIEW_KEY)
         : "detailed";
@@ -2097,6 +2456,20 @@
         if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
         if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
         return String(n);
+      }
+
+      // Case-insensitive substring match across the visible/searchable text of
+      // each dapp. Returns the list unchanged when there's no active query.
+      function filterApps(apps) {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return apps;
+        return apps.filter((d) => {
+          const hay = [d.name, d.description, d.author, d.category]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(q);
+        });
       }
 
       function sortApps(apps) {
@@ -2434,7 +2807,13 @@
           return;
         }
 
-        const sorted = sortApps(categorized);
+        const filtered = filterApps(categorized);
+        if (filtered.length === 0) {
+          addRow(`No dApps match "${searchQuery.trim()}"`);
+          return;
+        }
+
+        const sorted = sortApps(filtered);
 
         function buildLi(dapp) {
           if (currentView === "grid") return buildGridCard(dapp);
@@ -2547,6 +2926,37 @@
       });
 
       updateSortUI();
+
+      // ── Search ──────────────────────────────────────────────────────────────
+      const searchInput = document.getElementById("dappSearch");
+      const searchClear = document.getElementById("dappSearchClear");
+
+      function applySearchQuery(value) {
+        searchQuery = value || "";
+        if (searchClear) searchClear.hidden = searchQuery.length === 0;
+        renderDapps(allApps);
+      }
+
+      function clearSearch() {
+        if (searchInput) searchInput.value = "";
+        applySearchQuery("");
+        if (searchInput) searchInput.focus();
+      }
+
+      if (searchInput) {
+        searchInput.addEventListener("input", (e) => {
+          applySearchQuery(e.target.value);
+        });
+        searchInput.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            clearSearch();
+          }
+        });
+      }
+      if (searchClear) {
+        searchClear.addEventListener("click", clearSearch);
+      }
 
       // --- Category filter tabs ---
       const categoryBar = document.getElementById("categoryBar");
@@ -3858,6 +4268,399 @@
         document.addEventListener("keydown", (e) => {
           if (e.key === "Escape" && !convertModal.hidden) closeConvert();
         });
+      })();
+
+      // A second SPA page (hash route #/explorer) showing recent blocks and
+      // recent transactions, plus a search box that resolves a block height, a
+      // tx hash (utx1…), or an address (ut1…). All data flows through the
+      // same-origin /explorer-api/* proxy. The proxy drops query strings but
+      // forwards POST bodies, so blocks use GET-no-query (default 100) and
+      // transactions use POST bodies for filters. All chain-derived strings are
+      // rendered with textContent (never innerHTML).
+      (function explorerView() {
+        const dappCard = document.getElementById("dappCard");
+        const explorerCard = document.getElementById("explorerCard");
+        if (!dappCard || !explorerCard) return;
+
+        const goExplorerBtn = document.getElementById("goExplorerBtn");
+        const input = document.getElementById("exSearchInput");
+        const clearBtn = document.getElementById("exSearchClear");
+        const refreshBtn = document.getElementById("exRefreshBtn");
+        const exLive = document.getElementById("exLive");
+        const exResult = document.getElementById("exSearchResult");
+        const exBlocks = document.getElementById("exBlocks");
+        const exTxs = document.getElementById("exTxs");
+
+        const PREFIX = "/explorer-api/";
+        const SHOW_LIMIT = 25;
+
+        let chainId = null;
+        let recentBlocks = [];
+        let recentTxs = [];
+        let started = false;
+        let pollTimer = null;
+        let debTimer = null;
+        let searchSeq = 0;
+
+        // ── small DOM + format helpers ──────────────────────────────────────
+        function el(tag, cls, text) {
+          const n = document.createElement(tag);
+          if (cls) n.className = cls;
+          if (text != null) n.textContent = text;
+          return n;
+        }
+        function shorten(s, head, tail) {
+          head = head || 10; tail = tail || 6;
+          if (!s) return "";
+          s = String(s);
+          if (s.length <= head + tail + 1) return s;
+          return s.slice(0, head) + "…" + s.slice(-tail);
+        }
+        function relTime(ms) {
+          if (!ms) return "";
+          let s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+          if (s < 60) return s + "s ago";
+          const m = Math.floor(s / 60);
+          if (m < 60) return m + "m ago";
+          const h = Math.floor(m / 60);
+          if (h < 24) return h + "h ago";
+          const d = Math.floor(h / 24);
+          return d + "d ago";
+        }
+        function isoOf(ms) {
+          try { return new Date(ms).toISOString(); } catch (_) { return ""; }
+        }
+        function copyText(text, btn) {
+          if (!navigator.clipboard) return;
+          navigator.clipboard.writeText(text).then(() => {
+            const old = btn.textContent;
+            btn.textContent = "Copied";
+            setTimeout(() => (btn.textContent = old), 1200);
+          }).catch(() => {});
+        }
+
+        // ── explorer-api fetchers (chain-id cached; refresh on 404) ──────────
+        async function getChainId(force) {
+          if (chainId && !force) return chainId;
+          const r = await fetch(PREFIX + "active_chain", { cache: "no-store" });
+          if (!r.ok) throw new Error("active_chain " + r.status);
+          const d = await r.json();
+          if (!d || !d.chain_id) throw new Error("no chain_id");
+          chainId = d.chain_id;
+          return chainId;
+        }
+        async function fetchBlocks() {
+          const c = await getChainId();
+          const r = await fetch(PREFIX + c + "/blocks", { cache: "no-store" });
+          if (r.status === 404) { await getChainId(true); throw new Error("blocks 404"); }
+          if (!r.ok) throw new Error("blocks " + r.status);
+          const d = await r.json();
+          return Array.isArray(d.items) ? d.items : [];
+        }
+        async function fetchTxs(body) {
+          const c = await getChainId();
+          const r = await fetch(PREFIX + c + "/transactions", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body || {}),
+          });
+          if (r.status === 404) { await getChainId(true); throw new Error("tx 404"); }
+          if (!r.ok) throw new Error("tx " + r.status);
+          const d = await r.json();
+          return Array.isArray(d.items) ? d.items : [];
+        }
+
+        // ── live list rows ──────────────────────────────────────────────────
+        function blockRow(b) {
+          const row = el("button", "exRow"); row.type = "button";
+          const main = el("div", "exRowMain");
+          const top = el("div", "exRowTop");
+          top.appendChild(el("span", "exRowTitle", "#" + b.height));
+          const cnt = (b.tx_counts && b.tx_counts.total) || 0;
+          top.appendChild(el("span", "exPill", cnt + (cnt === 1 ? " tx" : " txns")));
+          main.appendChild(top);
+          const prod = b.producer || b.producer_address || "";
+          main.appendChild(el("div", "exRowSub",
+            "block " + shorten(b.hash) + (prod ? " · by " + shorten(prod, 8, 6) : "")));
+          row.appendChild(main);
+          const meta = el("div", "exRowMeta");
+          const t = el("div", null, relTime(b.timestamp_ms));
+          if (b.timestamp_iso) t.title = b.timestamp_iso;
+          meta.appendChild(t);
+          row.appendChild(meta);
+          row.addEventListener("click", () => searchFor(String(b.height)));
+          return row;
+        }
+        function txRow(t) {
+          const id = t.tx_id || t.hash || "";
+          const row = el("button", "exRow"); row.type = "button";
+          const main = el("div", "exRowMain");
+          const top = el("div", "exRowTop");
+          top.appendChild(el("span", "exRowTitle", shorten(id)));
+          if (t.tx_type) top.appendChild(el("span", "exPill tx", t.tx_type));
+          main.appendChild(top);
+          main.appendChild(el("div", "exRowSub",
+            shorten(t.source, 8, 6) + " → " + shorten(t.destination, 8, 6)));
+          row.appendChild(main);
+          const meta = el("div", "exRowMeta");
+          meta.appendChild(el("div", "exAmount", formatNum(Number(t.amount) || 0)));
+          const sub = el("div", null,
+            (t.block_height != null ? "#" + t.block_height + " · " : "") + relTime(t.timestamp_ms));
+          if (t.timestamp_ms) sub.title = isoOf(t.timestamp_ms);
+          meta.appendChild(sub);
+          row.appendChild(meta);
+          row.addEventListener("click", () => searchFor(id));
+          return row;
+        }
+
+        function renderBlocks() {
+          exBlocks.textContent = "";
+          if (!recentBlocks.length) {
+            exBlocks.appendChild(el("div", "exMsg", "No recent blocks."));
+            return;
+          }
+          recentBlocks.slice(0, SHOW_LIMIT).forEach((b) => exBlocks.appendChild(blockRow(b)));
+        }
+        function renderTxs() {
+          exTxs.textContent = "";
+          if (!recentTxs.length) {
+            exTxs.appendChild(el("div", "exMsg", "No recent transactions."));
+            return;
+          }
+          recentTxs.slice(0, SHOW_LIMIT).forEach((t) => exTxs.appendChild(txRow(t)));
+        }
+
+        async function loadLive(silent) {
+          if (!silent && !recentBlocks.length) {
+            exBlocks.textContent = ""; exBlocks.appendChild(el("div", "exMsg", "Loading…"));
+            exTxs.textContent = ""; exTxs.appendChild(el("div", "exMsg", "Loading…"));
+          }
+          try {
+            await getChainId();
+            const [blocks, txs] = await Promise.all([fetchBlocks(), fetchTxs({})]);
+            recentBlocks = blocks;
+            recentTxs = txs;
+            renderBlocks();
+            renderTxs();
+          } catch (e) {
+            if (!silent) {
+              exBlocks.textContent = "";
+              exBlocks.appendChild(el("div", "exMsg error", "Couldn't load recent blocks."));
+              exTxs.textContent = "";
+              exTxs.appendChild(el("div", "exMsg error", "Couldn't load recent transactions."));
+            }
+          }
+        }
+        async function ensureBlocks() {
+          if (!recentBlocks.length) recentBlocks = await fetchBlocks();
+        }
+
+        // ── result / detail panel ───────────────────────────────────────────
+        function detailHead(title) {
+          const head = el("div", "exDetailHead");
+          const back = el("button", "exBackBtn", "← Back"); back.type = "button";
+          back.addEventListener("click", clearSearch);
+          head.appendChild(back);
+          head.appendChild(el("div", "exDetailTitle", title));
+          return head;
+        }
+        function kvRow(key, opts) {
+          opts = opts || {};
+          const row = el("div", "exKvRow");
+          row.appendChild(el("div", "exKvKey", key));
+          const val = el("div", "exKvVal" + (opts.mono ? " mono" : ""));
+          if (opts.onClick) {
+            const b = el("button", "exLinkVal", opts.text == null ? "" : String(opts.text));
+            b.type = "button";
+            b.addEventListener("click", opts.onClick);
+            val.appendChild(b);
+          } else {
+            val.appendChild(document.createTextNode(opts.text == null ? "" : String(opts.text)));
+          }
+          if (opts.copy && opts.copyText) {
+            const cb = el("button", "exCopyBtn", "Copy"); cb.type = "button";
+            cb.addEventListener("click", () => copyText(opts.copyText, cb));
+            val.appendChild(cb);
+          }
+          row.appendChild(val);
+          return row;
+        }
+
+        function blockDetail(b) {
+          const wrap = el("div", "exDetail");
+          wrap.appendChild(detailHead("Block #" + b.height));
+          const kv = el("div", "exKv");
+          kv.appendChild(kvRow("Height", { text: String(b.height) }));
+          kv.appendChild(kvRow("Hash", { text: b.hash, mono: true, copy: true, copyText: b.hash }));
+          if (b.parent_hash) kv.appendChild(kvRow("Parent", { text: b.parent_hash, mono: true, copy: true, copyText: b.parent_hash }));
+          const prod = b.producer || b.producer_address;
+          if (prod) kv.appendChild(kvRow("Producer", { text: prod, mono: true, onClick: () => searchFor(prod), copy: true, copyText: prod }));
+          const c = b.tx_counts || {};
+          kv.appendChild(kvRow("Transactions", { text: (c.total != null ? c.total : 0) + " (" + (c.transfer || 0) + " transfer, " + (c.reward || 0) + " reward)" }));
+          if (b.epoch != null || b.slot != null) kv.appendChild(kvRow("Epoch / slot", { text: "epoch " + (b.epoch != null ? b.epoch : "?") + " · slot " + (b.slot != null ? b.slot : "?") }));
+          const st = (b.status || "") + (b.canonical ? " · canonical" : "");
+          if (st.trim()) kv.appendChild(kvRow("Status", { text: st }));
+          if (b.timestamp_ms || b.timestamp_iso) kv.appendChild(kvRow("Timestamp", { text: (b.timestamp_iso || isoOf(b.timestamp_ms)) + " (" + relTime(b.timestamp_ms) + ")" }));
+          wrap.appendChild(kv);
+          wrap.appendChild(el("div", "exDetailNote", "The explorer API doesn't enumerate a block's individual transactions, so this shows the block header and its transaction counts."));
+          return wrap;
+        }
+        function txDetail(t) {
+          const id = t.tx_id || t.hash || "";
+          const wrap = el("div", "exDetail");
+          wrap.appendChild(detailHead("Transaction"));
+          const kv = el("div", "exKv");
+          kv.appendChild(kvRow("Hash", { text: id, mono: true, copy: true, copyText: id }));
+          if (t.status) kv.appendChild(kvRow("Status", { text: t.status }));
+          if (t.tx_type) kv.appendChild(kvRow("Type", { text: t.tx_type }));
+          if (t.source) kv.appendChild(kvRow("From", { text: t.source, mono: true, onClick: () => searchFor(t.source), copy: true, copyText: t.source }));
+          if (t.destination) kv.appendChild(kvRow("To", { text: t.destination, mono: true, onClick: () => searchFor(t.destination), copy: true, copyText: t.destination }));
+          kv.appendChild(kvRow("Amount", { text: t.amount != null ? String(t.amount) : "" }));
+          if (t.fee != null) kv.appendChild(kvRow("Fee", { text: String(t.fee) }));
+          if (t.memo) kv.appendChild(kvRow("Memo", { text: String(t.memo) }));
+          if (t.block_height != null) kv.appendChild(kvRow("Block", { text: "#" + t.block_height, onClick: () => searchFor(String(t.block_height)) }));
+          if (t.block_hash) kv.appendChild(kvRow("Block hash", { text: t.block_hash, mono: true, copy: true, copyText: t.block_hash }));
+          if (t.timestamp_ms) kv.appendChild(kvRow("Timestamp", { text: isoOf(t.timestamp_ms) + " (" + relTime(t.timestamp_ms) + ")" }));
+          wrap.appendChild(kv);
+          return wrap;
+        }
+        function addressDetail(addr, items) {
+          const wrap = el("div", "exDetail");
+          wrap.appendChild(detailHead("Address"));
+          const kv = el("div", "exKv");
+          kv.appendChild(kvRow("Address", { text: addr, mono: true, copy: true, copyText: addr }));
+          wrap.appendChild(kv);
+          wrap.appendChild(el("div", "exDetailNote", "Showing transactions received by this address (newest first). The explorer can filter by recipient only, so transactions sent from this address aren't listed."));
+          if (!items.length) {
+            wrap.appendChild(el("div", "exMsg", "No received transactions found for this address."));
+            return wrap;
+          }
+          const list = el("div", "exList");
+          items.slice(0, 50).forEach((t) => list.appendChild(txRow(t)));
+          wrap.appendChild(list);
+          return wrap;
+        }
+
+        // ── result-area visibility ──────────────────────────────────────────
+        function showResultArea() { exLive.style.display = "none"; exResult.hidden = false; }
+        function showLive() { exResult.hidden = true; exResult.textContent = ""; exLive.style.display = ""; }
+        function setResult(node) {
+          exResult.textContent = "";
+          exResult.appendChild(node);
+          showResultArea();
+        }
+        function showMessage(text, isError) {
+          const wrap = el("div", "exDetail");
+          wrap.appendChild(detailHead("Search"));
+          wrap.appendChild(el("div", "exMsg" + (isError ? " error" : ""), text));
+          setResult(wrap);
+        }
+        function clearSearch() {
+          input.value = "";
+          clearBtn.hidden = true;
+          searchSeq++; // cancel any in-flight search
+          showLive();
+        }
+
+        // ── search ──────────────────────────────────────────────────────────
+        async function doSearch() {
+          const q = (input.value || "").trim();
+          clearBtn.hidden = !q;
+          if (!q) { showLive(); return; }
+          const seq = ++searchSeq;
+          showResultArea();
+          showMessage("Searching…");
+          const ok = () => seq === searchSeq && !explorerCard.hidden;
+          try {
+            if (/^\d+$/.test(q)) {
+              await ensureBlocks();
+              if (!ok()) return;
+              const h = Number(q);
+              const b = recentBlocks.find((x) => Number(x.height) === h);
+              if (b) { setResult(blockDetail(b)); }
+              else {
+                const tip = recentBlocks.length ? recentBlocks[0].height : null;
+                showMessage(tip != null
+                  ? "Block #" + h + " isn't in the recent range. This explorer looks up recent blocks only (current tip #" + tip + ")."
+                  : "Couldn't load recent blocks to look up #" + h + ".");
+              }
+            } else if (q.indexOf("utx1") === 0) {
+              const items = await fetchTxs({ tx_id: q });
+              if (!ok()) return;
+              if (items.length) setResult(txDetail(items[0]));
+              else showMessage("No transaction found with that hash.");
+            } else if (q.indexOf("ut1") === 0) {
+              const items = await fetchTxs({ recipient: q, limit: 50 });
+              if (!ok()) return;
+              setResult(addressDetail(q, items));
+            } else {
+              showMessage("That doesn't look like a block number, transaction hash (utx1…), or address (ut1…).");
+            }
+          } catch (e) {
+            if (!ok()) return;
+            showMessage("Couldn't reach the explorer. Please try again.", true);
+          }
+        }
+        function searchFor(q) {
+          input.value = q;
+          clearBtn.hidden = !q;
+          if (debTimer) clearTimeout(debTimer);
+          // Scroll the search panel into view so the result is visible.
+          try { document.getElementById("exBody").scrollTop = 0; } catch (_) {}
+          doSearch();
+        }
+
+        // ── auto-refresh polling (only while visible + on the live lists) ────
+        function onExplorer() { return !explorerCard.hidden; }
+        function startPoll() {
+          stopPoll();
+          pollTimer = setInterval(() => {
+            if (!onExplorer()) return;
+            if (document.visibilityState !== "visible") return;
+            if (!exResult.hidden) return; // a search result is showing
+            loadLive(true);
+          }, 12000);
+        }
+        function stopPoll() {
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        }
+
+        // ── enter / leave + router ──────────────────────────────────────────
+        function enter() {
+          loadLive(started);
+          started = true;
+          startPoll();
+        }
+        function leave() { stopPoll(); }
+
+        function route() {
+          const onEx = /^#\/?explorer$/.test(location.hash || "");
+          dappCard.hidden = onEx;
+          explorerCard.hidden = !onEx;
+          if (goExplorerBtn) goExplorerBtn.classList.toggle("active", onEx);
+          if (onEx) enter(); else leave();
+        }
+
+        // ── wiring ──────────────────────────────────────────────────────────
+        input.addEventListener("input", () => {
+          clearBtn.hidden = !input.value.trim();
+          if (debTimer) clearTimeout(debTimer);
+          debTimer = setTimeout(doSearch, 350);
+        });
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { if (debTimer) clearTimeout(debTimer); doSearch(); }
+        });
+        clearBtn.addEventListener("click", () => { clearSearch(); input.focus(); });
+        refreshBtn.addEventListener("click", () => {
+          if (input.value.trim()) doSearch(); else loadLive(false);
+        });
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible" && onExplorer() && exResult.hidden) {
+            loadLive(true);
+          }
+        });
+        window.addEventListener("hashchange", route);
+        route(); // initial
       })();
 
     </script>
