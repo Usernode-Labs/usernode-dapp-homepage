@@ -1,29 +1,127 @@
 {
-  "name": "Usernode Dapps",
+  "name": "Usernode DApps Hub",
   "secrets": [
     {
-      "key": "COMMUNITY_FUND_RESERVE_ADDRESS",
-      "description": "Usernode address (ut1…) that submission fees are paid to — the Community Fund Reserve (may be a burn address). When unset, the submit-a-dapp flow is disabled. Public on-chain address.",
+      "key": "TREASURY_ADDRESS",
+      "description": "Public Usernode address (ut1…) of the custodial table treasury / pooled bank. Buy-ins are paid here and payouts + on-chain commit/reveal audit writes are signed from it. When unset, buy-ins are disabled.",
       "required": false,
       "private": false,
       "default": "",
       "staging_default": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az"
     },
     {
-      "key": "SUBMISSION_FEE",
-      "description": "One-time fee in tokens required to submit a dapp. A confirmed transfer must carry amount >= this value.",
+      "key": "TREASURY_SIGNING_KEY",
+      "description": "Secret signing key for the table treasury wallet. Signs payouts and audit-anchor transactions. Never logged or returned by any API. Wallet key that holds real funds — encrypted at rest, isolated from staging.",
       "required": false,
-      "private": false,
-      "default": "1000",
-      "staging_default": "1000"
+      "private": true,
+      "staging_default": "staging-dummy-signing-key-no-funds"
     },
     {
-      "key": "SUBMISSION_TTL_HOURS",
-      "description": "Hours an unpaid submission stays in 'awaiting_payment' before being swept to 'expired'. A genuine late payment is still credited.",
+      "key": "SMALL_BLIND",
+      "description": "Small blind in chips (= token base units).",
       "required": false,
       "private": false,
       "default": "24",
       "staging_default": "24"
+    },
+    {
+      "key": "BIG_BLIND",
+      "description": "Big blind in chips (= token base units).",
+      "required": false,
+      "private": false,
+      "default": "50"
+    },
+    {
+      "key": "MIN_BUYIN",
+      "description": "Minimum buy-in in chips.",
+      "required": false,
+      "private": false,
+      "default": "1000"
+    },
+    {
+      "key": "MAX_BUYIN",
+      "description": "Maximum buy-in in chips.",
+      "required": false,
+      "private": false,
+      "default": "10000"
+    },
+    {
+      "key": "ACTION_TIMER_SECONDS",
+      "description": "Shot-clock per action in seconds. The timer pauses while a player's action transaction is pending/confirming on-chain.",
+      "required": false,
+      "private": false,
+      "default": "30"
+    },
+    {
+      "key": "NODE_RPC_URL",
+      "description": "Usernode node RPC base URL used by the treasury to submit signed transactions. Platform-managed in-network; this default is only a standalone fallback.",
+      "required": false,
+      "private": false,
+      "default": "http://usernode-node:3001"
+    },
+    {
+      "key": "POINTS_PER_POST",
+      "description": "Micro-blog feed: points awarded to the author for each post. Public tuning value.",
+      "required": false,
+      "private": false,
+      "default": "5",
+      "staging_default": "5"
+    },
+    {
+      "key": "POINTS_PER_LIKE",
+      "description": "Micro-blog feed: points awarded to a post's author for each like it receives from another user (self-likes award none). Public tuning value.",
+      "required": false,
+      "private": false,
+      "default": "1",
+      "staging_default": "1"
+    },
+    {
+      "key": "POINTS_PER_TOKEN",
+      "description": "Micro-blog feed: points required to mint 1 simulated in-app token when converting. Public tuning value.",
+      "required": false,
+      "private": false,
+      "default": "10",
+      "staging_default": "10"
+    },
+    {
+      "key": "MICROBLOG_MAX_POST_LEN",
+      "description": "Micro-blog feed: maximum characters allowed per post. Public tuning value.",
+      "required": false,
+      "private": false,
+      "default": "280",
+      "staging_default": "280"
+    },
+    {
+      "key": "QUIZ_PRIZE_POOL_ADDRESS",
+      "description": "Usernode address (ut1…) shown on the Trivia Quiz page as the source of future reward payouts. Display-only this phase (no on-chain payout yet). Public on-chain address.",
+      "required": false,
+      "private": false,
+      "default": "",
+      "staging_default": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az"
+    },
+    {
+      "key": "QUIZ_QUESTIONS_PER_SESSION",
+      "description": "How many questions each Trivia Quiz session contains (capped to the question bank size).",
+      "required": false,
+      "private": false,
+      "default": "10",
+      "staging_default": "10"
+    },
+    {
+      "key": "QUIZ_TIME_LIMIT_SECONDS",
+      "description": "Per-session countdown for the Trivia Quiz, in seconds. When it hits zero the quiz auto-submits.",
+      "required": false,
+      "private": false,
+      "default": "120",
+      "staging_default": "120"
+    },
+    {
+      "key": "QUIZ_ELIGIBILITY_MIN_CORRECT",
+      "description": "Minimum correct answers required (together with a valid ut1 wallet) for a result to be flagged reward-eligible.",
+      "required": false,
+      "private": false,
+      "default": "8",
+      "staging_default": "8"
     }
   ]
 }

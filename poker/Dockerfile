@@ -1,0 +1,19 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install --omit=dev
+
+COPY server.js ./
+COPY db ./db
+COPY engine ./engine
+COPY chain ./chain
+COPY view.js ./
+COPY public ./public
+
+ENV NODE_ENV=production
+ENV PORT=3000
+EXPOSE 3000
+
+CMD ["node", "server.js"]
