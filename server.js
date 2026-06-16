@@ -147,7 +147,10 @@ function proxyExplorer(req, res, subPath) {
       }
     );
     upReq.on("error", (err) => {
-      send(res, 502, { "content-type": "text/plain" }, `Explorer proxy error: ${err.message}`);
+      // Log the technical detail server-side; return a generic body so the
+      // upstream error text never leaks to the client.
+      console.warn(`[explorer-proxy] upstream error: ${err.message}`);
+      send(res, 502, { "content-type": "text/plain" }, "Upstream explorer unavailable");
     });
     if (bodyBuf) upReq.write(bodyBuf);
     upReq.end();
@@ -1194,7 +1197,11 @@ const server = http.createServer((req, res) => {
       return sendJson(res, 503, { error: "Submissions are not currently open (no Reserve address configured)." });
     }
     return readJsonBody(req, 64 * 1024, (err, body) => {
-      if (err) return sendJson(res, 400, { error: err.message });
+      if (err) {
+        // Log the parse detail server-side; return a fixed, generic message.
+        console.warn(`[submit] invalid request body: ${err.message}`);
+        return sendJson(res, 400, { error: "Invalid request body." });
+      }
       const v = validateSubmissionInput(body);
       if (!v.ok) return sendJson(res, 400, { error: v.error });
 

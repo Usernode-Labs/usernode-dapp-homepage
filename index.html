@@ -630,6 +630,177 @@
         }
       }
 
+      /* Name block (live dot + name), grouped so the row's space-between
+         only separates it from the stats/launch block. */
+      .nameGroup {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      /* ── View-mode toggle (compact / detailed / grid) ───────────────
+         A small segmented control sitting beside the theme + sort
+         controls. Styled from the shared theme variables to match. */
+      .viewWrap {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex: 0 0 auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 2px;
+      }
+      .viewBtn {
+        appearance: none;
+        background: transparent;
+        border: none;
+        border-radius: 6px;
+        color: var(--muted);
+        padding: 5px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .viewBtn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+      .viewBtn:hover {
+        color: var(--fg);
+      }
+      .viewBtn.active {
+        color: var(--accent);
+        background: var(--border);
+      }
+      .viewBtn:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--accent);
+      }
+      @media (max-width: 420px) {
+        .viewBtn {
+          padding: 4px;
+        }
+        .viewBtn svg {
+          width: 15px;
+          height: 15px;
+        }
+      }
+
+      /* ── Crossfade between modes ─────────────────────────────────────
+         The list fades out, re-renders under the new mode while hidden,
+         then fades back in. Disabled under reduced-motion. */
+      #dappList {
+        transition: opacity 130ms ease;
+      }
+      #dappList.view-switching {
+        opacity: 0;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #dappList {
+          transition: none;
+        }
+      }
+
+      /* Status / empty-state rows always span the full width, even when the
+         list is a multi-column grid. */
+      #dappList.view-grid > li.statusRow {
+        grid-column: 1 / -1;
+      }
+
+      /* ── Compact mode: dense single-column rows ─────────────────────── */
+      #dappList.view-compact {
+        gap: 6px;
+      }
+      .view-compact .dappLink {
+        align-items: center;
+        gap: 10px;
+        padding: 7px 10px;
+      }
+      .view-compact .dappLogo,
+      .view-compact .dappLogoFallback {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+      }
+      .view-compact .dappLogoFallback {
+        font-size: 14px;
+      }
+      .view-compact .nameRow {
+        gap: 10px;
+      }
+      .view-compact .launchBtn {
+        padding: 3px 9px;
+      }
+
+      /* ── Grid mode: responsive image cards ──────────────────────────── */
+      #dappList.view-grid {
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 14px;
+      }
+      .dappCard {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        padding: 0;
+        height: 100%;
+      }
+      .dappBanner {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: var(--bg);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .dappBanner img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .dappBanner.isPlaceholder .dappBannerMark {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        border: none;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      }
+      .bannerLive {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        margin: 0;
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+      }
+      .cardBody {
+        padding: 10px 12px 12px;
+        gap: 6px;
+        height: 100%;
+      }
+      .cardName {
+        font-size: 15px;
+      }
+      .cardFooter {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: auto;
+        padding-top: 4px;
+      }
+      /* Phones: two cards across, smaller min track. */
+      @media (max-width: 560px) {
+        #dappList.view-grid {
+          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          gap: 10px;
+        }
+      }
+
       /* ── Preview modal ──────────────────────────────────────────────
          A single reusable overlay populated on open. Uses the shared
          theme variables so it recolors in light/dark for free. */
@@ -1207,6 +1378,17 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span class="submitBtnLabel">Submit</span>
               </button>
+              <div class="viewWrap" id="viewWrap" role="group" aria-label="Display mode">
+                <button class="viewBtn" type="button" data-view="compact" aria-pressed="false" aria-label="Compact view" title="Compact view">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                </button>
+                <button class="viewBtn" type="button" data-view="detailed" aria-pressed="false" aria-label="Detailed view" title="Detailed view">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>
+                </button>
+                <button class="viewBtn" type="button" data-view="grid" aria-pressed="false" aria-label="Grid view" title="Grid view">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                </button>
+              </div>
               <div class="hamMenuWrap">
                 <button class="hamBtn" id="hamBtn" type="button" aria-label="Menu" title="Menu">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -1368,7 +1550,9 @@
     <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
     <script>
       const SORT_KEY = "dapphome:sort";
+      const VIEW_KEY = "dapphome:view";
       const THEME_KEY = "dapphome:theme";
+      const VIEW_MODES = ["compact", "detailed", "grid"];
       const PERSON_WEIGHT = 20;
       const CATEGORY_COLORS = {
         Game:    '#10b981',
@@ -1433,13 +1617,14 @@
 
       let allApps = [];
       let statsMap = {};
-      let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
+      let currentSort = localStorage.getItem(SORT_KEY) || "popular";
+      let currentView = VIEW_MODES.includes(localStorage.getItem(VIEW_KEY))
+        ? localStorage.getItem(VIEW_KEY)
+        : "detailed";
+
+      const viewWrap = document.getElementById("viewWrap");
 
       // --- Pins / auth ---
-      // The platform shell injects the session JWT as ?token=… on iframe load.
-      // We forward it via the x-usernode-token header on /api/pins calls. With
-      // no token (page viewed outside the shell) we stay in signed-out mode and
-      // never render star controls.
       const USERNODE_TOKEN = (() => {
         try { return new URLSearchParams(location.search).get("token") || ""; }
         catch (_) { return ""; }
@@ -1469,6 +1654,7 @@
       function addRow(text) {
         if (!list) return;
         const li = document.createElement("li");
+        li.className = "statusRow";
         li.style.padding = "12px 12px";
         li.style.color = "var(--muted)";
         li.textContent = text;
@@ -1593,9 +1779,8 @@
         return svg;
       }
 
-      function buildDappLi(dapp) {
-        const li = document.createElement("li");
-
+      // ── Shared row/card building blocks ───────────────────────────
+      function makeDappLink(dapp) {
         const link = document.createElement("a");
         link.className = "dappLink";
         link.href = dapp.url;
@@ -1605,20 +1790,15 @@
         link.addEventListener("keydown", (e) => {
           if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
             e.preventDefault();
-            openPreview(dapp, li);
+            openPreview(dapp, link.closest("li"));
           }
         });
+        return link;
+      }
 
-        const logo = makeLogo(dapp);
-
-        const body = document.createElement("div");
-        body.className = "dappBody";
-
-        const nameRow = document.createElement("div");
-        nameRow.className = "nameRow";
-
+      function makeNameGroup(dapp) {
         const nameGroup = document.createElement("div");
-        nameGroup.style.cssText = "display:flex;align-items:center;min-width:0;flex:1 1 auto";
+        nameGroup.className = "nameGroup";
 
         const liveDot = document.createElement("span");
         liveDot.className = "liveDot";
@@ -1628,67 +1808,58 @@
         name.className = "name";
         name.textContent = dapp.name || "(unnamed)";
         nameGroup.appendChild(name);
+        return nameGroup;
+      }
 
-        nameRow.appendChild(nameGroup);
+      function makeStats(dapp) {
+        if (!dapp.pubkey) return null;
+        const s = statsMap[dapp.pubkey];
+        const statsEl = document.createElement("div");
+        statsEl.className = "stats";
 
-        if (dapp.pubkey) {
-          const s = statsMap[dapp.pubkey];
-          const statsEl = document.createElement("div");
-          statsEl.className = "stats";
+        if (s) {
+          const userStat = document.createElement("span");
+          userStat.className = "stat";
+          userStat.appendChild(personIcon());
+          userStat.appendChild(document.createTextNode(formatNum(s.users)));
 
-          if (s) {
-            const userStat = document.createElement("span");
-            userStat.className = "stat";
-            userStat.appendChild(personIcon());
-            userStat.appendChild(document.createTextNode(formatNum(s.users)));
+          const txStat = document.createElement("span");
+          txStat.className = "stat";
+          txStat.appendChild(txIcon());
+          txStat.appendChild(document.createTextNode(formatNum(s.txns)));
 
-            const txStat = document.createElement("span");
-            txStat.className = "stat";
-            txStat.appendChild(txIcon());
-            txStat.appendChild(document.createTextNode(formatNum(s.txns)));
-
-            statsEl.appendChild(userStat);
-            statsEl.appendChild(txStat);
-          } else {
-            const loading = document.createElement("span");
-            loading.className = "statsLoading";
-            loading.textContent = "loading...";
-            statsEl.appendChild(loading);
-          }
-
-          nameRow.appendChild(statsEl);
+          statsEl.appendChild(userStat);
+          statsEl.appendChild(txStat);
+        } else {
+          const loading = document.createElement("span");
+          loading.className = "statsLoading";
+          loading.textContent = "loading...";
+          statsEl.appendChild(loading);
         }
+        return statsEl;
+      }
 
-        const author = document.createElement("div");
-        author.className = "author";
-        author.textContent = `by ${dapp.author || "unknown"}`;
-
-        let tagRow = null;
-        if (dapp.category) {
-          tagRow = document.createElement("div");
-          tagRow.className = "tagRow";
-          const tag = document.createElement("span");
-          tag.className = "categoryTag";
-          tag.textContent = dapp.category;
-          const color = CATEGORY_COLORS[dapp.category];
-          if (color) {
-            tag.style.color = color;
-            tag.style.background = color + "33";
-            tag.style.border = "1px solid " + color + "66";
-          } else {
-            tag.style.color = "var(--muted)";
-            tag.style.border = "1px solid var(--border)";
-          }
-          tagRow.appendChild(tag);
+      function makeTagRow(dapp) {
+        if (!dapp.category) return null;
+        const tagRow = document.createElement("div");
+        tagRow.className = "tagRow";
+        const tag = document.createElement("span");
+        tag.className = "categoryTag";
+        tag.textContent = dapp.category;
+        const color = CATEGORY_COLORS[dapp.category];
+        if (color) {
+          tag.style.color = color;
+          tag.style.background = color + "33";
+          tag.style.border = "1px solid " + color + "66";
+        } else {
+          tag.style.color = "var(--muted)";
+          tag.style.border = "1px solid var(--border)";
         }
+        tagRow.appendChild(tag);
+        return tagRow;
+      }
 
-        const descRow = document.createElement("div");
-        descRow.className = "descRow";
-
-        const desc = document.createElement("span");
-        desc.className = "desc";
-        desc.textContent = dapp.description || "";
-
+      function makeLaunchBtn(dapp) {
         const launchBtn = document.createElement("span");
         launchBtn.className = "launchBtn";
         launchBtn.textContent = "Launch";
@@ -1702,37 +1873,168 @@
             launchDapp(dapp);
           }
         });
+        return launchBtn;
+      }
 
+      function bannerSrc(dapp) {
+        const b = typeof dapp.banner === "string" ? dapp.banner.trim() : "";
+        if (b) return b;
+        if (Array.isArray(dapp.screenshots) && dapp.screenshots.length) {
+          const s =
+            typeof dapp.screenshots[0] === "string"
+              ? dapp.screenshots[0].trim()
+              : "";
+          if (s) return s;
+        }
+        return "";
+      }
+
+      function fillBannerPlaceholder(wrap, dapp) {
+        wrap.textContent = "";
+        wrap.classList.add("isPlaceholder");
+        const name = (dapp.name || "").trim() || "?";
+        const c1 = fallbackColor(name);
+        const c2 = fallbackColor(name + "•");
+        wrap.style.background = `linear-gradient(135deg, ${c1}, ${c2})`;
+        const mark = makeLogo(dapp);
+        mark.classList.add("dappBannerMark");
+        wrap.appendChild(mark);
+      }
+
+      function makeBanner(dapp) {
+        const wrap = document.createElement("div");
+        wrap.className = "dappBanner";
+        const src = bannerSrc(dapp);
+        if (src) {
+          const img = document.createElement("img");
+          img.src = src;
+          img.alt = "";
+          img.loading = "lazy";
+          img.addEventListener("error", () => fillBannerPlaceholder(wrap, dapp));
+          wrap.appendChild(img);
+        } else {
+          fillBannerPlaceholder(wrap, dapp);
+        }
+        return wrap;
+      }
+
+      function addStarBtn(li, dapp) {
+        if (!signedIn || !dapp.pubkey) return;
+        const pinned = pinnedSet.has(dapp.pubkey);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "starBtn" + (pinned ? " pinned" : "");
+        btn.dataset.pubkey = dapp.pubkey;
+        const label = pinned ? "Unpin from top" : "Pin to top";
+        btn.setAttribute("aria-label", label);
+        btn.setAttribute("title", label);
+        btn.appendChild(starIcon(pinned));
+        li.appendChild(btn);
+        li.classList.add("withStar");
+      }
+
+      function buildDetailedRow(dapp) {
+        const li = document.createElement("li");
+        const link = makeDappLink(dapp);
+
+        const body = document.createElement("div");
+        body.className = "dappBody";
+
+        const nameRow = document.createElement("div");
+        nameRow.className = "nameRow";
+        nameRow.appendChild(makeNameGroup(dapp));
+        const stats = makeStats(dapp);
+        if (stats) nameRow.appendChild(stats);
+
+        const author = document.createElement("div");
+        author.className = "author";
+        author.textContent = `by ${dapp.author || "unknown"}`;
+
+        const tagRow = makeTagRow(dapp);
+
+        const descRow = document.createElement("div");
+        descRow.className = "descRow";
+        const desc = document.createElement("span");
+        desc.className = "desc";
+        desc.textContent = dapp.description || "";
         descRow.appendChild(desc);
-        descRow.appendChild(launchBtn);
+        descRow.appendChild(makeLaunchBtn(dapp));
 
         body.appendChild(nameRow);
         body.appendChild(author);
         if (tagRow) body.appendChild(tagRow);
         body.appendChild(descRow);
 
-        link.appendChild(logo);
+        link.appendChild(makeLogo(dapp));
         link.appendChild(body);
         li.appendChild(link);
         li.__dapp = dapp;
+        addStarBtn(li, dapp);
+        return li;
+      }
 
-        // Star/pin control — only when signed in. Rendered as a SIBLING of the
-        // anchor (not inside it) and tagged so the list's pointer handler
-        // toggles the pin instead of opening the dapp. See attachRubberBand().
-        if (signedIn && dapp.pubkey) {
-          const pinned = pinnedSet.has(dapp.pubkey);
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "starBtn" + (pinned ? " pinned" : "");
-          btn.dataset.pubkey = dapp.pubkey;
-          const label = pinned ? "Unpin from top" : "Pin to top";
-          btn.setAttribute("aria-label", label);
-          btn.setAttribute("title", label);
-          btn.appendChild(starIcon(pinned));
-          li.appendChild(btn);
-          li.classList.add("withStar");
-        }
+      function buildCompactRow(dapp) {
+        const li = document.createElement("li");
+        const link = makeDappLink(dapp);
 
+        const body = document.createElement("div");
+        body.className = "dappBody";
+
+        const nameRow = document.createElement("div");
+        nameRow.className = "nameRow";
+        nameRow.appendChild(makeNameGroup(dapp));
+        const stats = makeStats(dapp);
+        if (stats) nameRow.appendChild(stats);
+        nameRow.appendChild(makeLaunchBtn(dapp));
+
+        body.appendChild(nameRow);
+
+        link.appendChild(makeLogo(dapp));
+        link.appendChild(body);
+        li.appendChild(link);
+        li.__dapp = dapp;
+        addStarBtn(li, dapp);
+        return li;
+      }
+
+      function buildGridCard(dapp) {
+        const li = document.createElement("li");
+        const link = makeDappLink(dapp);
+        link.classList.add("dappCard");
+
+        const banner = makeBanner(dapp);
+        const liveDot = document.createElement("span");
+        liveDot.className = "liveDot bannerLive";
+        banner.appendChild(liveDot);
+
+        const body = document.createElement("div");
+        body.className = "dappBody cardBody";
+
+        const name = document.createElement("div");
+        name.className = "name cardName";
+        name.textContent = dapp.name || "(unnamed)";
+        body.appendChild(name);
+
+        const tagRow = makeTagRow(dapp);
+        if (tagRow) body.appendChild(tagRow);
+
+        const desc = document.createElement("span");
+        desc.className = "desc";
+        desc.textContent = dapp.description || "";
+        body.appendChild(desc);
+
+        const footer = document.createElement("div");
+        footer.className = "cardFooter";
+        const stats = makeStats(dapp);
+        footer.appendChild(stats || document.createElement("span"));
+        footer.appendChild(makeLaunchBtn(dapp));
+        body.appendChild(footer);
+
+        link.appendChild(banner);
+        link.appendChild(body);
+        li.appendChild(link);
+        li.__dapp = dapp;
+        addStarBtn(li, dapp);
         return li;
       }
 
@@ -1754,7 +2056,12 @@
 
         const sorted = sortApps(dapps);
 
-        // Signed-out (or no pins yet): flat list, identical to the original UI.
+        function buildLi(dapp) {
+          if (currentView === "grid") return buildGridCard(dapp);
+          if (currentView === "compact") return buildCompactRow(dapp);
+          return buildDetailedRow(dapp);
+        }
+
         const pinned = signedIn
           ? sorted.filter((d) => d.pubkey && pinnedSet.has(d.pubkey))
           : [];
@@ -1762,18 +2069,17 @@
         if (pinned.length > 0) {
           const rest = sorted.filter((d) => !(d.pubkey && pinnedSet.has(d.pubkey)));
           list.appendChild(sectionHeaderLi("Pinned"));
-          for (const dapp of pinned) list.appendChild(buildDappLi(dapp));
+          for (const dapp of pinned) list.appendChild(buildLi(dapp));
           list.appendChild(sectionHeaderLi("All dapps"));
-          for (const dapp of rest) list.appendChild(buildDappLi(dapp));
+          for (const dapp of rest) list.appendChild(buildLi(dapp));
         } else {
-          for (const dapp of sorted) list.appendChild(buildDappLi(dapp));
+          for (const dapp of sorted) list.appendChild(buildLi(dapp));
         }
       }
 
       async function togglePin(pubkey) {
         if (!signedIn || !pubkey) return;
         const willPin = !pinnedSet.has(pubkey);
-        // Optimistic update.
         if (willPin) pinnedSet.add(pubkey);
         else pinnedSet.delete(pubkey);
         renderDapps(allApps);
@@ -1795,7 +2101,6 @@
           if (!resp.ok) throw new Error("pin API " + resp.status);
         } catch (e) {
           console.warn("Could not save pin:", e);
-          // Revert on failure.
           if (willPin) pinnedSet.delete(pubkey);
           else pinnedSet.add(pubkey);
           renderDapps(allApps);
@@ -1803,13 +2108,13 @@
       }
 
       async function loadPins() {
-        if (!USERNODE_TOKEN) return; // signed out — keep star controls hidden
+        if (!USERNODE_TOKEN) return;
         try {
           const resp = await fetch("/api/pins", {
             headers: pinHeaders(false),
             cache: "no-store",
           });
-          if (!resp.ok) return; // 401/503 → stay signed-out, list still renders
+          if (!resp.ok) return;
           const data = await resp.json();
           pinnedSet = new Set(Array.isArray(data.pins) ? data.pins : []);
           signedIn = true;
@@ -1862,6 +2167,72 @@
       });
 
       updateSortUI();
+
+      // --- View-mode toggle (compact / detailed / grid) ---
+      // Mirrors the sort control: persists to localStorage and re-renders
+      // instantly with no reload. The container class drives the per-mode
+      // CSS; renderDapps() reads currentView to build the right markup.
+      function applyViewClass() {
+        if (!list) return;
+        list.classList.remove("view-compact", "view-detailed", "view-grid");
+        list.classList.add("view-" + currentView);
+      }
+
+      function updateViewUI() {
+        if (!viewWrap) return;
+        viewWrap.querySelectorAll(".viewBtn").forEach((btn) => {
+          const active = btn.dataset.view === currentView;
+          btn.classList.toggle("active", active);
+          btn.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+      }
+
+      function reducedMotion() {
+        return !!(
+          window.matchMedia &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        );
+      }
+
+      function setView(next) {
+        if (!VIEW_MODES.includes(next) || next === currentView) return;
+        currentView = next;
+        localStorage.setItem(VIEW_KEY, currentView);
+        updateViewUI();
+
+        // Reduced-motion (or no list): swap instantly.
+        if (reducedMotion() || !list) {
+          applyViewClass();
+          renderDapps(allApps);
+          return;
+        }
+
+        // Crossfade: fade the list out, swap mode + re-render while hidden,
+        // then fade back in on the next frame.
+        list.classList.add("view-switching");
+        window.setTimeout(() => {
+          applyViewClass();
+          renderDapps(allApps);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (list) list.classList.remove("view-switching");
+            });
+          });
+        }, 130);
+      }
+
+      if (viewWrap) {
+        viewWrap.addEventListener("click", (e) => {
+          const btn = e.target.closest(".viewBtn");
+          if (!btn) return;
+          setView(btn.dataset.view);
+        });
+      }
+
+      // Apply the persisted mode before the first render so the initial
+      // paint already uses the correct layout.
+      applyViewClass();
+      updateViewUI();
 
       // ── Launch overlay ──────────────────────────────────────────────────────
       const _launchOverlay = document.getElementById("launchOverlay");
@@ -1922,10 +2293,12 @@
           loadAllStats(allApps);
           loadPins();
         } catch (e) {
+          // Log the technical detail for developers (the usernode-dev-console
+          // forwarder relays this to the platform dev console); show the user a
+          // clean, generic message instead of the raw error text.
+          console.error("Failed to load dapps.json:", e);
           clearList();
-          addRow(
-            `(error loading dapps.json: ${e && e.message ? e.message : String(e)})`
-          );
+          addRow("(Couldn't load the dapp list. Please refresh and try again.)");
         }
       })();
 
@@ -2687,7 +3060,8 @@
               headers: { "content-type": "application/json" },
               body: JSON.stringify(body),
             });
-            const data = await resp.json();
+            let data = null;
+            try { data = await resp.json(); } catch (_) { data = null; }
 
             // Optimistic-concurrency conflict — the list changed underneath us.
             // Caught before any fee is charged, so this never costs tokens.
@@ -2708,7 +3082,19 @@
               return;
             }
 
-            if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+            if (!resp.ok) {
+              // The server returns curated, user-friendly messages for client
+              // errors (validation, duplicates, submissions closed). Show those
+              // verbatim — they are intentional UX, not technical leaks.
+              if (resp.status >= 400 && resp.status < 500 && data && data.error) {
+                showError(errForm, data.error);
+                return;
+              }
+              // Anything else (5xx, missing message) is technical — fall through
+              // to the catch so the detail is logged and the user sees a generic
+              // message instead of a raw HTTP status.
+              throw new Error(`submission failed: HTTP ${resp.status}`);
+            }
             current = data;
             if (typeof data.dapps_version === "number") seenDappsVersion = data.dapps_version;
             F("payAmount").textContent = `${data.amount} tokens`;
@@ -2719,7 +3105,9 @@
             renderStatus("awaiting_payment");
             startPolling(data.id);
           } catch (e) {
-            showError(errForm, e.message || String(e));
+            // Log technical detail for developers; show a clean generic message.
+            console.error("Submission failed:", e);
+            showError(errForm, "Something went wrong submitting your dapp. Please try again.");
           } finally {
             continueBtn.disabled = false;
             continueBtn.textContent = "Continue to payment";
@@ -2731,7 +3119,13 @@
         async function requestPaymentViaBridge(to, amount, memo) {
           const candidates = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge];
           const b = candidates.find((x) => x && typeof x.sendTransaction === "function");
-          if (!b) throw new Error("Wallet bridge unavailable — pay manually using the details above.");
+          if (!b) {
+            // Tagged so the click handler can show this deliberate, friendly
+            // hint verbatim while still suppressing other (technical) errors.
+            const unavailable = new Error("Wallet bridge unavailable — pay manually using the details above.");
+            unavailable.bridgeUnavailable = true;
+            throw unavailable;
+          }
           // Bridge signature varies; pass a superset of common field names.
           return b.sendTransaction({
             to, recipient: to, destination: to,
@@ -2749,7 +3143,15 @@
             await requestPaymentViaBridge(current.pay_to, current.amount, current.memo);
             payWalletBtn.textContent = "Payment requested — waiting…";
           } catch (e) {
-            showError(errPay, e.message || String(e));
+            // The "bridge unavailable" case is a deliberate, user-friendly hint —
+            // show it verbatim. Any other failure is technical: log it for
+            // developers and show a clean generic message.
+            if (e && e.bridgeUnavailable) {
+              showError(errPay, e.message);
+            } else {
+              console.error("Payment request failed:", e);
+              showError(errPay, "Couldn't request the payment. Please pay manually using the details above.");
+            }
             payWalletBtn.disabled = false;
             payWalletBtn.textContent = "Pay with wallet";
           }
