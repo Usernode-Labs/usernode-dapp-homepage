@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// staging rebuild trigger #2
+// staging rebuild trigger #3
 'use strict';
 
 const http = require('http');
