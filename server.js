@@ -39,6 +39,9 @@ try {
 })();
 
 const LOCAL_DEV = process.argv.includes("--local-dev");
+// Platform staging flag — gates the obviously-fake seed fixtures below. A strict
+// no-op in production (USERNODE_ENV=production) and in local/standalone runs.
+const IS_STAGING = process.env.USERNODE_ENV === "staging";
 const PORT = Number(process.env.PORT) || 8000;
 const INDEX_PATH = path.join(__dirname, "index.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -197,6 +200,7 @@ const USERNAMES_PUBKEY =
 // flushed atomically (temp file + rename) on every mutation.
 
 let submissions = [];                 // array of submission records
+let submissionsVersion = 0;           // document-level version of submissions.json
 const consumedTxIds = new Set();      // tx_id -> already credited to a submission
 
 const SUBMIT_MEMO_APP = "dapp-homepage";
@@ -209,18 +213,56 @@ function atomicWriteJson(targetPath, value) {
   fs.renameSync(tmp, targetPath);
 }
 
+// ── Optimistic concurrency control (compare-and-swap on file documents) ────────
+// Re-reads `targetPath`, compares its document `version` to `expectedVersion`.
+//   • match    → runs mutate(doc) (edits doc in place), bumps `version`, stamps
+//                `updated_at`, atomic-writes, returns { ok:true, version }.
+//   • mismatch → does NOT write; returns { ok:false, conflict:true, current, version }.
+// A missing/legacy `version` is treated as 0 so legacy files normalize cleanly.
+function casWriteJson(targetPath, expectedVersion, mutate) {
+  const raw = fs.readFileSync(targetPath, "utf8");
+  const doc = JSON.parse(raw);
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    throw new Error(`${path.basename(targetPath)} is not a JSON object document`);
+  }
+  const currentVersion = typeof doc.version === "number" ? doc.version : 0;
+  if (currentVersion !== expectedVersion) {
+    return { ok: false, conflict: true, current: doc, version: currentVersion };
+  }
+  mutate(doc);
+  doc.version = currentVersion + 1;
+  doc.updated_at = Date.now();
+  atomicWriteJson(targetPath, doc);
+  return { ok: true, version: doc.version };
+}
+
+// Parse submissions.json supporting BOTH the legacy bare-array form and the
+// wrapped { version, updated_at, submissions:[] } form. Returns normalized
+// { submissions, version }.
+function parseSubmissionsDoc(data) {
+  if (Array.isArray(data)) return { submissions: data, version: 0 };
+  if (data && Array.isArray(data.submissions)) {
+    return { submissions: data.submissions, version: typeof data.version === "number" ? data.version : 0 };
+  }
+  return { submissions: [], version: 0 };
+}
+
 function loadSubmissions() {
   try {
     if (!fs.existsSync(SUBMISSIONS_PATH)) {
       submissions = [];
+      submissionsVersion = 0;
+      consumedTxIds.clear();
       return;
     }
     const raw = fs.readFileSync(SUBMISSIONS_PATH, "utf8");
-    const data = JSON.parse(raw);
-    submissions = Array.isArray(data) ? data : (Array.isArray(data.submissions) ? data.submissions : []);
+    const parsed = parseSubmissionsDoc(JSON.parse(raw));
+    submissions = parsed.submissions;
+    submissionsVersion = parsed.version;
   } catch (e) {
     console.warn(`[submit] could not read submissions.json: ${e.message}`);
     submissions = [];
+    submissionsVersion = 0;
   }
   // Re-seed the consumed-tx set so a restart can't double-credit a payment.
   consumedTxIds.clear();
@@ -229,9 +271,47 @@ function loadSubmissions() {
   }
 }
 
+// Bump a record's revision + timestamp on every server-side mutation.
+function touchSubmission(s) {
+  if (!s) return s;
+  s.rev = (typeof s.rev === "number" ? s.rev : 0) + 1;
+  s.updated_at = Date.now();
+  return s;
+}
+
+// Persist the in-memory submissions. Re-reads the on-disk document first and
+// merges by `id` (higher `rev` wins; in-memory wins ties) so a co-resident
+// writer's records are preserved rather than clobbered, then bumps the document
+// version. Single-process behavior is unchanged (nothing else writes the file).
+// Always writes the wrapped { version, updated_at, submissions } form, which
+// also migrates a legacy bare-array file on its first mutation.
 function saveSubmissions() {
   try {
-    atomicWriteJson(SUBMISSIONS_PATH, submissions);
+    let onDisk = [];
+    let onDiskVersion = submissionsVersion;
+    try {
+      if (fs.existsSync(SUBMISSIONS_PATH)) {
+        const parsed = parseSubmissionsDoc(JSON.parse(fs.readFileSync(SUBMISSIONS_PATH, "utf8")));
+        onDisk = parsed.submissions;
+        onDiskVersion = parsed.version;
+      }
+    } catch (_) { /* unreadable/corrupt on disk — fall back to in-memory only */ }
+
+    const byId = new Map();
+    for (const s of onDisk) if (s && s.id) byId.set(s.id, s);
+    for (const s of submissions) {
+      if (!s || !s.id) continue;
+      const existing = byId.get(s.id);
+      if (!existing || (s.rev || 0) >= (existing.rev || 0)) byId.set(s.id, s);
+    }
+    const merged = Array.from(byId.values());
+    submissions = merged;
+    submissionsVersion = Math.max(submissionsVersion, onDiskVersion) + 1;
+    atomicWriteJson(SUBMISSIONS_PATH, {
+      version: submissionsVersion,
+      updated_at: Date.now(),
+      submissions: merged,
+    });
   } catch (e) {
     console.warn(`[submit] could not write submissions.json: ${e.message}`);
   }
@@ -555,6 +635,7 @@ function reconcileSubmissionPayments() {
     sub.paid_amount = amount;
     sub.published_at = Date.now();
     sub.status = "published";
+    touchSubmission(sub);
     consumedTxIds.add(txId);
     dirty = true;
     console.log(`[submit] payment confirmed for ${sub.id} (${amount} tokens from ${sub.payer}) — published "${sub.dapp.name}"`);
@@ -571,42 +652,189 @@ function expireStaleSubmissions() {
   for (const s of submissions) {
     if (s.status === "awaiting_payment" && typeof s.expires_at === "number" && now > s.expires_at) {
       s.status = "expired";
+      touchSubmission(s);
       dirty = true;
     }
   }
   if (dirty) saveSubmissions();
 }
 
+// Read dapps.json as a normalized document: ensures `apps` is an array and a
+// numeric `version` (legacy/missing → 0). Throws on read/parse failure.
+function readDappsDoc() {
+  const data = JSON.parse(fs.readFileSync(DAPPS_PATH, "utf8"));
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("dapps.json is not a JSON object document");
+  }
+  if (!Array.isArray(data.apps)) data.apps = data.items || [];
+  if (typeof data.version !== "number") data.version = 0;
+  return data;
+}
+
+// Current document version of dapps.json (0 if unreadable/legacy).
+function dappsVersion() {
+  try { return readDappsDoc().version; } catch (_) { return 0; }
+}
+
+function listingRowMatches(a, url, pubkey) {
+  return Boolean((url && a.url === url) || (pubkey && a.pubkey === pubkey));
+}
+
+// The full listing row matching a url/pubkey, or null. Rows are all public data.
+function findListingRow(url, pubkey) {
+  try {
+    return readDappsDoc().apps.find((a) => listingRowMatches(a, url, pubkey)) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Trim a listing row to the fields the conflict UI needs. Everything on a dapp
+// row is public anyway; this just keeps the response small and predictable.
+function publicListingRow(a) {
+  if (!a || typeof a !== "object") return null;
+  return {
+    name: a.name || "(unnamed)",
+    description: a.description || "",
+    author: a.author || "unknown",
+    url: a.url || "",
+    pubkey: a.pubkey || "",
+    category: a.category || null,
+    logo: a.logo || null,
+  };
+}
+
 // Append a published submission's dapp entry into dapps.json so the homepage
-// shows it and the poller tracks its pubkey on the next tick. Atomic write.
+// shows it and the poller tracks its pubkey on the next tick. Conflict-aware:
+// compare-and-swap on the document version, with bounded retry so a concurrent
+// rewrite (deploy / git merge / co-resident writer) cannot silently clobber the
+// row. Idempotent when the url/pubkey is already present (no write). Throws only
+// if it cannot converge after MAX_ATTEMPTS — callers leave the tx unconsumed and
+// retry on the next poll tick.
 function appendDappToListing(dapp) {
-  const raw = fs.readFileSync(DAPPS_PATH, "utf8");
-  const data = JSON.parse(raw);
-  if (!Array.isArray(data.apps)) data.apps = data.apps || data.items || [];
-  data.apps.push(dapp);
-  atomicWriteJson(DAPPS_PATH, data);
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const doc = readDappsDoc();
+    if (doc.apps.some((a) => listingRowMatches(a, dapp.url, dapp.pubkey))) {
+      return; // already applied — idempotent
+    }
+    const res = casWriteJson(DAPPS_PATH, doc.version, (d) => { d.apps.push(dapp); });
+    if (res.ok) return;
+    // Version moved under us → reload and reapply on the fresh document.
+  }
+  throw new Error("dapps.json changed concurrently; giving up after retries (will retry next tick)");
 }
 
 // True if a url/pubkey is already present in the live listing.
 function listingHas(url, pubkey) {
-  const dapps = loadDapps(); // {name, pubkey}
-  if (pubkey && dapps.some((d) => d.pubkey === pubkey)) return true;
-  // loadDapps drops url; re-read raw for a url check.
-  try {
-    const data = JSON.parse(fs.readFileSync(DAPPS_PATH, "utf8"));
-    const apps = data.apps || data.items || [];
-    return apps.some((a) => (url && a.url === url) || (pubkey && a.pubkey === pubkey));
-  } catch (_) {
-    return false;
+  return findListingRow(url, pubkey) != null;
+}
+
+// ── Staging seed fixtures ──────────────────────────────────────────────────────
+// Obviously-fake, idempotent rows so the conflict UI + reconciliation can be
+// exercised on a staging preview without real on-chain payments. A strict no-op
+// outside staging (gated on USERNODE_ENV=staging via IS_STAGING).
+const STAGING_LISTED_URL = "https://staging-demo-listed.example.com";
+const STAGING_LISTED_PUBKEY = "ut1stagingdemolisted0000000000000000000000000000000000000000";
+const STAGING_INPROGRESS_URL = "https://staging-demo-inprogress.example.com";
+const STAGING_INPROGRESS_PUBKEY = "ut1stagingdemoinprogress00000000000000000000000000000000000000";
+
+function seedStagingFixtures() {
+  if (!IS_STAGING) return;
+  const now = Date.now();
+  const DAY = 24 * 3600 * 1000;
+
+  // Seed submissions (wrapped form, per-record rev) — one per status. Idempotent
+  // by fixed id. The published one mirrors the listed dapps.json row below.
+  const seeds = [
+    {
+      id: "staging-demo-awaiting",
+      status: "awaiting_payment",
+      rev: 1,
+      dapp: {
+        name: "Staging Demo In-Progress Dapp",
+        description: "Staging demo — a submission still awaiting payment.",
+        author: "staging-demo-user",
+        url: STAGING_INPROGRESS_URL,
+        pubkey: STAGING_INPROGRESS_PUBKEY,
+        category: "Utility",
+      },
+      payer: null, payment_tx_hash: null, paid_amount: null,
+      fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS || STAGING_LISTED_PUBKEY,
+      created_at: now, updated_at: now, expires_at: now + DAY, published_at: null,
+    },
+    {
+      id: "staging-demo-published",
+      status: "published",
+      rev: 2,
+      dapp: {
+        name: "Staging Demo Listed Dapp",
+        description: "Staging demo — already published and live on the homepage.",
+        author: "staging-demo-user",
+        url: STAGING_LISTED_URL,
+        pubkey: STAGING_LISTED_PUBKEY,
+        category: "Game",
+      },
+      payer: "ut1stagingdemopayer000000000000000000000000000000000000000000",
+      payment_tx_hash: "staging-demo-tx-published",
+      paid_amount: SUBMISSION_FEE,
+      fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS || STAGING_LISTED_PUBKEY,
+      created_at: now - DAY, updated_at: now, expires_at: now - DAY + DAY, published_at: now,
+    },
+    {
+      id: "staging-demo-expired",
+      status: "expired",
+      rev: 2,
+      dapp: {
+        name: "Staging Demo Expired Dapp",
+        description: "Staging demo — a submission that expired unpaid.",
+        author: "staging-demo-user",
+        url: "https://staging-demo-expired.example.com",
+        pubkey: "ut1stagingdemoexpired00000000000000000000000000000000000000000",
+        category: "Utility",
+      },
+      payer: null, payment_tx_hash: null, paid_amount: null,
+      fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS || STAGING_LISTED_PUBKEY,
+      created_at: now - 2 * DAY, updated_at: now, expires_at: now - DAY, published_at: null,
+    },
+  ];
+  let seededSubs = false;
+  for (const seed of seeds) {
+    if (!submissions.some((s) => s && s.id === seed.id)) {
+      submissions.push(seed);
+      seededSubs = true;
+    }
   }
+  if (seededSubs) saveSubmissions();
+
+  // Seed the matching listed row in dapps.json so submitting STAGING_LISTED_URL
+  // deterministically reproduces the already_listed 409. Version-aware append.
+  try {
+    if (!listingHas(STAGING_LISTED_URL, STAGING_LISTED_PUBKEY)) {
+      appendDappToListing({
+        name: "Staging Demo Listed Dapp",
+        description: "Staging demo — already on the homepage (used to demo the conflict flow).",
+        author: "staging-demo-user",
+        url: STAGING_LISTED_URL,
+        pubkey: STAGING_LISTED_PUBKEY,
+        category: "Game",
+      });
+    }
+  } catch (e) {
+    console.warn(`[staging] could not seed listed dapp: ${e.message}`);
+  }
+  console.log("[staging] seeded demo submissions + listed dapp for conflict testing");
 }
 
 // Start background polling
-loadSubmissions();
-(async function startStatsPoller() {
-  await pollAllStats();
-  setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
-})();
+function startBackground() {
+  loadSubmissions();
+  seedStagingFixtures();
+  (async function startStatsPoller() {
+    await pollAllStats();
+    setInterval(pollAllStats, STATS_POLL_INTERVAL_MS);
+  })();
+}
 
 // Bring up the micro-blog schema (and staging seed) if a database is configured.
 if (pgPool) {
@@ -1629,6 +1857,7 @@ const server = http.createServer((req, res) => {
       enabled: !!COMMUNITY_FUND_RESERVE_ADDRESS,
       fee: SUBMISSION_FEE,
       reserve_address: COMMUNITY_FUND_RESERVE_ADDRESS || null,
+      dapps_version: dappsVersion(),
     });
   }
 
@@ -1646,16 +1875,41 @@ const server = http.createServer((req, res) => {
       const v = validateSubmissionInput(body);
       if (!v.ok) return sendJson(res, 400, { error: v.error });
 
-      // Pre-payment duplicate gate — block before the user spends tokens.
-      if (listingHas(v.dapp.url, v.dapp.pubkey)) {
-        return sendJson(res, 409, { error: "A dapp with this URL or pubkey is already listed." });
+      const latestDappsVersion = dappsVersion();
+
+      // Optimistic-concurrency conflict gate — caught BEFORE any fee is charged,
+      // so a clash never costs tokens. Returns a structured 409 (code:"conflict")
+      // the frontend can branch on, instead of a flat error string.
+      //
+      // already_listed: the dapp got listed underneath this submitter (another
+      // submission published it, or a deploy/manual edit added it) — possibly
+      // while their seen_dapps_version was stale. We hand back the live row so
+      // the form can say "already on the homepage, no payment needed".
+      const listedRow = findListingRow(v.dapp.url, v.dapp.pubkey);
+      if (listedRow) {
+        return sendJson(res, 409, {
+          code: "conflict",
+          reason: "already_listed",
+          message: "This dapp is already on the homepage — no payment is needed.",
+          latest_dapps_version: latestDappsVersion,
+          listed: true,
+          dapp: publicListingRow(listedRow),
+        });
       }
+      // submission_in_progress: someone else is mid-flow for the same url/pubkey.
       const dupe = submissions.find(
         (s) => isLiveSubmission(s) && s.dapp &&
           (s.dapp.url === v.dapp.url || s.dapp.pubkey === v.dapp.pubkey)
       );
       if (dupe) {
-        return sendJson(res, 409, { error: "A submission for this URL or pubkey is already in progress." });
+        return sendJson(res, 409, {
+          code: "conflict",
+          reason: "submission_in_progress",
+          message: "A submission for this URL or pubkey is already in progress.",
+          latest_dapps_version: latestDappsVersion,
+          listed: false,
+          dapp: null,
+        });
       }
 
       const now = Date.now();
@@ -1663,12 +1917,14 @@ const server = http.createServer((req, res) => {
       const record = {
         id,
         status: "awaiting_payment",
+        rev: 1,
         dapp: v.dapp,
         payer: null,
         payment_tx_hash: null,
         paid_amount: null,
         fee_recipient: COMMUNITY_FUND_RESERVE_ADDRESS,
         created_at: now,
+        updated_at: now,
         expires_at: now + SUBMISSION_TTL_HOURS * 3600 * 1000,
         published_at: null,
       };
@@ -1681,6 +1937,7 @@ const server = http.createServer((req, res) => {
         memo: submitMemoString(id),
         status: record.status,
         expires_at: record.expires_at,
+        dapps_version: latestDappsVersion,
       });
     });
   }
@@ -1963,11 +2220,14 @@ const server = http.createServer((req, res) => {
         );
       }
 
+      const dappsVer = String(dappsVersion());
       if (req.method === "HEAD") {
         res.writeHead(200, {
           "content-type": "application/json; charset=utf-8",
           "content-length": buf.length,
           "cache-control": "no-store",
+          "x-dapps-version": dappsVer,
+          "access-control-expose-headers": "x-dapps-version",
         });
         return res.end();
       }
@@ -1978,6 +2238,8 @@ const server = http.createServer((req, res) => {
         {
           "content-type": "application/json; charset=utf-8",
           "cache-control": "no-store",
+          "x-dapps-version": dappsVer,
+          "access-control-expose-headers": "x-dapps-version",
         },
         buf
       );
@@ -2015,10 +2277,50 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Serving ${INDEX_PATH}`);
-  console.log(`Dapps config: ${DAPPS_PATH}${LOCAL_DEV ? " (local-dev)" : ""}`);
-  console.log(`Explorer proxy: ${EXPLORER_USE_HTTP ? "http" : "https"}://${EXPLORER_UPSTREAM}${EXPLORER_UPSTREAM_BASE}`);
-  console.log(`Stats poller: every ${STATS_POLL_INTERVAL_MS / 1000}s → GET /api/stats, GET /api/transactions?pubkey=..., GET /user_activity`);
-  console.log(`Listening on http://localhost:${PORT}`);
-});
+function startServer() {
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Serving ${INDEX_PATH}`);
+    console.log(`Dapps config: ${DAPPS_PATH}${LOCAL_DEV ? " (local-dev)" : ""}`);
+    console.log(`Explorer proxy: ${EXPLORER_USE_HTTP ? "http" : "https"}://${EXPLORER_UPSTREAM}${EXPLORER_UPSTREAM_BASE}`);
+    console.log(`Stats poller: every ${STATS_POLL_INTERVAL_MS / 1000}s → GET /api/stats, GET /api/transactions?pubkey=..., GET /user_activity`);
+    console.log(`Listening on http://localhost:${PORT}`);
+  });
+}
+
+// Only boot the poller + HTTP listener when run directly. When required as a
+// module (e.g. from the test suite) nothing auto-starts, so tests can point the
+// store env vars at temp fixtures and drive the exported functions / server.
+if (require.main === module) {
+  startBackground();
+  startServer();
+}
+
+module.exports = {
+  server,
+  startBackground,
+  startServer,
+  // OCC + store internals (exercised by test/occ.test.js)
+  atomicWriteJson,
+  casWriteJson,
+  parseSubmissionsDoc,
+  loadSubmissions,
+  saveSubmissions,
+  touchSubmission,
+  readDappsDoc,
+  dappsVersion,
+  findListingRow,
+  publicListingRow,
+  listingHas,
+  appendDappToListing,
+  reconcileSubmissionPayments,
+  expireStaleSubmissions,
+  validateSubmissionInput,
+  // state accessors for assertions
+  _getSubmissions: () => submissions,
+  _getSubmissionsVersion: () => submissionsVersion,
+  _setSubmissions: (arr, ver) => { submissions = arr; if (typeof ver === "number") submissionsVersion = ver; },
+  _addConsumedTx: (id) => consumedTxIds.add(id),
+  _txCache: txCache,
+  PATHS: { DAPPS_PATH, SUBMISSIONS_PATH },
+  CONFIG: { SUBMISSION_FEE, COMMUNITY_FUND_RESERVE_ADDRESS },
+};
