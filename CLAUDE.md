@@ -23,10 +23,14 @@ hosted conventions win.
  upstream block explorer, and runs a background per-pubkey stats
  poller that exposes `GET /api/stats`,
  `GET /api/transactions?pubkey=…`, and `GET /user_activity` (per-wallet
- rollup across all tracked dapps + global usernames). No
- `package.json`, no auth middleware (the homepage is fully public).
+ rollup across all tracked dapps + global usernames). The directory and
+ all of those endpoints are public. The **micro-blog feed** added on top
+ (`/api/microblog/*`) is the one exception: its writes are
+ authenticated (see Auth model) and it is backed by Postgres.
 - `index.html` — Single-file UI. CSS variables for light/dark theme,
-  rubber-band scroll, sort menu (popular / users / txns / alpha).
+  rubber-band scroll, sort menu (popular / users / txns / alpha), and a
+  Dapps/Feed tab switch that reveals the micro-blog feed view (composer,
+  post list, likes, points/token strip, leaderboard, Convert modal).
   Contains the `// usernode-dev-console@1` forwarder block that
   surfaces client logs to the Usernode platform's dev console panel —
   do not remove it.
@@ -34,8 +38,12 @@ hosted conventions win.
   `name`, `description`, `author`, `url`, `pubkey`. The poller reads
   this file every 30s to discover which addresses to track.
 - `dapps.local.json` — Localnet variant, used when `--local-dev`.
-- `Dockerfile` — `node:20-alpine`, copies the three files, runs
-  `node server.js`. No build step.
+- `package.json` — declares the single runtime dependency, `pg`, used
+  only by the feed's Postgres store. The homepage/poller remain stdlib-
+  only; `pg` is `require()`d lazily and a checkout without
+  `npm install` still boots (the feed just disables itself).
+- `Dockerfile` — `node:20-alpine`, `npm ci --omit=dev` for `pg`, copies
+  the app files, runs `node server.js`. No build step.
 
 ## Running locally
 
@@ -49,13 +57,43 @@ Then open `http://localhost:8000`. Override the listen port with
 
 ## Auth model
 
-The homepage is **public**. There is no JWT, no platform login
-required, no `req.user` consulted anywhere. SV injects `JWT_SECRET`
-and `DATABASE_URL` into the container; both are ignored. The HTML
-shell, `/dapps.json`, `/api/stats`, `/api/transactions`,
-`/user_activity`, and `/explorer-api/*` are all reachable without
-auth — that's intentional. The only "user action" the page exposes
-is clicking out to a hosted dapp.
+The directory is **public**: the HTML shell, `/dapps.json`,
+`/api/stats`, `/api/transactions`, `/user_activity`, the submit-a-dapp
+endpoints, and `/explorer-api/*` are all reachable without auth — that's
+intentional.
+
+The **micro-blog feed** is the first authenticated surface, so the app
+now consumes the two platform-injected vars it used to ignore:
+
+- `JWT_SECRET` — verifies the platform's iframe session JWT (HS256),
+  done with stdlib `crypto` (no auth library). The token arrives as
+  `?token=…` on the iframe load and is forwarded by the frontend via the
+  `x-usernode-token` header. A verified request yields
+  `{ id, username, usernode_pubkey }`.
+- `DATABASE_URL` — Postgres connection for the feed's tables. When
+  unset, `/api/microblog/*` returns 503 and the Feed view shows an
+  "unavailable" state; everything else is unaffected.
+
+Feed reads are public (`GET /api/microblog/feed`, `/leaderboard`).
+Feed writes (`POST /posts`, `POST|DELETE /posts/:id/like`,
+`POST /convert`) and `GET /me` require a verified token → 401 otherwise.
+
+### Micro-blog data model (Postgres)
+
+Schema is created idempotently on boot (`CREATE TABLE IF NOT EXISTS`).
+Tables: `microblog_posts`, `microblog_likes`, `microblog_points` (all
+**public** — in-app-visible content / a public leaderboard) and
+`microblog_conversions` — the simulated points→token ledger, marked
+**private** (`COMMENT ON TABLE … IS 'staging:private'`) because it's
+financial/convertible-balance data. The only FK is
+`microblog_likes.post_id → microblog_posts` (public→public). Points:
++`POINTS_PER_POST` per post, +`POINTS_PER_LIKE` to a post's author per
+like from **another** user (self-likes earn nothing). Available points
+and token balance are derived as `points_earned − Σpoints_spent` and
+`Σtokens_credited`. Conversion is simulated only — no on-chain transfer
+in v1. When `USERNODE_ENV === 'staging'`, boot seeds obviously-fake
+`staging-demo-*` authors/posts/likes/points + one conversion row (the
+private ledger is schema-only in staging, so it must be seeded here).
 
 ## Stats poller
 
@@ -140,10 +178,12 @@ like a private IP. Same convention as every other dapp in the fleet.
   itself runs inside SV, the new tab lands on each dapp's "Open in
   Usernode" page if that dapp gates its HTML shell. That's a known UX
   edge — fix at the link-strategy layer when it matters, not here.
-- **No package.json**: the server is intentionally zero-dependency
-  Node stdlib only. Don't add dependencies without a strong reason —
-  the cold-boot story (Dockerfile is `COPY` + `node server.js`) is
-  part of why this app is robust.
+- **Minimal dependencies**: the homepage/poller are stdlib-only; the
+  sole runtime dependency is `pg` (declared in `package.json`), used by
+  the micro-blog feed and `require()`d lazily so a no-DB / no-install
+  checkout still boots. Don't add further dependencies without a strong
+  reason — keeping the cold-boot story tight is part of why this app is
+  robust.
 - **`/api/stats` and `/api/transactions` are intentionally public**.
   They expose a global summary identical for every viewer.
 

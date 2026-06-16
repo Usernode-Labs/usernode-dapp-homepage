@@ -1,0 +1,67 @@
+{
+  "name": "Usernode Hold'em",
+  "secrets": [
+    {
+      "key": "TREASURY_ADDRESS",
+      "description": "Public Usernode address (ut1…) of the custodial table treasury / pooled bank. Buy-ins are paid here and payouts + on-chain commit/reveal audit writes are signed from it. Public on-chain address.",
+      "required": false,
+      "private": false,
+      "default": "",
+      "staging_default": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az"
+    },
+    {
+      "key": "TREASURY_SIGNING_KEY",
+      "description": "Secret signing key for the table treasury wallet. Signs payouts and audit-anchor transactions. Never logged or returned by any API. Wallet key that holds real funds — encrypted at rest, isolated from staging.",
+      "required": false,
+      "private": true,
+      "staging_default": "staging-dummy-signing-key-no-funds"
+    },
+    {
+      "key": "SMALL_BLIND",
+      "description": "Small blind in chips (= token base units).",
+      "required": false,
+      "private": false,
+      "default": "25",
+      "staging_default": "25"
+    },
+    {
+      "key": "BIG_BLIND",
+      "description": "Big blind in chips (= token base units).",
+      "required": false,
+      "private": false,
+      "default": "50",
+      "staging_default": "50"
+    },
+    {
+      "key": "MIN_BUYIN",
+      "description": "Minimum buy-in in chips.",
+      "required": false,
+      "private": false,
+      "default": "1000",
+      "staging_default": "1000"
+    },
+    {
+      "key": "MAX_BUYIN",
+      "description": "Maximum buy-in in chips.",
+      "required": false,
+      "private": false,
+      "default": "10000",
+      "staging_default": "10000"
+    },
+    {
+      "key": "ACTION_TIMER_SECONDS",
+      "description": "Shot-clock per action in seconds. The timer pauses while a player's action transaction is pending/confirming on-chain.",
+      "required": false,
+      "private": false,
+      "default": "30",
+      "staging_default": "30"
+    },
+    {
+      "key": "NODE_RPC_URL",
+      "description": "Usernode node RPC base URL used by the treasury to submit signed transactions. Platform-managed in-network; this default is only a standalone fallback.",
+      "required": false,
+      "private": false,
+      "default": "http://usernode-node:3001"
+    }
+  ]
+}
