@@ -2262,7 +2262,7 @@
       .leaderList li::before { counter-increment: lb; content: counter(lb); font-weight: 700; color: var(--muted); width: 16px; flex: 0 0 auto; }
       .leaderName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .leaderPts { font-weight: 700; color: var(--accent); flex: 0 0 auto; }
-      .leaderEmpty { font-size: 12.5px; color: var(--muted); }
+      .leaderEmpty { font-size: 12.5px; color: var(--muted); text-align: center; }
 
       .post {
         border: 1px solid var(--card-item-border);
@@ -2500,7 +2500,7 @@
             <aside class="leaderboard" id="leaderboard">
               <div class="leaderTitle">Top contributors</div>
               <ol id="leaderList" class="leaderList"></ol>
-              <div class="leaderEmpty" id="leaderEmpty" hidden>No points earned yet.</div>
+              <div class="leaderEmpty" id="leaderEmpty" hidden>No contributors yet</div>
             </aside>
           </div>
         </div>
