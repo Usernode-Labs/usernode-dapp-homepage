@@ -90,7 +90,7 @@
         --card-item-border: rgba(15, 23, 42, 0.07);
         --card-item-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
         --accent: #2563eb;
-        --launch-btn: #7c3aed;
+        --launch-btn: #dc2626;
         --card-hover-border: rgba(99, 102, 241, 0.45);
         --grid-opacity: 0.04;
       }
@@ -108,7 +108,7 @@
         --card-item-border: rgba(255, 255, 255, 0.07);
         --card-item-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
         --accent: #6ea8fe;
-        --launch-btn: #8b5cf6;
+        --launch-btn: #ef4444;
         --card-hover-border: rgba(139, 92, 246, 0.6);
         --grid-opacity: 0.06;
       }
@@ -463,8 +463,131 @@
       html.dark .themeBtn .iconMoon {
         display: none;
       }
-
-
+      .privacyPanelBtn {
+        appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+      }
+      .privacyPanelBtn:hover {
+        color: var(--fg);
+        border-color: var(--accent);
+      }
+      .privacyPanelBtn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+      .privacyPanelWrap {
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .privacyPanel {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+        z-index: 100;
+        padding: 12px;
+        gap: 0;
+        flex-direction: column;
+        min-width: 240px;
+      }
+      .privacyPanel.open {
+        display: flex;
+      }
+      .privacyPanelHeader {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--fg);
+        padding: 0 12px 10px 12px;
+      }
+      .privacyPanelDivider {
+        height: 1px;
+        background: var(--border);
+        margin: 8px 0;
+      }
+      .privacyPanelToggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--fg);
+        user-select: none;
+      }
+      .privacyPanelToggle:hover {
+        background: var(--border);
+        border-radius: 6px;
+      }
+      .privacyPanelToggle input[type="checkbox"] {
+        cursor: pointer;
+        width: 16px;
+        height: 16px;
+        min-width: 16px;
+      }
+      .privacyMenuLabel {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 8px 12px 4px 12px;
+      }
+      .privacyMenuOptions {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        padding: 4px 12px;
+      }
+      .privacyOption {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        background: transparent;
+        border: none;
+        color: var(--fg);
+        font-family: inherit;
+        font-size: 13px;
+        text-align: left;
+      }
+      .privacyOption:hover {
+        background: var(--border);
+      }
+      .privacyOption input[type="radio"] {
+        cursor: pointer;
+      }
+      .privacyCheckbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--fg);
+      }
+      .privacyCheckbox:hover {
+        background: var(--border);
+        border-radius: 6px;
+      }
+      .privacyCheckbox input[type="checkbox"] {
+        cursor: pointer;
+      }
       ul {
         list-style: none;
         /* Bottom padding reserves clearance so the last card clears the host
@@ -644,6 +767,93 @@
         background: transparent;
         list-style: none;
       }
+      /* ── Trending strip — compact horizontal card row ─────────────────── */
+      .trendingStrip {
+        padding: 4px 12px 0;
+      }
+      .trendingLabel {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding: 0 0 6px;
+      }
+      .trendingScroll {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .trendingScroll::-webkit-scrollbar {
+        display: none;
+      }
+      .trendingCard {
+        flex: 0 0 140px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px;
+        border: 1px solid var(--card-item-border);
+        box-shadow: var(--card-item-shadow);
+        border-radius: 12px;
+        background: var(--bg);
+        text-decoration: none;
+        color: inherit;
+        transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+        overflow: hidden;
+        cursor: pointer;
+      }
+      .trendingCard:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.18);
+        border-color: var(--card-hover-border);
+        text-decoration: none;
+      }
+      .trendingCard:active {
+        transform: translateY(0);
+        transition-duration: 80ms;
+      }
+      .trendingCardTop {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+      }
+      .trendingCardLogo .dappLogo,
+      .trendingCardLogo .dappLogoFallback {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        font-size: 13px;
+        flex-shrink: 0;
+      }
+      .trendingCardName {
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1 1 auto;
+        min-width: 0;
+        line-height: 1.3;
+      }
+      .trendingCardStats {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .trendingCardStats .stat {
+        gap: 2px;
+      }
+      .trendingCardStats .stat svg {
+        width: 11px;
+        height: 11px;
+      }
       .noResults {
         padding: 22px 12px;
         text-align: center;
@@ -678,22 +888,22 @@
         font-family: inherit;
         padding: 4px 10px;
         border-radius: 6px;
-        background: linear-gradient(135deg, #6d28d9, #9333ea);
+        background: linear-gradient(135deg, #b91c1c, #ef4444);
         color: #ffffff;
-        box-shadow: 0 0 8px rgba(124, 58, 237, 0.35);
+        box-shadow: 0 0 8px rgba(220, 38, 38, 0.35);
         transition: filter 0.2s ease, box-shadow 0.2s ease;
       }
       .dappLink:hover .launchBtn {
         filter: brightness(1.15);
-        box-shadow: 0 0 14px rgba(124, 58, 237, 0.55);
+        box-shadow: 0 0 14px rgba(220, 38, 38, 0.55);
       }
       html.dark .launchBtn {
-        background: linear-gradient(135deg, #7c3aed, #c084fc);
-        box-shadow: 0 0 12px rgba(167, 139, 250, 0.55);
+        background: linear-gradient(135deg, #dc2626, #f87171);
+        box-shadow: 0 0 12px rgba(248, 113, 113, 0.55);
       }
       html.dark .dappLink:hover .launchBtn {
         filter: brightness(1.12);
-        box-shadow: 0 0 18px rgba(167, 139, 250, 0.75);
+        box-shadow: 0 0 18px rgba(248, 113, 113, 0.75);
       }
       .tagRow {
         display: flex;
@@ -708,30 +918,137 @@
         border-radius: 999px;
         display: inline-block;
       }
-      /* Live status dot */
+      /* Per-dapp health status dot. Colour is driven by a status modifier class;
+         the ping animation is reserved for the healthy "operational" state. */
       .liveDot {
         width: 7px;
         height: 7px;
         border-radius: 50%;
-        background: #22c55e;
+        background: var(--muted);
+        --dot: var(--muted);
         flex-shrink: 0;
         position: relative;
-        margin-right: 6px;
       }
+      /* Maintenance-status badge (dot + optional label) */
+      .statusBadge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+        margin-right: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .statusDot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--status-color, #22c55e);
+        flex-shrink: 0;
+        position: relative;
+      }
+      .liveDot.isOperational { --dot: #22c55e; background: #22c55e; }
+      .liveDot.isDegraded    { --dot: #f59e0b; background: #f59e0b; }
+      .liveDot.isMaintenance { --dot: #3b82f6; background: #3b82f6; }
+      .liveDot.isOffline     { --dot: #94a3b8; background: #94a3b8; }
+      .liveDot.isDeprecated  { --dot: #64748b; background: #64748b; }
+      .liveDot.isChecking    { --dot: var(--muted); background: var(--muted); opacity: 0.5; }
+      .statusLabel { color: var(--status-color, #22c55e); }
+      .statusOperational { --status-color: #22c55e; }
+      .statusMaintenance { --status-color: #f59e0b; }
+      .statusUnavailable { --status-color: #ef4444; }
       @media (prefers-reduced-motion: no-preference) {
         @keyframes livePing {
           0% { transform: scale(1); opacity: 0.6; }
           100% { transform: scale(2); opacity: 0; }
         }
-        .liveDot::after {
+        .liveDot.isOperational::after {
           content: '';
           position: absolute;
           inset: 0;
           border-radius: 50%;
-          background: #22c55e;
+          background: var(--dot);
           animation: livePing 2s ease-out infinite;
         }
+        /* Only an operational ("live") badge pulses. */
+        .statusBadge.isLive .statusDot::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          background: var(--status-color, #22c55e);
+          animation: livePing 2s ease-out infinite;
+        }
+        @keyframes dotBlink { 0%,100% { opacity: 0.25; } 50% { opacity: 0.7; } }
+        .liveDot.isChecking { animation: dotBlink 1.2s ease-in-out infinite; }
       }
+      /* Owner status editor inside the preview panel */
+      .statusEditRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+        flex-wrap: wrap;
+      }
+      .statusEditRow label { font-size: 13px; color: var(--muted); font-weight: 600; }
+      .statusSelect {
+        font: inherit;
+        font-size: 13px;
+        padding: 5px 8px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--fg);
+        cursor: pointer;
+      }
+
+      /* ── Status panel ─────────────────────────────────────────────── */
+      .syncBanner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        font-weight: 600;
+        padding: 9px 11px;
+        border-radius: 9px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        margin-bottom: 12px;
+      }
+      .syncBanner .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+      .syncBanner.isSynced { color: #10b981; }
+      .syncBanner.isSynced .dot { background: #10b981; }
+      .syncBanner.isSyncing { color: #f59e0b; }
+      .syncBanner.isSyncing .dot { background: #f59e0b; animation: dotBlink 1.2s ease-in-out infinite; }
+      .syncBanner.isUnreachable { color: #ef4444; }
+      .syncBanner.isUnreachable .dot { background: #ef4444; }
+      .statusList { display: flex; flex-direction: column; gap: 2px; }
+      .statusRow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      .statusRow:last-child { border-bottom: none; }
+      .statusRowMain { min-width: 0; flex: 1 1 auto; }
+      .statusRowName {
+        font-size: 13.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .statusRowSub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+      .statusRowLabel { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+      .statusRowLabel.isOperational { color: #22c55e; }
+      .statusRowLabel.isDegraded    { color: #f59e0b; }
+      .statusRowLabel.isMaintenance { color: #3b82f6; }
+      .statusRowLabel.isOffline     { color: #94a3b8; }
+      .statusRowLabel.isDeprecated  { color: #64748b; }
+      .statusRowLabel.isChecking    { color: var(--muted); }
 
       /* Name block (live dot + name), grouped so the row's space-between
          only separates it from the stats/launch block. */
@@ -1231,17 +1548,17 @@
         border-radius: 8px;
         cursor: pointer;
         color: #ffffff;
-        background: linear-gradient(135deg, #6d28d9, #9333ea);
-        box-shadow: 0 0 10px rgba(124, 58, 237, 0.35);
+        background: linear-gradient(135deg, #b91c1c, #ef4444);
+        box-shadow: 0 0 10px rgba(220, 38, 38, 0.35);
         transition: filter 0.2s ease, box-shadow 0.2s ease;
       }
       .previewLaunch:hover {
         filter: brightness(1.12);
-        box-shadow: 0 0 16px rgba(124, 58, 237, 0.55);
+        box-shadow: 0 0 16px rgba(220, 38, 38, 0.55);
       }
       html.dark .previewLaunch {
-        background: linear-gradient(135deg, #7c3aed, #c084fc);
-        box-shadow: 0 0 12px rgba(167, 139, 250, 0.55);
+        background: linear-gradient(135deg, #dc2626, #f87171);
+        box-shadow: 0 0 12px rgba(248, 113, 113, 0.55);
       }
       /* ── Launch overlay ─────────────────────────────────────────────────── */
       #launchOverlay {
@@ -1980,10 +2297,35 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
                 <span class="navBtnLabel">Explorer</span>
               </a>
+              <button class="submitBtn" id="openStatusBtn" type="button" title="dApp status" aria-label="dApp status" style="background:transparent;color:var(--fg);border:1px solid var(--border)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                <span class="submitBtnLabel">Status</span>
+              </button>
               <button class="submitBtn" id="openSubmitBtn" type="button" title="Submit your dapp">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span class="submitBtnLabel">Submit</span>
               </button>
+              <div class="privacyPanelWrap">
+                <button class="privacyPanelBtn" id="privacyPanelBtn" type="button" aria-label="Privacy & Settings" title="Privacy settings and incognito mode">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                </button>
+                <div class="privacyPanel" id="privacyPanel" role="dialog" aria-label="Privacy settings" style="position: absolute; top: calc(100% + 4px); right: 0;">
+                  <div class="privacyPanelHeader">Privacy Settings</div>
+                  <div class="privacyPanelDivider"></div>
+                  <label class="privacyPanelToggle">
+                    <input type="checkbox" id="incognitoToggle" />
+                    <span>Incognito Mode</span>
+                  </label>
+                  <div style="font-size: 11px; color: var(--muted); padding: 0 12px 8px; line-height: 1.3;">Session-only browsing history</div>
+                  <div class="privacyPanelDivider"></div>
+                  <div class="privacyMenuLabel">Privacy RPC Endpoint</div>
+                  <div class="privacyMenuOptions" id="privacyOptions"></div>
+                  <label class="privacyCheckbox" id="rememberRpcLabel" style="display: none;">
+                    <input type="checkbox" id="rememberRpcCheckbox" />
+                    <span>Remember across sessions</span>
+                  </label>
+                </div>
+              </div>
               <div class="viewWrap" id="viewWrap" role="group" aria-label="Display mode">
                 <button class="viewBtn" type="button" data-view="compact" aria-pressed="false" aria-label="Compact view" title="Compact view">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -2037,6 +2379,10 @@
             <button class="viewTab" id="tabFeed" type="button" role="tab" aria-selected="false">Feed</button>
             <span class="stagingBadge" id="stagingBadge" hidden title="You are viewing staging mock data">Staging</span>
           </div>
+        </div>
+        <div id="trendingStrip" hidden>
+          <div class="trendingLabel">Trending</div>
+          <div class="trendingScroll" id="trendingScroll"></div>
         </div>
         <ul id="dappList"></ul>
         <div id="feedView" hidden>
@@ -2182,10 +2528,24 @@
             >Read more</button>
           </div>
           <div class="previewMeta" id="previewMeta"></div>
+          <div class="previewStatus" id="previewStatus"></div>
         </div>
         <div class="previewFooter">
           <button class="previewLaunch" id="previewLaunch" type="button">Launch</button>
         </div>
+      </div>
+    </div>
+
+    <!-- dApp status panel -->
+    <div class="modalOverlay" id="statusModal" hidden role="dialog" aria-modal="true" aria-label="dApp status">
+      <div class="modalCard">
+        <div class="modalHead">
+          <div class="modalTitle">dApp status</div>
+          <button class="modalClose" id="statusClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div id="statusSyncBanner" class="syncBanner isSyncing"><span class="dot"></span><span id="statusSyncText">Syncing…</span></div>
+        <div class="statusList" id="statusList"></div>
+        <p class="modalNote">Status combines live reachability checks of each dApp's site with on-chain activity. Owners can flag a dApp as under maintenance or deprecated. Refreshes automatically while open.</p>
       </div>
     </div>
 
@@ -2202,6 +2562,8 @@
           <p class="modalNote">List your dapp on the Usernode homepage. Submitting burns a one-time on-chain fee to the Community Fund Reserve. The fee is non-refundable. Once the payment is confirmed on-chain, your dapp is published to the homepage automatically — no review step.</p>
           <label class="fieldLabel" for="f_name">Name *</label>
           <input class="fieldInput" id="f_name" maxlength="80" placeholder="My Cool Dapp" />
+          <label class="fieldLabel" for="f_display_name">Display name <span style="font-weight:400;opacity:.7">(optional)</span></label>
+          <input class="fieldInput" id="f_display_name" maxlength="80" placeholder="Friendlier name shown on the homepage" />
           <label class="fieldLabel" for="f_desc">Description</label>
           <textarea class="fieldTextarea" id="f_desc" maxlength="280" placeholder="One line about what it does."></textarea>
           <label class="fieldLabel" for="f_author">Author</label>
@@ -2243,6 +2605,21 @@
       </div>
     </div>
 
+    <!-- Launch confirmation for non-operational dapps -->
+    <div class="modalOverlay" id="launchConfirmModal" hidden role="dialog" aria-modal="true" aria-labelledby="launchConfirmTitle">
+      <div class="modalCard">
+        <div class="modalHead">
+          <div class="modalTitle" id="launchConfirmTitle">Open this dapp?</div>
+          <button class="modalClose" id="launchConfirmClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <p class="modalNote" id="launchConfirmMsg"></p>
+        <div class="modalActions">
+          <button class="btnGhost" id="launchConfirmCancel" type="button">Cancel</button>
+          <button class="btnPrimary" id="launchConfirmGo" type="button">Open anyway</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Convert points → tokens modal -->
     <div class="modalOverlay" id="convertModal" hidden role="dialog" aria-modal="true" aria-label="Convert points to tokens">
       <div class="modalCard">
@@ -2278,6 +2655,8 @@
       const SORT_KEY = "dapphome:sort";
       const VIEW_KEY = "dapphome:view";
       const THEME_KEY = "dapphome:theme";
+      const INCOGNITO_KEY = "dapphome:incognito";
+      const RPC_KEY = "dapphome:rpc-endpoint";
       const VIEW_MODES = ["compact", "detailed", "grid"];
       const PERSON_WEIGHT = 20;
       const CATEGORY_COLORS = {
@@ -2287,11 +2666,30 @@
         Social:  '#f43f5e',
       };
 
+      const RPC_ENDPOINTS = {
+        default: { label: "Usernode Public", url: null },
+        infura: { label: "Infura", url: "https://mainnet.infura.io/v3/" },
+        alchemy: { label: "Alchemy", url: "https://eth-mainnet.alchemy.com/v2/" },
+        privacy: { label: "Privacy Relay", url: "https://privacy-relay.example.org/" },
+      };
+
       const list = document.getElementById("dappList");
+      const trendingStrip = document.getElementById("trendingStrip");
+      const trendingScroll = document.getElementById("trendingScroll");
       const hamBtn = document.getElementById("hamBtn");
       const hamMenuDropdown = document.getElementById("hamMenuDropdown");
       const themeBtn = document.getElementById("themeBtn");
       const themeLabel = document.getElementById("themeLabel");
+      const privacyPanelBtn = document.getElementById("privacyPanelBtn");
+      const privacyPanel = document.getElementById("privacyPanel");
+      const incognitoToggle = document.getElementById("incognitoToggle");
+      const privacyOptions = document.getElementById("privacyOptions");
+      const rememberRpcLabel = document.getElementById("rememberRpcLabel");
+      const rememberRpcCheckbox = document.getElementById("rememberRpcCheckbox");
+
+      let isIncognito = false;
+      let currentRpcEndpoint = "default";
+      let sessionBrowsingHistory = [];
 
       // Hamburger menu toggle
       function closeHamMenu() {
@@ -2341,8 +2739,83 @@
         });
       }
 
+      // ── Incognito Mode & Privacy RPC Endpoint ────────────────────────────
+      function initPrivacyMode() {
+        isIncognito = localStorage.getItem(INCOGNITO_KEY) === "true";
+        currentRpcEndpoint = isIncognito ? "default" : (localStorage.getItem(RPC_KEY) || "default");
+        updatePrivacyUI();
+        initPrivacyOptions();
+      }
+
+      function updatePrivacyUI() {
+        if (incognitoToggle) {
+          incognitoToggle.checked = isIncognito;
+        }
+        rememberRpcLabel.style.display = isIncognito ? "none" : "flex";
+      }
+
+      function initPrivacyOptions() {
+        privacyOptions.innerHTML = "";
+        for (const [key, config] of Object.entries(RPC_ENDPOINTS)) {
+          const label = document.createElement("label");
+          label.className = "privacyOption";
+          const input = document.createElement("input");
+          input.type = "radio";
+          input.name = "rpc-endpoint";
+          input.value = key;
+          input.checked = currentRpcEndpoint === key;
+          label.appendChild(input);
+          const text = document.createElement("span");
+          text.textContent = config.label;
+          label.appendChild(text);
+          label.addEventListener("click", () => {
+            currentRpcEndpoint = key;
+            if (!isIncognito && rememberRpcCheckbox.checked) {
+              localStorage.setItem(RPC_KEY, key);
+            }
+            initPrivacyOptions();
+          });
+          privacyOptions.appendChild(label);
+        }
+      }
+
+      if (incognitoToggle) {
+        incognitoToggle.addEventListener("change", () => {
+          isIncognito = incognitoToggle.checked;
+          localStorage.setItem(INCOGNITO_KEY, isIncognito ? "true" : "false");
+          if (isIncognito) {
+            sessionBrowsingHistory = [];
+            currentRpcEndpoint = "default";
+          } else {
+            currentRpcEndpoint = localStorage.getItem(RPC_KEY) || "default";
+          }
+          updatePrivacyUI();
+          initPrivacyOptions();
+        });
+      }
+
+      if (privacyPanelBtn) {
+        privacyPanelBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          privacyPanel.classList.toggle("open");
+        });
+      }
+
+      document.addEventListener("click", () => {
+        privacyPanel.classList.remove("open");
+      });
+
+      initPrivacyMode();
+
       let allApps = [];
       let statsMap = {};
+      let healthMap = {};            // { [pubkey|url]: { status, reachable, ... } }
+      let healthInfo = { chain_id: null, synced: false, explorer_reachable: null, last_poll_at: null };
+      // Maintenance status, keyed by dapp pubkey. Any pubkey absent from the map
+      // is treated as "operational". `ownedSet` lists the pubkeys the signed-in
+      // user owns (server-resolved from the JWT), gating the status editor.
+      let statusMap = {};
+      let ownedSet = new Set();
       let currentSort = localStorage.getItem(SORT_KEY) || "alpha";
       // Live search query (client-side only, not persisted across reloads).
       let searchQuery = "";
@@ -2351,6 +2824,65 @@
         : "detailed";
 
       const viewWrap = document.getElementById("viewWrap");
+
+      // Latency above this reads as "Slow" in the UI (mirrors the server's
+      // HEALTH_SLOW_MS used to classify "degraded").
+      const HEALTH_SLOW_MS_CLIENT = 2000;
+
+      // Status presentation. Keys match the server's status model.
+      const STATUS_META = {
+        operational: { label: "Operational", cls: "isOperational" },
+        degraded:    { label: "Degraded",    cls: "isDegraded" },
+        maintenance: { label: "Maintenance", cls: "isMaintenance" },
+        offline:     { label: "Offline",     cls: "isOffline" },
+        deprecated:  { label: "Deprecated",  cls: "isDeprecated" },
+        checking:    { label: "Checking…",   cls: "isChecking" },
+      };
+
+      // Stable health key for a dapp: pubkey, falling back to url (keyless rows).
+      function healthKeyFor(dapp) {
+        return (dapp && (dapp.pubkey || dapp.url)) || "";
+      }
+
+      // Short relative time, e.g. "3 min ago" / "just now". `ms` is an epoch ms.
+      function relTime(ms) {
+        if (typeof ms !== "number" || !ms) return "";
+        const diff = Date.now() - ms;
+        if (diff < 0) return "just now";
+        const s = Math.round(diff / 1000);
+        if (s < 45) return "just now";
+        const m = Math.round(s / 60);
+        if (m < 60) return `${m} min ago`;
+        const h = Math.round(m / 60);
+        if (h < 24) return `${h} hr ago`;
+        const d = Math.round(h / 24);
+        return `${d} day${d === 1 ? "" : "s"} ago`;
+      }
+
+      // One-line tooltip for the row dot.
+      function statusTooltip(h) {
+        if (!h) return "Checking status…";
+        const meta = STATUS_META[h.status] || STATUS_META.checking;
+        const parts = [meta.label];
+        if (h.status === "offline") parts.push("site not responding");
+        else if (h.reachable && typeof h.latency_ms === "number" && h.latency_ms > 0)
+          parts.push(`responded in ${h.latency_ms} ms`);
+        if (h.last_activity_at) parts.push(`active ${relTime(h.last_activity_at)}`);
+        else if (h.activity_state === "none") parts.push("no on-chain activity yet");
+        return parts.join(" · ");
+      }
+
+      // Maintenance-status presentation. `operational` is the default; only the
+      // other two surface a non-green badge and trigger the launch warning.
+      const DAPP_STATUS_META = {
+        operational:       { label: "Operational",       cls: "statusOperational", warn: null },
+        under_maintenance: { label: "Under maintenance", cls: "statusMaintenance", warn: "is currently under maintenance" },
+        unavailable:       { label: "Unavailable",       cls: "statusUnavailable", warn: "is currently marked unavailable" },
+      };
+      function statusOf(dapp) {
+        const s = dapp && dapp.pubkey ? statusMap[dapp.pubkey] : null;
+        return DAPP_STATUS_META[s] ? s : "operational";
+      }
 
       // --- Pins / auth ---
       const USERNODE_TOKEN = (() => {
@@ -2429,7 +2961,7 @@
       }
 
       function fallbackBadge(dapp) {
-        const name = (dapp.name || "").trim();
+        const name = dappDisplayName(dapp);
         const badge = document.createElement("div");
         badge.className = "dappLogoFallback";
         badge.style.background = fallbackColor(name || "?");
@@ -2474,11 +3006,17 @@
 
       // Case-insensitive substring match across the visible/searchable text of
       // each dapp. Returns the list unchanged when there's no active query.
+      // Returns the string to display for a dapp's name: displayName when set,
+      // falling back to name. Use this everywhere names appear in the UI.
+      function dappDisplayName(dapp) {
+        return (dapp.displayName || dapp.name || "").trim() || "(unnamed)";
+      }
+
       function filterApps(apps) {
         const q = searchQuery.trim().toLowerCase();
         if (!q) return apps;
         return apps.filter((d) => {
-          const hay = [d.name, d.description, d.author, d.category]
+          const hay = [d.displayName, d.name, d.description, d.author, d.category]
             .filter(Boolean)
             .join(" ")
             .toLowerCase();
@@ -2493,7 +3031,7 @@
           const sb = statsMap[b.pubkey] || { users: 0, txns: 0 };
           switch (currentSort) {
             case "alpha":
-              return (a.name || "").localeCompare(b.name || "", undefined, {
+              return dappDisplayName(a).localeCompare(dappDisplayName(b), undefined, {
                 sensitivity: "base",
               });
             case "users":
@@ -2521,6 +3059,29 @@
         return svg;
       }
 
+      // Maintenance-status badge: a colored dot + short label. Operational keeps
+      // the gentle "live" ping; the other states are static. `compact` drops the
+      // text label (used where space is tight); the dot + title still convey it.
+      function makeStatusBadge(dapp, compact) {
+        const status = statusOf(dapp);
+        const meta = DAPP_STATUS_META[status];
+        const badge = document.createElement("span");
+        badge.className = "statusBadge " + meta.cls + (status === "operational" ? " isLive" : "");
+        const dot = document.createElement("span");
+        dot.className = "statusDot";
+        badge.appendChild(dot);
+        if (!compact) {
+          const txt = document.createElement("span");
+          txt.className = "statusLabel";
+          txt.textContent = meta.label;
+          badge.appendChild(txt);
+        }
+        badge.setAttribute("title", meta.label);
+        badge.setAttribute("role", "img");
+        badge.setAttribute("aria-label", "Status: " + meta.label);
+        return badge;
+      }
+
       // ── Shared row/card building blocks ───────────────────────────
       function makeDappLink(dapp) {
         const link = document.createElement("a");
@@ -2528,7 +3089,7 @@
         link.href = dapp.url;
         link.target = "_blank";
         link.rel = "noopener";
-        link.setAttribute("aria-label", `Preview ${dapp.name || "dapp"}`);
+        link.setAttribute("aria-label", `Preview ${dappDisplayName(dapp)}`);
         link.addEventListener("keydown", (e) => {
           if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
             e.preventDefault();
@@ -2542,13 +3103,11 @@
         const nameGroup = document.createElement("div");
         nameGroup.className = "nameGroup";
 
-        const liveDot = document.createElement("span");
-        liveDot.className = "liveDot";
-        nameGroup.appendChild(liveDot);
+        nameGroup.appendChild(makeStatusBadge(dapp));
 
         const name = document.createElement("div");
         name.className = "name";
-        name.textContent = dapp.name || "(unnamed)";
+        name.textContent = dappDisplayName(dapp);
         nameGroup.appendChild(name);
         return nameGroup;
       }
@@ -2607,7 +3166,7 @@
         launchBtn.textContent = "Launch";
         launchBtn.setAttribute("role", "button");
         launchBtn.setAttribute("tabindex", "0");
-        launchBtn.setAttribute("aria-label", `Launch ${dapp.name || "dapp"}`);
+        launchBtn.setAttribute("aria-label", `Launch ${dappDisplayName(dapp)}`);
         launchBtn.addEventListener("keydown", (e) => {
           if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
             e.preventDefault();
@@ -2754,7 +3313,7 @@
 
         const name = document.createElement("div");
         name.className = "name cardName";
-        name.textContent = dapp.name || "(unnamed)";
+        name.textContent = dappDisplayName(dapp);
         body.appendChild(name);
 
         const tagRow = makeTagRow(dapp);
@@ -2787,25 +3346,98 @@
         return li;
       }
 
-      // Category filter: maps each tab to the exact dapp display names it
-      // shows. "All" is special-cased to show everything. Matching is by
-      // display name so the filter composes cleanly with sorting/search.
-      const CATEGORY_NAMES = {
-        Game: ["Falling Sands", "Last One Wins", "Mini Minecraft"],
-        Utility: ["Echo Diagnostic"],
-        Market: ["Opinion Market"],
-      };
       let activeCategory = "All";
 
       function filterByCategory(dapps) {
         if (activeCategory === "All") return dapps;
-        const allowed = CATEGORY_NAMES[activeCategory];
-        if (!allowed) return dapps;
-        return dapps.filter((d) => allowed.includes((d.name || "").trim()));
+        return dapps.filter((d) => (d.category || "").trim() === activeCategory);
+      }
+
+      function renderTrending(dapps) {
+        if (!trendingStrip || !trendingScroll) return;
+
+        // Hide when a category is active or a search is in progress — the user
+        // is already narrowing down and the strip would just add noise.
+        if (activeCategory !== "All" || searchQuery.trim() !== "") {
+          trendingStrip.hidden = true;
+          return;
+        }
+
+        // Top 3 by popularity score, requiring at least one unit of activity.
+        const candidates = (Array.isArray(dapps) ? dapps : [])
+          .filter((d) => {
+            const s = d.pubkey ? statsMap[d.pubkey] : null;
+            return s && (s.users > 0 || s.txns > 0);
+          })
+          .slice()
+          .sort((a, b) => {
+            const sa = statsMap[a.pubkey] || { users: 0, txns: 0 };
+            const sb = statsMap[b.pubkey] || { users: 0, txns: 0 };
+            return (sb.users * PERSON_WEIGHT + sb.txns) - (sa.users * PERSON_WEIGHT + sa.txns);
+          })
+          .slice(0, 3);
+
+        // Need at least two cards to be worth showing.
+        if (candidates.length < 2) {
+          trendingStrip.hidden = true;
+          return;
+        }
+
+        trendingScroll.textContent = "";
+        for (const dapp of candidates) {
+          const s = statsMap[dapp.pubkey] || { users: 0, txns: 0 };
+
+          const card = document.createElement("a");
+          card.className = "trendingCard";
+          card.href = dapp.url;
+          card.target = "_blank";
+          card.rel = "noopener";
+          card.setAttribute("aria-label",
+            `${dappDisplayName(dapp)} — ${s.users} users, ${s.txns} transactions`);
+
+          // Top row: logo + name + status dot
+          const top = document.createElement("div");
+          top.className = "trendingCardTop";
+
+          const logoWrap = document.createElement("div");
+          logoWrap.className = "trendingCardLogo";
+          logoWrap.appendChild(makeLogo(dapp));
+          top.appendChild(logoWrap);
+
+          const nameEl = document.createElement("div");
+          nameEl.className = "trendingCardName";
+          nameEl.textContent = dappDisplayName(dapp);
+          top.appendChild(nameEl);
+
+          top.appendChild(makeStatusBadge(dapp, true));
+          card.appendChild(top);
+
+          // Stats row
+          const statsEl = document.createElement("div");
+          statsEl.className = "trendingCardStats";
+
+          const userStat = document.createElement("span");
+          userStat.className = "stat";
+          userStat.appendChild(personIcon());
+          userStat.appendChild(document.createTextNode(formatNum(s.users)));
+          statsEl.appendChild(userStat);
+
+          const txStat = document.createElement("span");
+          txStat.className = "stat";
+          txStat.appendChild(txIcon());
+          txStat.appendChild(document.createTextNode(formatNum(s.txns)));
+          statsEl.appendChild(txStat);
+
+          card.appendChild(statsEl);
+          trendingScroll.appendChild(card);
+        }
+
+        trendingStrip.hidden = false;
       }
 
       function renderDapps(dapps) {
         if (!list) return;
+        renderTrending(dapps);
         clearList();
 
         const categorized = filterByCategory(
@@ -2897,6 +3529,46 @@
         }
       }
 
+      async function loadDappStatus() {
+        try {
+          const resp = await fetch("/api/dapp-status", {
+            headers: pinHeaders(false),
+            cache: "no-store",
+          });
+          if (!resp.ok) return; // store unavailable → everything stays operational
+          const data = await resp.json();
+          statusMap = (data && data.statuses) || {};
+          ownedSet = new Set(Array.isArray(data && data.owned) ? data.owned : []);
+          renderDapps(allApps);
+        } catch (e) {
+          console.warn("Could not load dapp status:", e);
+        }
+      }
+
+      // Persist a status change for a dapp the current user owns. Optimistic:
+      // updates the map + re-renders, reverting on a failed request.
+      async function setDappStatus(pubkey, status) {
+        if (!pubkey) return false;
+        const prev = statusMap[pubkey];
+        statusMap[pubkey] = status;
+        renderDapps(allApps);
+        try {
+          const resp = await fetch("/api/dapp-status", {
+            method: "POST",
+            headers: pinHeaders(true),
+            body: JSON.stringify({ pubkey, status }),
+          });
+          if (!resp.ok) throw new Error("status API " + resp.status);
+          return true;
+        } catch (e) {
+          console.warn("Could not save status:", e);
+          if (prev == null) delete statusMap[pubkey];
+          else statusMap[pubkey] = prev;
+          renderDapps(allApps);
+          return false;
+        }
+      }
+
       async function loadDappsJson() {
         const resp = await fetch("./dapps.json", { cache: "no-store" });
         if (!resp.ok) {
@@ -2919,6 +3591,131 @@
         }
       }
 
+      // Fetch /api/health and refresh the dots + (if open) the status panel.
+      // Health is additive: any failure leaves the prior map intact and the page
+      // fully usable, so the homepage degrades gracefully if the route is slow
+      // or errors.
+      async function loadAllHealth() {
+        try {
+          const resp = await fetch("/api/health", { cache: "no-store" });
+          if (!resp.ok) throw new Error(`Health API ${resp.status}`);
+          const data = await resp.json();
+          healthMap = (data && data.dapps) || {};
+          healthInfo = {
+            chain_id: data ? data.chain_id : null,
+            synced: !!(data && data.synced),
+            explorer_reachable: data ? data.explorer_reachable : null,
+            last_poll_at: data ? data.last_poll_at : null,
+          };
+          renderDapps(allApps);
+          renderStatusPanel();
+        } catch (e) {
+          console.warn("Could not load health:", e);
+        }
+      }
+
+      // ── Status panel ──────────────────────────────────────────────────────
+      function renderSyncBanner() {
+        const banner = document.getElementById("statusSyncBanner");
+        const text = document.getElementById("statusSyncText");
+        if (!banner || !text) return;
+        banner.classList.remove("isSynced", "isSyncing", "isUnreachable");
+        if (healthInfo.synced && healthInfo.chain_id) {
+          banner.classList.add("isSynced");
+          const when = healthInfo.last_poll_at ? " · updated " + relTime(healthInfo.last_poll_at) : "";
+          text.textContent = `Synced · chain ${String(healthInfo.chain_id).slice(0, 16)}${when}`;
+        } else if (healthInfo.explorer_reachable === false) {
+          banner.classList.add("isUnreachable");
+          text.textContent = "Chain unreachable";
+        } else {
+          banner.classList.add("isSyncing");
+          text.textContent = "Syncing…";
+        }
+      }
+
+      function renderStatusPanel() {
+        const modal = document.getElementById("statusModal");
+        const listEl = document.getElementById("statusList");
+        if (!modal || modal.hidden || !listEl) return;
+        renderSyncBanner();
+        listEl.textContent = "";
+
+        // Order by status severity, then name, so problems surface at the top.
+        const order = { offline: 0, degraded: 1, maintenance: 2, deprecated: 3, checking: 4, operational: 5 };
+        const rows = (allApps || []).slice().sort((a, b) => {
+          const ha = healthMap[healthKeyFor(a)];
+          const hb = healthMap[healthKeyFor(b)];
+          const oa = order[(ha && ha.status) || "checking"] ?? 9;
+          const ob = order[(hb && hb.status) || "checking"] ?? 9;
+          return oa - ob || (a.name || "").localeCompare(b.name || "");
+        });
+
+        for (const dapp of rows) {
+          const h = healthMap[healthKeyFor(dapp)];
+          const meta = STATUS_META[(h && h.status) || "checking"] || STATUS_META.checking;
+
+          const row = document.createElement("div");
+          row.className = "statusRow";
+
+          const dot = document.createElement("span");
+          dot.className = "liveDot " + meta.cls;
+          dot.style.marginRight = "0";
+
+          const main = document.createElement("div");
+          main.className = "statusRowMain";
+          const nm = document.createElement("div");
+          nm.className = "statusRowName";
+          nm.textContent = dapp.name || "(unnamed)";
+          main.appendChild(nm);
+
+          const sub = document.createElement("div");
+          sub.className = "statusRowSub";
+          const bits = [];
+          if (h) {
+            if (h.status === "offline") bits.push("Site offline");
+            else if (h.reachable) bits.push(typeof h.latency_ms === "number" && h.latency_ms > HEALTH_SLOW_MS_CLIENT ? "Slow" : "Online");
+            if (h.last_activity_at) bits.push("active " + relTime(h.last_activity_at));
+            else if (h.activity_state === "none") bits.push("no activity yet");
+          } else {
+            bits.push("checking…");
+          }
+          sub.textContent = bits.join(" · ");
+          main.appendChild(sub);
+
+          const lbl = document.createElement("div");
+          lbl.className = "statusRowLabel " + meta.cls;
+          lbl.textContent = meta.label;
+
+          row.appendChild(dot);
+          row.appendChild(main);
+          row.appendChild(lbl);
+          listEl.appendChild(row);
+        }
+      }
+
+      (function wireStatusPanel() {
+        const modal = document.getElementById("statusModal");
+        const openBtn = document.getElementById("openStatusBtn");
+        const closeBtn = document.getElementById("statusClose");
+        if (!modal || !openBtn) return;
+        let panelTimer = null;
+        function open() {
+          modal.hidden = false;
+          renderStatusPanel();
+          loadAllHealth(); // pull a fresh snapshot on open
+          if (panelTimer) clearInterval(panelTimer);
+          panelTimer = setInterval(loadAllHealth, 30000);
+        }
+        function close() {
+          modal.hidden = true;
+          if (panelTimer) { clearInterval(panelTimer); panelTimer = null; }
+        }
+        openBtn.addEventListener("click", open);
+        if (closeBtn) closeBtn.addEventListener("click", close);
+        modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+        document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.hidden) close(); });
+      })();
+
       // --- Sort menu (now in hamburger) ---
       function updateSortUI() {
         const label = SORT_LABELS[currentSort] || "Popular";
@@ -2937,6 +3734,7 @@
         updateSortUI();
         renderDapps(allApps);
         closeHamMenu();
+        privacyPanel.classList.remove("open");
       });
 
       updateSortUI();
@@ -3081,7 +3879,9 @@
         _overlayTimers = [];
 
         if (_launchDappName) _launchDappName.textContent = dappName || "";
-        if (_launchMsg) _launchMsg.textContent = "Launching...";
+        let baseMsg = "Launching...";
+        if (isIncognito) baseMsg += " (Incognito — not recording)";
+        if (_launchMsg) _launchMsg.textContent = baseMsg;
 
         _launchOverlay.classList.remove("is-hiding");
         _launchOverlay.hidden = false;
@@ -3114,7 +3914,11 @@
           allApps = Array.isArray(json) ? json : json.apps || json.items || [];
           renderDapps(allApps);
           loadAllStats(allApps);
+          loadAllHealth();
           loadPins();
+          loadDappStatus();
+          // Keep status dots fresh in the background (cheap, additive).
+          setInterval(loadAllHealth, 30000);
         } catch (e) {
           // Log the technical detail for developers (the usernode-dev-console
           // forwarder relays this to the platform dev console); show the user a
@@ -3132,6 +3936,7 @@
       const previewNameEl = document.getElementById("previewName");
       const previewTagRow = document.getElementById("previewTagRow");
       const previewMeta = document.getElementById("previewMeta");
+      const previewStatus = document.getElementById("previewStatus");
       const previewDesc = document.getElementById("previewDesc");
       const previewDescBlock = document.getElementById("previewDescBlock");
       const previewSummary = document.getElementById("previewSummary");
@@ -3246,7 +4051,7 @@
         previewShowcase.hidden = false;
         previewShowcase.setAttribute(
           "aria-label",
-          `${dapp.name || "dapp"} feature highlights`
+          `${dappDisplayName(dapp)} feature highlights`
         );
 
         const reduced = prefersReducedMotion();
@@ -3327,8 +4132,70 @@
         });
       }
 
+      // Actually open the dapp + show the launching overlay. Single place a
+      // launch "proceeds", so the overlay never flashes for a cancelled launch.
+      function doLaunch(dapp) {
+        if (!dapp || !dapp.url) return;
+        window.open(dapp.url, "_blank", "noopener");
+        showLaunchOverlay(dapp.name || "");
+      }
+
+      // ── Launch confirmation gate (non-operational dapps) ──
+      const _launchConfirmModal = document.getElementById("launchConfirmModal");
+      const _launchConfirmMsg = document.getElementById("launchConfirmMsg");
+      const _launchConfirmGo = document.getElementById("launchConfirmGo");
+      let _pendingLaunchDapp = null;
+
+      function hideLaunchConfirm() {
+        if (!_launchConfirmModal) return;
+        _launchConfirmModal.hidden = true;
+        _pendingLaunchDapp = null;
+      }
+      function showLaunchConfirm(dapp) {
+        if (!_launchConfirmModal) { doLaunch(dapp); return; }
+        const meta = DAPP_STATUS_META[statusOf(dapp)];
+        _pendingLaunchDapp = dapp;
+        _launchConfirmMsg.textContent =
+          `${dapp.name || "This dapp"} ${meta.warn} and may not work as expected. Open it anyway?`;
+        _launchConfirmModal.hidden = false;
+        if (_launchConfirmGo) _launchConfirmGo.focus();
+      }
+      if (_launchConfirmModal) {
+        const cancel = () => hideLaunchConfirm();
+        document.getElementById("launchConfirmCancel").addEventListener("click", cancel);
+        document.getElementById("launchConfirmClose").addEventListener("click", cancel);
+        _launchConfirmModal.addEventListener("click", (e) => {
+          if (e.target === _launchConfirmModal) cancel();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (!_launchConfirmModal.hidden && e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        });
+        _launchConfirmGo.addEventListener("click", () => {
+          const d = _pendingLaunchDapp;
+          hideLaunchConfirm();
+          doLaunch(d);
+        });
+      }
+
+      // All launch entry points funnel through here. Operational dapps open
+      // immediately; others require confirmation first.
       function launchDapp(dapp) {
-        if (dapp && dapp.url) window.open(dapp.url, "_blank", "noopener");
+        if (!dapp || !dapp.url) return;
+        if (!isIncognito && dapp.pubkey) {
+          sessionBrowsingHistory.push({
+            pubkey: dapp.pubkey,
+            name: dapp.name,
+            timestamp: Date.now(),
+          });
+        }
+        if (statusOf(dapp) === "operational") {
+          doLaunch(dapp);
+        } else {
+          showLaunchConfirm(dapp);
+        }
       }
 
       // Format an ISO-ish date string into a friendly "Last updated" value.
@@ -3402,6 +4269,41 @@
           wrap.appendChild(t);
           previewMeta.appendChild(metaRow("Activity", wrap));
         }
+
+        // Status block: overall status + a reachability / last-activity sub-line.
+        const h = healthMap[healthKeyFor(dapp)];
+        const meta = STATUS_META[(h && h.status) || "checking"] || STATUS_META.checking;
+        const statusWrap = document.createElement("div");
+        const head = document.createElement("div");
+        head.style.cssText = "display:flex;align-items:center;gap:7px";
+        const dot = document.createElement("span");
+        dot.className = "liveDot " + meta.cls;
+        dot.style.marginRight = "0";
+        const lbl = document.createElement("span");
+        lbl.className = "statusRowLabel " + meta.cls;
+        lbl.textContent = meta.label;
+        head.appendChild(dot);
+        head.appendChild(lbl);
+        statusWrap.appendChild(head);
+
+        const detail = document.createElement("div");
+        detail.className = "statusRowSub";
+        const bits = [];
+        if (h) {
+          if (h.status === "offline") bits.push("Offline");
+          else if (h.reachable) bits.push(typeof h.latency_ms === "number" && h.latency_ms > HEALTH_SLOW_MS_CLIENT ? "Slow" : "Online");
+          if (h.last_checked) bits.push("checked " + relTime(h.last_checked));
+        }
+        detail.textContent = bits.join(" · ");
+        if (detail.textContent) statusWrap.appendChild(detail);
+
+        const act = document.createElement("div");
+        act.className = "statusRowSub";
+        if (h && h.last_activity_at) act.textContent = "Last on-chain activity: " + relTime(h.last_activity_at);
+        else if (h) act.textContent = "Last on-chain activity: none yet";
+        if (act.textContent) statusWrap.appendChild(act);
+
+        previewMeta.appendChild(metaRow("Status", statusWrap));
       }
 
       function buildPreviewTag(dapp) {
@@ -3496,6 +4398,48 @@
         );
       }
 
+      // Render the maintenance-status row in the preview panel: always the
+      // badge; for a dapp the current user owns, a select to change it.
+      function buildPreviewStatus(dapp) {
+        if (!previewStatus) return;
+        previewStatus.textContent = "";
+        if (!dapp || !dapp.pubkey) return;
+
+        const row = document.createElement("div");
+        row.className = "statusEditRow";
+
+        const label = document.createElement("label");
+        label.textContent = "Status";
+        row.appendChild(label);
+
+        const isOwner = ownedSet.has(dapp.pubkey);
+        if (isOwner) {
+          const sel = document.createElement("select");
+          sel.className = "statusSelect";
+          sel.setAttribute("aria-label", "Change dapp status");
+          for (const key of ["operational", "under_maintenance", "unavailable"]) {
+            const opt = document.createElement("option");
+            opt.value = key;
+            opt.textContent = DAPP_STATUS_META[key].label;
+            sel.appendChild(opt);
+          }
+          sel.value = statusOf(dapp);
+          sel.addEventListener("change", async () => {
+            const next = sel.value;
+            sel.disabled = true;
+            const ok = await setDappStatus(dapp.pubkey, next);
+            sel.disabled = false;
+            if (!ok) sel.value = statusOf(dapp);
+            else buildPreviewStatus(dapp); // refresh the badge beside the select
+          });
+          row.appendChild(makeStatusBadge(dapp));
+          row.appendChild(sel);
+        } else {
+          row.appendChild(makeStatusBadge(dapp));
+        }
+        previewStatus.appendChild(row);
+      }
+
       function openPreview(dapp, originEl) {
         if (!dapp) return;
         previewCurrentDapp = dapp;
@@ -3508,13 +4452,14 @@
           originEl ||
           document.activeElement;
 
-        previewNameEl.textContent = dapp.name || "(unnamed)";
+        previewNameEl.textContent = dappDisplayName(dapp);
 
         previewLogo.textContent = "";
         previewLogo.appendChild(makeLogo(dapp));
 
         buildPreviewTag(dapp);
         buildPreviewMeta(dapp);
+        buildPreviewStatus(dapp);
 
         buildPreviewDesc(dapp);
 
@@ -3775,9 +4720,9 @@
             const dapp = li && li.__dapp;
             if (dapp) {
               if (downTarget.closest(".launchBtn")) {
-                // Tapped the Launch button → open the hosted dapp.
+                // Tapped the Launch button → open (or confirm, if not
+                // operational). launchDapp shows the overlay once it proceeds.
                 launchDapp(dapp);
-                showLaunchOverlay(dapp.name || "");
               } else {
                 // Tapped anywhere else on the card → open the preview.
                 openPreview(dapp, li);
@@ -3900,6 +4845,7 @@
 
         continueBtn.addEventListener("click", async () => {
           showError(errForm, "");
+          const displayNameVal = F("f_display_name").value.trim();
           const body = {
             name: F("f_name").value.trim(),
             description: F("f_desc").value.trim(),
@@ -3908,6 +4854,7 @@
             pubkey: F("f_pubkey").value.trim(),
             category: F("f_category").value.trim(),
           };
+          if (displayNameVal) body.displayName = displayNameVal;
           if (!body.name) return showError(errForm, "Name is required.");
           if (!/^https:\/\//i.test(body.url)) return showError(errForm, "URL must start with https://");
           if (!body.pubkey.startsWith("ut1")) return showError(errForm, "Pubkey must start with ut1.");
@@ -3919,7 +4866,9 @@
           try {
             const resp = await fetch("/api/submissions", {
               method: "POST",
-              headers: { "content-type": "application/json" },
+              // Forward the session token (when present) so the server can
+              // record the submitter as the dapp's status owner.
+              headers: pinHeaders(true),
               body: JSON.stringify(body),
             });
             let data = null;
@@ -4024,7 +4973,7 @@
         function showAlreadyListed(dapp) {
           current = { _reloadOnClose: true };
           const safe = (s) => String(s == null ? "" : s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
-          const name = dapp && dapp.name ? safe(dapp.name) : "This dapp";
+          const name = dapp ? safe(dappDisplayName(dapp)) : "This dapp";
           const link = dapp && dapp.url
             ? `<p class="modalNote"><a href="${safe(dapp.url)}" target="_blank" rel="noopener">Open ${name} ↗</a></p>`
             : "";

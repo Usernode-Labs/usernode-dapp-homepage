@@ -2,6 +2,7 @@
 /**
  * Minimal Node server to host index.html on http://localhost:8000
  *
+ *
  * Run:
  *   node server.js              # production dapps.json
  *   node server.js --local-dev  # uses dapps.local.json (localnet URLs)
@@ -47,6 +48,7 @@ const INDEX_PATH = path.join(__dirname, "index.html");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SCREENSHOTS_DIR = path.join(PUBLIC_DIR, "screenshots");
 const MINECRAFT_PATH = path.join(PUBLIC_DIR, "minecraft.html");
+const STUMBLE_GUYS_PATH = path.join(PUBLIC_DIR, "stumble-guys.html");
 const TRIVIA_PATH = path.join(PUBLIC_DIR, "trivia.html");
 
 // Static content-type lookup for screenshot assets served from public/.
@@ -186,6 +188,18 @@ const txCache = {};       // { [pubkey]: Transaction[] }
 const seenTxIds = {};     // { [pubkey]: Set }
 const lastHeight = {};    // { [pubkey]: number } — for from_height incremental
 let statsChainId = null;
+let lastPollCompletedAt = null;   // ms — stamped at the end of each pollAllStats pass
+let explorerReachable = null;     // null = not yet attempted, true/false afterwards
+
+// ── Health / reachability ────────────────────────────────────────────────────
+// Per-dapp reachability probe results, keyed by pubkey (or by url for keyless
+// listing entries such as the bundled Mini Minecraft page). Populated by
+// pollAllHealth() each tick and joined with on-chain activity by buildHealth().
+const healthCache = {};   // { [key]: { ok, http_status, latency_ms, last_checked, seeded? } }
+
+const PROBE_TIMEOUT_MS = Number(process.env.HEALTH_PROBE_TIMEOUT_MS) || 5000;
+const HEALTH_SLOW_MS = Number(process.env.HEALTH_SLOW_MS) || 2000;            // > this → degraded
+const HEALTH_STALE_MS = Number(process.env.HEALTH_STALE_MS) || 7 * 24 * 3600 * 1000; // no tx in 7d → degraded
 
 // Global usernames address — polled the same way as dapp pubkeys so we can
 // derive `username` / `has_set_username` per wallet for /user_activity.
@@ -384,6 +398,7 @@ function explorerBaseUrl() {
 async function discoverStatsChainId() {
   try {
     const data = await httpJson("GET", `${explorerBaseUrl()}/active_chain`);
+    explorerReachable = true;
     if (data && data.chain_id) {
       if (statsChainId && statsChainId !== data.chain_id) {
         console.log(`[stats] chain_id changed: ${statsChainId} -> ${data.chain_id} — clearing all caches`);
@@ -397,6 +412,7 @@ async function discoverStatsChainId() {
       statsChainId = data.chain_id;
     }
   } catch (e) {
+    explorerReachable = false;
     console.warn(`[stats] could not discover chain ID: ${e.message}`);
   }
 }
@@ -491,7 +507,12 @@ const STATS_POLL_INTERVAL_MS = 30000;
 
 async function pollAllStats() {
   await discoverStatsChainId();
-  if (!statsChainId) return;
+
+  // Reachability probing is independent of chain availability — run it every
+  // tick so the health panel works even if the explorer is unreachable.
+  await pollAllHealth();
+
+  if (!statsChainId) { lastPollCompletedAt = Date.now(); return; }
 
   const pubkeys = loadPubkeys();
   const extra = [USERNAMES_PUBKEY];
@@ -504,6 +525,7 @@ async function pollAllStats() {
   // Credit confirmed submission payments and age out unpaid submissions.
   reconcileSubmissionPayments();
   expireStaleSubmissions();
+  lastPollCompletedAt = Date.now();
 }
 
 // ── /user_activity derivation ────────────────────────────────────────────────
@@ -584,6 +606,170 @@ function buildUserActivity() {
   return out;
 }
 
+// ── Health derivation ─────────────────────────────────────────────────────────
+// Reachability probing + per-dapp status classification. The reachability probe
+// is a server-side HTTP request to each dapp's own URL (no CORS to fight, unlike
+// a browser-side check), recorded in healthCache; buildHealth() then joins it
+// with on-chain activity recency (from txCache), the poller's sync state, and an
+// optional operator `status` field in dapps.json into a single status per dapp.
+
+// Read every listing entry (including keyless ones like the bundled Mini
+// Minecraft page) with the fields health needs. Distinct from loadDapps(), which
+// filters to pubkey-bearing entries for the stats poller.
+function loadDappsForHealth() {
+  try {
+    const data = JSON.parse(fs.readFileSync(DAPPS_PATH, "utf8"));
+    const apps = data.apps || data.items || [];
+    return apps.map((a) => ({
+      name: a.name || "(unnamed)",
+      pubkey: (a.pubkey || "").trim(),
+      url: (a.url || "").trim(),
+      status: (a.status || "").trim().toLowerCase(),
+    }));
+  } catch (e) {
+    console.warn(`[health] could not read dapps.json: ${e.message}`);
+    return [];
+  }
+}
+
+// Stable health key: prefer the on-chain pubkey, fall back to the url so keyless
+// entries still get a status.
+function healthKey(d) {
+  return d.pubkey || d.url || "";
+}
+
+// Probe a single dapp URL. HEAD with a short timeout, falling back to GET when a
+// host rejects HEAD (405/501). Any 2xx/3xx counts as reachable. Never rejects —
+// resolves a result object so one bad host can't blow up the pass.
+function probeDappUrl(url) {
+  return new Promise((resolve) => {
+    let parsed;
+    try { parsed = new URL(url); } catch (_) {
+      return resolve({ ok: false, http_status: null, latency_ms: null });
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return resolve({ ok: false, http_status: null, latency_ms: null });
+    }
+    const transport = parsed.protocol === "https:" ? https : http;
+    const start = Date.now();
+    let settled = false;
+    const finish = (r) => { if (!settled) { settled = true; resolve(r); } };
+
+    function attempt(method) {
+      const req = transport.request(
+        parsed,
+        { method, timeout: PROBE_TIMEOUT_MS, headers: { "user-agent": "usernode-dapp-homepage-healthcheck/1" } },
+        (res) => {
+          const status = res.statusCode;
+          res.resume(); // drain so the socket can be freed
+          if (method === "HEAD" && (status === 405 || status === 501)) {
+            return attempt("GET");
+          }
+          finish({ ok: status >= 200 && status < 400, http_status: status, latency_ms: Date.now() - start });
+        }
+      );
+      req.on("timeout", () => { req.destroy(); finish({ ok: false, http_status: null, latency_ms: Date.now() - start }); });
+      req.on("error", () => finish({ ok: false, http_status: null, latency_ms: Date.now() - start }));
+      req.end();
+    }
+    attempt("HEAD");
+  });
+}
+
+// Probe every listed dapp's URL in parallel (each call is independently timed, so
+// one slow host bounds the pass at PROBE_TIMEOUT_MS, not the sum). Relative URLs
+// (e.g. "/minecraft") are same-origin and marked operational without a round-trip.
+// Skipped entirely under IS_STAGING, where seedStagingHealth() owns healthCache.
+async function pollAllHealth() {
+  if (IS_STAGING) return;
+  const dapps = loadDappsForHealth();
+  await Promise.all(dapps.map(async (d) => {
+    const key = healthKey(d);
+    if (!key || !d.url) return;
+    if (d.url.startsWith("/")) {
+      healthCache[key] = { ok: true, http_status: 200, latency_ms: 0, last_checked: Date.now(), local: true };
+      return;
+    }
+    const r = await probeDappUrl(d.url);
+    healthCache[key] = { ok: r.ok, http_status: r.http_status, latency_ms: r.latency_ms, last_checked: Date.now() };
+  }));
+}
+
+// Most recent on-chain activity time (ms) seen for a key, or null. A staging seed
+// may stamp an explicit time on the health entry; otherwise derive from txCache
+// (skipping self-sends, mirroring buildUserActivity).
+function lastActivityForKey(key) {
+  const h = healthCache[key];
+  if (h && typeof h.seeded_activity_at === "number") return h.seeded_activity_at;
+  const txs = txCache[key] || [];
+  let max = null;
+  for (const tx of txs) {
+    const sender = tx.source || tx.from_pubkey || tx.from;
+    if (sender && sender === key) continue;
+    const t = typeof tx.timestamp_ms === "number" ? tx.timestamp_ms : 0;
+    if (t && (max == null || t > max)) max = t;
+  }
+  return max;
+}
+
+// Compose a single status for one dapp. Operator override wins; then reachability;
+// then latency/activity heuristics. See the spec's priority order.
+function classifyStatus(operatorStatus, h, lastActivityAt) {
+  if (operatorStatus === "deprecated") return "deprecated";
+  if (operatorStatus === "maintenance") return "maintenance";
+  if (!h || h.last_checked == null) return "checking";
+  if (!h.ok) return "offline";
+  const slow = typeof h.latency_ms === "number" && h.latency_ms > HEALTH_SLOW_MS;
+  const stale = lastActivityAt != null && (Date.now() - lastActivityAt) > HEALTH_STALE_MS;
+  if (slow || stale) return "degraded";
+  return "operational";
+}
+
+// Per-dapp health map: { [key]: { status, operator_status, reachable, ... } }.
+function buildHealth() {
+  const dapps = loadDappsForHealth();
+  const out = {};
+  for (const d of dapps) {
+    const key = healthKey(d);
+    if (!key) continue;
+    const h = healthCache[key] || null;
+    const operatorStatus = STAGING_OPERATOR_OVERRIDES[key] || d.status || "";
+    const lastActivityAt = lastActivityForKey(key);
+    const hasTxs = (txCache[key] || []).length > 0 || lastActivityAt != null;
+
+    let activity_state = "none";
+    if (lastActivityAt != null) {
+      activity_state = (Date.now() - lastActivityAt) > HEALTH_STALE_MS ? "idle" : "active";
+    } else if (hasTxs) {
+      activity_state = "active";
+    }
+
+    out[key] = {
+      status: classifyStatus(operatorStatus, h, lastActivityAt),
+      operator_status: operatorStatus || "operational",
+      reachable: h ? !!h.ok : null,
+      http_status: h ? (h.http_status == null ? null : h.http_status) : null,
+      latency_ms: h ? (h.latency_ms == null ? null : h.latency_ms) : null,
+      last_checked: h ? (h.last_checked == null ? null : h.last_checked) : null,
+      last_activity_at: lastActivityAt,
+      activity_state,
+      indexed: !!statsCache[key] || !!(h && h.seeded),
+    };
+  }
+  return out;
+}
+
+// Top-level health payload served at GET /api/health.
+function buildHealthResponse() {
+  return {
+    chain_id: statsChainId,
+    synced: !!statsChainId,
+    explorer_reachable: explorerReachable,
+    last_poll_at: lastPollCompletedAt,
+    dapps: buildHealth(),
+  };
+}
+
 // ── Submission payment reconciliation + auto-publish ──────────────────────────
 // Runs each poll tick after the Reserve address has been polled. Scans the
 // Reserve's inbound transfers for confirmed payments whose memo `sid` matches a
@@ -637,6 +823,12 @@ function reconcileSubmissionPayments() {
     touchSubmission(sub);
     consumedTxIds.add(txId);
     dirty = true;
+
+    // Bind the submitter as the dapp's status owner. Fire-and-forget: a DB
+    // failure here must not block publication (the fee is already burned; the
+    // owner binding can be backfilled on first edit). Idempotent upsert.
+    upsertDappStatusOwner(sub.dapp.pubkey, sub.owner_user_id);
+
     console.log(`[submit] payment confirmed for ${sub.id} (${amount} tokens from ${sub.payer}) — published "${sub.dapp.name}"`);
   }
 
@@ -825,6 +1017,47 @@ function seedStagingFixtures() {
   console.log("[staging] seeded demo submissions + listed dapp for conflict testing");
 }
 
+// ── Staging health seed ───────────────────────────────────────────────────────
+// Health is derived live from HTTP probes + the chain poller, so a staging
+// preview (real hosts may be unreachable, txCache empty) would otherwise render
+// every dapp as offline/checking. Seed an obviously-synthetic spread covering all
+// status colors so the dots + panel are reviewable. pollAllHealth() short-circuits
+// under IS_STAGING so this seed is never clobbered. Strictly a no-op in prod.
+//
+// The maintenance example is applied as an operator override here rather than by
+// editing dapps.json (which would mark a live dapp under maintenance in prod too).
+const STAGING_OPERATOR_OVERRIDES = IS_STAGING
+  ? { "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05": "maintenance" } // Last One Wins
+  : {};
+
+function seedStagingHealth() {
+  const now = Date.now();
+  statsChainId = statsChainId || "staging-demo-chain";
+  explorerReachable = true;
+  lastPollCompletedAt = now;
+  const put = (key, entry, activityAgoMs, stat) => {
+    healthCache[key] = { last_checked: now, seeded: true, ...entry };
+    if (typeof activityAgoMs === "number") healthCache[key].seeded_activity_at = now - activityAgoMs;
+    if (stat) statsCache[key] = stat;
+  };
+  // Opinion Market — operational, fast, active minutes ago.
+  put("ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms",
+    { ok: true, http_status: 200, latency_ms: 180 }, 4 * 60 * 1000, { users: 42, txns: 318 });
+  // Falling Sands — reachable but slow → degraded.
+  put("ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu",
+    { ok: true, http_status: 200, latency_ms: 2400 }, 55 * 60 * 1000, { users: 17, txns: 96 });
+  // Last One Wins — maintenance (operator override), still reachable.
+  put("ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05",
+    { ok: true, http_status: 200, latency_ms: 240 }, 30 * 60 * 1000, { users: 23, txns: 140 });
+  // Echo Diagnostic — probe failed → offline.
+  put("ut1rfa6arxcy84ysusvfg309ly6guk3kch9qvgktn32d88xk704u5tsges8uh",
+    { ok: false, http_status: null, latency_ms: null }, null, null);
+  // Mini Minecraft — bundled local route, operational.
+  put("/minecraft", { ok: true, http_status: 200, latency_ms: 0, local: true }, 2 * 60 * 60 * 1000, null);
+  console.log("[health] seeded staging health spread (5 demo dapps)");
+}
+if (IS_STAGING) seedStagingHealth();
+
 // Start background polling
 function startBackground() {
   loadSubmissions();
@@ -864,6 +1097,21 @@ const SEED_PINS = [
   { user_id: "staging-demo-user-2", pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05" }, // Last One Wins
 ];
 
+// Allowed maintenance-status values. Mirrors the dapp_status CHECK constraint.
+const DAPP_STATUSES = ["operational", "under_maintenance", "unavailable"];
+
+// dapp_status is `staging:private` (see migration COMMENT) because each row ties
+// a Usernode identity (owner_user_id) to a dapp. The public status *value* is
+// reproduced into staging via this seed block rather than copied from prod, so
+// the badge colors, launch warning, and owner editor are all exercisable in a
+// staging preview. Echo Diagnostic is intentionally left unseeded to verify the
+// "no row ⇒ operational, no editor" default path.
+const SEED_DAPP_STATUS = [
+  { pubkey: "ut1zkj9p90e0w0hqsnmr70xmzdcvhrj80upajpw67eywszu2g0qknksl3mlms", status: "operational",       owner_user_id: "staging-demo-user-1" }, // Opinion Market
+  { pubkey: "ut1r96pdaa7h2k4vf62w3w598fyrelv9wru4t53qtgswgfzpsvz77msj588uu", status: "under_maintenance", owner_user_id: "staging-demo-user-1" }, // Falling Sands
+  { pubkey: "ut1y8t50glzr7gm424yxm0tpkkyr8w5q64933sgd0dm3vzzm9ntwruqjncx05", status: "unavailable",       owner_user_id: "staging-demo-user-2" }, // Last One Wins
+];
+
 async function initPinsDb() {
   if (!PgPool) return;
   if (!DATABASE_URL) {
@@ -888,8 +1136,28 @@ async function initPinsDb() {
     // staging:private — staging gets structure only, never prod rows.
     await pinsPool.query(`COMMENT ON TABLE dapp_pins IS 'staging:private'`);
 
+    // dapp_status — owner-declared maintenance status, keyed by dapp pubkey.
+    // dApps live in dapps.json (a committed file), not in Postgres, so the
+    // "status column" is implemented as a sibling table here. Absence of a row
+    // means `operational`. owner_user_id (the submitter's JWT id) is nullable so
+    // seed/legacy dApps simply have no one authorized to edit.
+    await pinsPool.query(`
+      CREATE TABLE IF NOT EXISTS dapp_status (
+        dapp_pubkey   TEXT        PRIMARY KEY,
+        status        TEXT        NOT NULL DEFAULT 'operational'
+                        CHECK (status IN ('operational', 'under_maintenance', 'unavailable')),
+        owner_user_id TEXT,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await pinsPool.query(
+      `CREATE INDEX IF NOT EXISTS dapp_status_owner_idx ON dapp_status (owner_user_id)`
+    );
+    // staging:private — a row links a Usernode identity to a dapp it owns.
+    await pinsPool.query(`COMMENT ON TABLE dapp_status IS 'staging:private'`);
+
     pinsReady = true;
-    console.log("[pins] dapp_pins table ready");
+    console.log("[pins] dapp_pins + dapp_status tables ready");
 
     if (IS_STAGING) {
       for (const p of SEED_PINS) {
@@ -901,6 +1169,16 @@ async function initPinsDb() {
         );
       }
       console.log(`[pins] seeded ${SEED_PINS.length} staging demo pin(s)`);
+
+      for (const s of SEED_DAPP_STATUS) {
+        await pinsPool.query(
+          `INSERT INTO dapp_status (dapp_pubkey, status, owner_user_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (dapp_pubkey) DO NOTHING`,
+          [s.pubkey, s.status, s.owner_user_id]
+        );
+      }
+      console.log(`[pins] seeded ${SEED_DAPP_STATUS.length} staging demo status row(s)`);
     }
   } catch (e) {
     pinsReady = false;
@@ -1043,8 +1321,259 @@ async function handlePins(req, res, urlObj) {
   }
 }
 
+// ── Stumble Guys leaderboard (public scores) ─────────────────────────────────
+// The in-app Stumble Guys game (public/stumble-guys.html) keeps a single global
+// high-score table. Unlike dapp_pins (per-user, private), this is public app
+// content — anyone can read the board and anyone can submit a score, matching
+// the app's public posture (same as the unauthenticated submit-a-dapp flow).
+// The table is therefore PUBLIC (default): staging gets a copy of prod scores,
+// and we additionally seed a few obviously-synthetic rows so a fresh/empty
+// staging DB still renders a populated board.
+
+let scoresPool = null;   // pg.Pool once initialised (separate pool from pins)
+let scoresReady = false; // true after a successful migration
+
+const STUMBLE_NAME_MAX = 16;
+const STUMBLE_SCORE_MAX = 1000000;
+const STUMBLE_TOP_N = 20;
+
+// Obviously-synthetic staging rows so the leaderboard + submit-then-refresh
+// flow can be exercised in a staging preview before any real traffic exists.
+const SEED_STUMBLE_SCORES = [
+  { name: "staging-bot-ada", score: 4200 },
+  { name: "staging-bot-lin", score: 3800 },
+  { name: "staging-bot-rex", score: 3450 },
+  { name: "staging-bot-mia", score: 2900 },
+  { name: "staging-bot-kai", score: 2510 },
+  { name: "staging-bot-uma", score: 1980 },
+  { name: "staging-bot-ozzy", score: 1440 },
+  { name: "staging-bot-pip", score: 900 },
+];
+
+async function initScoresDb() {
+  if (!PgPool) return;
+  if (!DATABASE_URL) {
+    console.warn("[scores] DATABASE_URL not set — leaderboard disabled");
+    return;
+  }
+  try {
+    scoresPool = new PgPool({ connectionString: DATABASE_URL });
+    scoresPool.on("error", (err) => console.warn(`[scores] pool error: ${err.message}`));
+
+    await scoresPool.query(`
+      CREATE TABLE IF NOT EXISTS stumble_scores (
+        id          BIGSERIAL   PRIMARY KEY,
+        player_name TEXT        NOT NULL,
+        score       INTEGER     NOT NULL,
+        user_id     TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await scoresPool.query(
+      `CREATE INDEX IF NOT EXISTS stumble_scores_score_idx
+         ON stumble_scores (score DESC, created_at)`
+    );
+    // Public global leaderboard — staging may carry a copy of prod rows.
+    await scoresPool.query(`COMMENT ON TABLE stumble_scores IS 'staging:public'`);
+
+    scoresReady = true;
+    console.log("[scores] stumble_scores table ready");
+
+    if (IS_STAGING) {
+      // Only seed when empty so repeated staging rebuilds don't pile up dupes.
+      const { rows } = await scoresPool.query(
+        `SELECT 1 FROM stumble_scores LIMIT 1`
+      );
+      if (rows.length === 0) {
+        for (const s of SEED_STUMBLE_SCORES) {
+          await scoresPool.query(
+            `INSERT INTO stumble_scores (player_name, score) VALUES ($1, $2)`,
+            [s.name, s.score]
+          );
+        }
+        console.log(`[scores] seeded ${SEED_STUMBLE_SCORES.length} staging demo score(s)`);
+      }
+    }
+  } catch (e) {
+    scoresReady = false;
+    console.warn(`[scores] could not initialise database: ${e.message}`);
+  }
+}
+
+// Sanitize an incoming display name: strip control chars, collapse whitespace,
+// clamp to STUMBLE_NAME_MAX. Returns "" when nothing usable remains.
+function sanitizeScoreName(raw) {
+  if (typeof raw !== "string") return "";
+  // eslint-disable-next-line no-control-regex
+  const cleaned = raw.replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim();
+  return cleaned.slice(0, STUMBLE_NAME_MAX);
+}
+
+async function handleScores(req, res) {
+  // Public — no auth gate (matches the app's public posture). We still read the
+  // JWT opportunistically to stamp user_id for future de-dup, but never require it.
+  if (req.method === "GET") {
+    if (!scoresReady) {
+      return jsonRes(res, 200, { scores: [], enabled: false });
+    }
+    try {
+      const { rows } = await scoresPool.query(
+        `SELECT player_name, score, created_at
+           FROM stumble_scores
+          ORDER BY score DESC, created_at ASC
+          LIMIT $1`,
+        [STUMBLE_TOP_N]
+      );
+      return jsonRes(res, 200, {
+        enabled: true,
+        scores: rows.map((r) => ({
+          name: r.player_name,
+          score: r.score,
+          created_at: r.created_at,
+        })),
+      });
+    } catch (e) {
+      console.warn(`[scores] read error: ${e.message}`);
+      return jsonRes(res, 500, { error: "internal error" });
+    }
+  }
+
+  if (req.method === "POST") {
+    if (!scoresReady) {
+      return jsonRes(res, 503, { error: "leaderboard unavailable" });
+    }
+    const body = await readBody(req);
+    if (body === undefined) return jsonRes(res, 400, { error: "invalid JSON" });
+    const name = sanitizeScoreName(body && body.name);
+    if (!name) return jsonRes(res, 400, { error: "name required" });
+    const score = Math.floor(Number(body && body.score));
+    if (!Number.isFinite(score) || Number.isNaN(score)) {
+      return jsonRes(res, 400, { error: "score must be a number" });
+    }
+    const clamped = Math.max(0, Math.min(STUMBLE_SCORE_MAX, score));
+    const user = getUser(req);
+    const userId = user && user.id != null ? String(user.id) : null;
+    try {
+      await scoresPool.query(
+        `INSERT INTO stumble_scores (player_name, score, user_id)
+         VALUES ($1, $2, $3)`,
+        [name, clamped, userId]
+      );
+      const { rows } = await scoresPool.query(
+        `SELECT COUNT(*)::int AS ahead FROM stumble_scores WHERE score > $1`,
+        [clamped]
+      );
+      const rank = (rows[0] ? rows[0].ahead : 0) + 1;
+      return jsonRes(res, 200, { accepted: true, score: clamped, rank });
+    } catch (e) {
+      console.warn(`[scores] write error: ${e.message}`);
+      return jsonRes(res, 500, { error: "internal error" });
+    }
+  }
+
+  return jsonRes(res, 405, { error: "method not allowed" });
+}
+
+// ── dapp_status helpers ──────────────────────────────────────────────────────
+// Owner-declared maintenance status. Reads default to `operational` for any
+// pubkey without a row; every path degrades gracefully when the DB is absent.
+
+// Upsert an owner binding for a freshly-published dapp. Idempotent: never
+// clobbers an existing owner (COALESCE keeps the first one), and leaves any
+// status the owner may have already set untouched. Fire-and-forget safe.
+async function upsertDappStatusOwner(pubkey, ownerUserId) {
+  if (!pinsReady || !pinsPool || !pubkey) return;
+  try {
+    await pinsPool.query(
+      `INSERT INTO dapp_status (dapp_pubkey, status, owner_user_id)
+       VALUES ($1, 'operational', $2)
+       ON CONFLICT (dapp_pubkey)
+       DO UPDATE SET owner_user_id = COALESCE(dapp_status.owner_user_id, EXCLUDED.owner_user_id)`,
+      [pubkey, ownerUserId || null]
+    );
+  } catch (e) {
+    console.warn(`[status] could not bind owner for ${String(pubkey).slice(0, 16)}…: ${e.message}`);
+  }
+}
+
+// GET /api/dapp-status — public. Returns the non-default status map plus, when a
+// valid JWT is presented, the list of pubkeys the caller owns (so the frontend
+// can show the editor without ever learning another user's id).
+async function handleDappStatus(req, res, urlObj) {
+  if (req.method === "GET") {
+    if (!pinsReady || !pinsPool) {
+      return sendJson(res, 200, { statuses: {}, owned: [] });
+    }
+    const user = getUser(req);
+    try {
+      const { rows } = await pinsPool.query(
+        `SELECT dapp_pubkey, status, owner_user_id FROM dapp_status`
+      );
+      const statuses = {};
+      const owned = [];
+      const uid = user && user.id != null ? String(user.id) : null;
+      for (const r of rows) {
+        // Only surface non-default rows; the client treats any missing pubkey
+        // as operational.
+        if (r.status && r.status !== "operational") statuses[r.dapp_pubkey] = r.status;
+        if (uid && r.owner_user_id != null && String(r.owner_user_id) === uid) {
+          owned.push(r.dapp_pubkey);
+        }
+      }
+      return sendJson(res, 200, { statuses, owned });
+    } catch (e) {
+      console.warn(`[status] read error: ${e.message}`);
+      return sendJson(res, 200, { statuses: {}, owned: [] });
+    }
+  }
+
+  if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
+    const user = getUser(req);
+    if (!user || user.id == null) return sendJson(res, 401, { error: "auth required" });
+    if (!pinsReady || !pinsPool) return sendJson(res, 503, { error: "status store unavailable" });
+
+    return readJsonBody(req, 16 * 1024, async (err, body) => {
+      if (err) return sendJson(res, 400, { error: err.message });
+      const pubkey = body && typeof body.pubkey === "string" ? body.pubkey.trim() : "";
+      const status = body && typeof body.status === "string" ? body.status.trim() : "";
+      if (!pubkey) return sendJson(res, 400, { error: "pubkey required" });
+      if (!DAPP_STATUSES.includes(status)) {
+        return sendJson(res, 400, { error: "status must be one of: " + DAPP_STATUSES.join(", ") });
+      }
+      if (!loadPubkeys().includes(pubkey)) {
+        return sendJson(res, 404, { error: "unknown dapp" });
+      }
+
+      const uid = String(user.id);
+      try {
+        const { rows } = await pinsPool.query(
+          `SELECT owner_user_id FROM dapp_status WHERE dapp_pubkey = $1`,
+          [pubkey]
+        );
+        const owner = rows.length ? rows[0].owner_user_id : null;
+        // Only the recorded owner may change status. A dapp with no recorded
+        // owner (seed/legacy) is not editable by anyone.
+        if (owner == null || String(owner) !== uid) {
+          return sendJson(res, 403, { error: "only the dapp owner can change its status" });
+        }
+        await pinsPool.query(
+          `UPDATE dapp_status SET status = $2, updated_at = now() WHERE dapp_pubkey = $1`,
+          [pubkey, status]
+        );
+        return sendJson(res, 200, { pubkey, status });
+      } catch (e) {
+        console.warn(`[status] write error: ${e.message}`);
+        return sendJson(res, 500, { error: "internal error" });
+      }
+    });
+  }
+
+  return sendJson(res, 405, { error: "method not allowed" });
+}
+
 // Kick off DB init (non-blocking — the homepage serves regardless).
 initPinsDb();
+initScoresDb();
 
 // ── HTTP helpers for the submit/review API ───────────────────────────────────
 
@@ -1089,6 +1618,7 @@ function validateSubmissionInput(body) {
   if (!body || typeof body !== "object") return { ok: false, error: "Missing submission body." };
   const str = (v) => (typeof v === "string" ? v.trim() : "");
   const name = str(body.name);
+  const displayName = str(body.displayName);
   const description = str(body.description);
   const author = str(body.author);
   const url = str(body.url);
@@ -1098,6 +1628,7 @@ function validateSubmissionInput(body) {
 
   if (!name) return { ok: false, error: "Name is required." };
   if (name.length > 80) return { ok: false, error: "Name is too long (max 80 chars)." };
+  if (displayName.length > 80) return { ok: false, error: "Display name is too long (max 80 chars)." };
   if (!url) return { ok: false, error: "URL is required." };
   let parsed;
   try { parsed = new URL(url); } catch (_) { return { ok: false, error: "URL is not valid." }; }
@@ -1108,6 +1639,7 @@ function validateSubmissionInput(body) {
   if (logo && logo.length > 8000) return { ok: false, error: "Logo SVG is too large." };
 
   const dapp = { name, description, author: author || "unknown", url, pubkey };
+  if (displayName) dapp.displayName = displayName;
   if (category) dapp.category = category;
   if (logo) dapp.logo = logo;
   return { ok: true, dapp };
@@ -1776,8 +2308,38 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Public Stumble Guys leaderboard (GET top scores / POST a score). No auth —
+  // global public content, same posture as the rest of the app.
+  if (pathname === "/api/stumble-scores") {
+    handleScores(req, res);
+    return;
+  }
+
+  if (pathname === "/api/dapp-status") {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    handleDappStatus(req, res, urlObj);
+    return;
+  }
+
   if (pathname === "/api/stats" && (req.method === "GET" || req.method === "HEAD")) {
     const body = JSON.stringify(statsCache);
+    if (req.method === "HEAD") {
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+        "cache-control": "no-store",
+      });
+      return res.end();
+    }
+    return send(res, 200, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+    }, body);
+  }
+
+  if (pathname === "/api/health" && (req.method === "GET" || req.method === "HEAD")) {
+    const body = JSON.stringify(buildHealthResponse());
     if (req.method === "HEAD") {
       res.writeHead(200, {
         "content-type": "application/json",
@@ -1865,6 +2427,12 @@ const server = http.createServer((req, res) => {
     if (!COMMUNITY_FUND_RESERVE_ADDRESS) {
       return sendJson(res, 503, { error: "Submissions are not currently open (no Reserve address configured)." });
     }
+    // Optional: bind the submitter's Usernode identity (from the iframe JWT) so
+    // they — and only they — can later change this dapp's maintenance status.
+    // Anonymous submissions (no token) still work; they just have no owner.
+    const submitter = getUser(req);
+    const ownerUserId = submitter && submitter.id != null ? String(submitter.id) : null;
+
     return readJsonBody(req, 64 * 1024, (err, body) => {
       if (err) {
         // Log the parse detail server-side; return a fixed, generic message.
@@ -1918,6 +2486,7 @@ const server = http.createServer((req, res) => {
         status: "awaiting_payment",
         rev: 1,
         dapp: v.dapp,
+        owner_user_id: ownerUserId,
         payer: null,
         payment_tx_hash: null,
         paid_amount: null,
@@ -2171,6 +2740,29 @@ const server = http.createServer((req, res) => {
           500,
           { "content-type": "text/plain" },
           `Failed to read minecraft.html: ${err.message}\n`
+        );
+      }
+      const headers = {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      };
+      if (req.method === "HEAD") {
+        res.writeHead(200, { ...headers, "content-length": buf.length });
+        return res.end();
+      }
+      return send(res, 200, headers, buf);
+    });
+  }
+
+  // Stumble Guys — self-contained obstacle-dodging arcade game page.
+  if (pathname === "/stumble-guys" || pathname === "/stumble-guys.html") {
+    return fs.readFile(STUMBLE_GUYS_PATH, (err, buf) => {
+      if (err) {
+        return send(
+          res,
+          500,
+          { "content-type": "text/plain" },
+          `Failed to read stumble-guys.html: ${err.message}\n`
         );
       }
       const headers = {
