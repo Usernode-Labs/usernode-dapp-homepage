@@ -176,7 +176,8 @@
       "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#15803d'/><path d='M20 9c-4 4-8 7-8 11a5 5 0 0 0 10 0c0 4-4 7-8 11h12c-4-4-8-7-8-11a5 5 0 0 0 10 0c0-4-4-7-8-11z' fill='#fff'/></svg>",
       "category": "Game",
       "version": "0.1.0",
-      "updated": "2026-06-13"
+      "updated": "2026-06-13",
+      "status": "maintenance"
     },
     {
       "name": "Mini Minecraft",
