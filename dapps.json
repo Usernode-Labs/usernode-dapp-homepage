@@ -171,7 +171,7 @@
       "longDescription": "Usernode Hold'em is a real-money 6-max No-Limit Texas Hold'em cash table running on the Usernode chain. Buy in with an on-chain transfer, play full betting rounds with all-in side pots and automatic showdown, and verify every deal yourself: each hand publishes a commitment before the cards are dealt and reveals its seed on-chain at the end, so the shuffle is provably fair and auditable per hand.",
       "author": "Usernode Labs",
       "developerUrl": "https://usernodelabs.org",
-      "url": "https://usernode-holdem.social-vibecoding.usernodelabs.org",
+      "url": "/maintenance",
       "pubkey": "ut1p0p7y8ujacndc60r4a7pzk45dufdtarp6satvc0md7866633u8sqagm3az",
       "logo": "<svg viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='10' fill='#15803d'/><path d='M20 9c-4 4-8 7-8 11a5 5 0 0 0 10 0c0 4-4 7-8 11h12c-4-4-8-7-8-11a5 5 0 0 0 10 0c0-4-4-7-8-11z' fill='#fff'/></svg>",
       "category": "Game",
