@@ -2477,6 +2477,12 @@
             <button class="convertBtn" id="openConvertBtn" type="button">Convert</button>
           </div>
 
+          <!-- Balance placeholder (shown when not signed in) -->
+          <div class="signinPrompt" id="balancePlaceholder" hidden>
+            <strong>Sign in through Usernode to access points and token features.</strong>
+            <span>Earn points by posting and liking, then convert them to tokens.</span>
+          </div>
+
           <!-- Composer (signed-in) OR sign-in prompt (anonymous) -->
           <div class="composer" id="composer" hidden>
             <textarea id="composerText" rows="3" maxlength="280" placeholder="What's happening on Usernode?"></textarea>
@@ -5150,6 +5156,7 @@
         const feedUnavailable = document.getElementById("feedUnavailable");
         const leaderList = document.getElementById("leaderList");
         const leaderEmpty = document.getElementById("leaderEmpty");
+        const balancePlaceholder = document.getElementById("balancePlaceholder");
 
         const convertModal = document.getElementById("convertModal");
         const openConvertBtn = document.getElementById("openConvertBtn");
@@ -5224,6 +5231,7 @@
           const signedIn = !!me;
           composer.hidden = !signedIn || unavailable;
           feedStatus.hidden = !signedIn || unavailable;
+          balancePlaceholder.hidden = signedIn || unavailable;
           signinPrompt.hidden = signedIn || unavailable;
           if (signedIn) {
             statAvail.textContent = me.points_available;
@@ -5251,6 +5259,7 @@
           feedUnavailable.hidden = false;
           composer.hidden = true;
           feedStatus.hidden = true;
+          balancePlaceholder.hidden = true;
           signinPrompt.hidden = true;
         }
 
