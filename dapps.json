@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updated_at": 0,
+  "version": 2,
+  "updated_at": 1781659018731,
   "apps": [
     {
       "name": "Opinion Market",
@@ -276,6 +276,14 @@
           "body": "Top scorers who add a Usernode wallet are flagged eligible — payout in a later phase."
         }
       ]
+    },
+    {
+      "name": "Staging Demo Listed Dapp",
+      "description": "Staging demo — already on the homepage (used to demo the conflict flow).",
+      "author": "staging-demo-user",
+      "url": "https://staging-demo-listed.example.com",
+      "pubkey": "ut1stagingdemolisted0000000000000000000000000000000000000000",
+      "category": "Game"
     }
   ]
 }
