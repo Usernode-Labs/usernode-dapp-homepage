@@ -80,10 +80,14 @@
       .felt { border-radius: 32px; }
       .card { width: 34px; height: 48px; font-size: 15px; }
     }
+    /* Hero card strip — larger cards for the player's own hole cards */
+    .card-hero { width: 58px; height: 84px; font-size: 22px; }
     @media (max-width: 440px) {
       /* Tighten seats so the outermost ones don't clip past the felt edge. */
       .seat-spot { min-width: 74px !important; padding: 2px 4px; }
       .badge { width: 18px; height: 18px; line-height: 18px; font-size: 9px; }
+      .card-hero { width: 46px; height: 66px; font-size: 18px; }
+      .hero-label { display: none; }
     }
   </style>
 </head>
@@ -432,15 +436,30 @@
               <div class="text-[11px] text-amber-300 chip-pill rounded px-1 inline-block mt-0.5">${s.stack}${s.folded ? ' · folded' : ''}${s.allIn ? ' · all-in' : ''}</div>
               <div class="mt-1 flex gap-0.5 justify-center" style="transform:scale(.62);transform-origin:center">${cards}</div>
               ${s.committed ? `<div class="text-[10px] text-slate-200 mt-0.5">bet ${s.committed}</div>` : ''}
+              ${s.isYou && s.status === 'sitting_out' && !hand ? `<button onclick="sitIn()" class="text-xs bg-emerald-700 hover:bg-emerald-600 rounded px-2 py-1 mt-1 w-full">Sit In</button>` : ''}
               ${s.is_bot && !isSpec ? `<button onclick="startBuyin(${s.seat_no})" class="text-[10px] text-slate-500 hover:text-blue-300 mt-0.5 w-full">Take seat</button>` : ''}
             ` : (isSpec ? `<div class="py-3 text-xs text-slate-600 text-center">Empty</div>` : `<button onclick="startBuyin(${s.seat_no})" class="text-xs text-slate-400 hover:text-emerald-300 py-3 w-full">Sit here</button>`)}
           </div>`;
       }).join('');
 
       const board = hand ? hand.board : [];
-      const boardEls = board.map((c, idx) => cardHtml(c, false, '', idx >= prevBoardLen)).join('')
-        || '<span class="text-slate-300 text-sm">Waiting for players to be seated…</span>';
+      let boardEls;
+      if (hand) {
+        // Active hand: 5 fixed slots — real cards where dealt, faint placeholders elsewhere.
+        boardEls = Array.from({length: 5}, (_, i) =>
+          board[i] !== undefined
+            ? cardHtml(board[i], false, '', i >= prevBoardLen)
+            : '<span class="card" style="background:transparent;border:1px dashed #334155;opacity:.4;color:transparent">x</span>'
+        ).join('');
+      } else {
+        boardEls = '<span class="text-slate-300 text-sm">Waiting for players to be seated…</span>';
+      }
       const pot = hand && hand.pots && hand.pots.length ? hand.pots.reduce((a, p) => a + p.amount, 0) : 0;
+      const potDisplay = (hand && hand.pots && hand.pots.length > 1)
+        ? hand.pots.map((p, i) =>
+            `<div class="text-amber-300 font-bold text-base">${i === 0 ? 'Main' : 'Side'} pot ${p.amount}</div>`
+          ).join('')
+        : `<div class="text-amber-300 font-bold text-lg">Pot ${pot}</div>`;
       const phase = hand ? (PHASE_LABEL[hand.street] || hand.street) : 'Lobby';
 
       $('app').innerHTML = `
@@ -460,13 +479,14 @@
         <div class="relative felt mx-auto" style="max-width:680px;height:380px">
           <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center w-full px-4">
             <div class="flex gap-1 justify-center mb-2 min-h-[60px] items-center">${boardEls}</div>
-            <div class="inline-block chip-pill rounded-full px-4 py-1 text-amber-300 font-bold text-lg">Pot ${pot}</div>
+            <div class="chip-pill rounded-xl px-4 py-1 text-center">${potDisplay}</div>
             ${hand && hand.timer && hand.timer.paused ? `<div class="text-[11px] text-amber-200 mt-2">⏸ timer paused — confirming on-chain…</div>` : ''}
             ${hand && hand.commitment ? `<div class="text-[10px] text-emerald-200/60 mt-1">provably-fair commit ${hand.commitment.slice(0, 12)}…</div>` : ''}
           </div>
           ${seatEls}
         </div>
         ${renderResultBanner(hand)}
+        ${renderHeroCards(view, winSeats, newHand)}
         <div id="historyWrap" class="mt-5"></div>`;
 
       renderActionBar(view);
@@ -492,6 +512,31 @@
         <div class="text-xs uppercase tracking-wide text-amber-200/80 mb-1">Showdown</div>
         ${lines || '<div class="text-base font-semibold">Hand complete</div>'}
       </div>`;
+    }
+
+    // ── Hero card strip (player's own hole cards, large format) ──────────────
+    function renderHeroCards(view, winSeats, newHand) {
+      if (view.isSpectator) return '';
+      const hand = view.hand;
+      if (!hand) return '';
+      const youSeat = view.you.seat;
+      if (youSeat == null) return '';
+      const mySeat = view.seats.find((s) => s.seat_no === youSeat);
+      if (!mySeat || !mySeat.holeCards || !mySeat.holeCards.length) return '';
+      const isWinner = hand.complete && winSeats.has(youSeat);
+      const cards = mySeat.holeCards.map((c) => cardHtml(c, false, 'card-hero' + (isWinner ? ' win' : ''), newHand)).join('');
+      return `<div class="mt-3 flex flex-col items-center gap-1 py-3" style="background:#0b122088;border-top:1px solid #1e293b;border-bottom:1px solid #1e293b">
+        <div class="hero-label text-xs text-slate-400 mb-1">Your hand</div>
+        <div class="flex gap-2">${cards}</div>
+      </div>`;
+    }
+
+    // ── Sit In ─────────────────────────────────────────────────────────────
+    async function sitIn() {
+      try {
+        await api(`/api/tables/${CURRENT_TABLE}/sitin`, { method: 'POST', body: '{}' });
+        toast("You're back in — dealt into the next hand.", 'info');
+      } catch (e) { toast(e.message); }
     }
 
     // ── Action timer ring + countdown ──────────────────────────────────────
@@ -665,9 +710,21 @@
         const rows = data.hands.map((h) => {
           const w = (h.result && h.result.winners) || [];
           const wtxt = w.map((x) => `${escapeHtml(x.username || ('seat ' + x.seat))} +${x.amount}`).join(', ');
-          return `<div class="flex items-center justify-between bg-slate-800/50 rounded-lg px-3 py-2 text-sm">
-            <div>#${h.hand_no} · <span class="text-slate-400">${(h.board || []).join(' ')}</span> · ${wtxt}</div>
-            <button onclick="verifyHand('${h.id}')" class="text-xs bg-slate-700 hover:bg-slate-600 rounded px-2 py-1">Verify ✓</button>
+          // Show revealed hole cards (seat → [card1, card2]) for showdown hands.
+          const revEntries = Object.entries((h.result && h.result.revealed) || {});
+          const revHtml = revEntries.length
+            ? '<div class="flex flex-wrap gap-3 mt-1">' +
+              revEntries.map(([seat, cards]) => {
+                const name = (h.result.handNames || {})[seat] || '';
+                return `<span class="flex items-center gap-1">${cardHtml(cards[0])}${cardHtml(cards[1])}<span class="text-xs text-slate-400 ml-1">${escapeHtml(name)}</span></span>`;
+              }).join('') +
+              '</div>'
+            : '';
+          return `<div class="bg-slate-800/50 rounded-lg px-3 py-2 text-sm">
+            <div class="flex items-center justify-between">
+              <div>#${h.hand_no} · <span class="text-slate-400">${(h.board || []).join(' ')}</span> · ${wtxt}</div>
+              <button onclick="verifyHand('${h.id}')" class="text-xs bg-slate-700 hover:bg-slate-600 rounded px-2 py-1 shrink-0 ml-2">Verify ✓</button>
+            </div>${revHtml}
           </div>`;
         }).join('');
         $('historyWrap').innerHTML = `<h3 class="font-semibold mb-2">Hand history</h3><div class="space-y-1">${rows}</div>`;
