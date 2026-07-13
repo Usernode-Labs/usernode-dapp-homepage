@@ -1,5 +1,5 @@
 {
-  "name": "Usernode DApps Hub",
+  "name": "Usernode DApps Hub (Test Dapp)",
   "secrets": [
     {
       "key": "TREASURY_ADDRESS",
