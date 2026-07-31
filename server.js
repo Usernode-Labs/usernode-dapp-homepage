@@ -2312,6 +2312,14 @@ const server = http.createServer((req, res) => {
     }
   })();
 
+  // Browsers request /favicon.ico on every page load. Answer it explicitly with
+  // 204 No Content (before any route/auth handling) so it never falls through to
+  // the index.html catch-all and never logs a console error.
+  if (pathname === "/favicon.ico") {
+    res.writeHead(204);
+    return res.end();
+  }
+
   if (pathname.startsWith(EXPLORER_PROXY_PREFIX)) {
     const subPath = pathname.slice(EXPLORER_PROXY_PREFIX.length);
     return proxyExplorer(req, res, subPath);
