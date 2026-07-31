@@ -71,7 +71,7 @@ const DAPPS_PATH = (() => {
   return path.join(__dirname, "dapps.json");
 })();
 
-const JWT_SECRET = process.env.JWT_SECRET || "";
+const USERNODE_JWT_PUBLIC_KEY = process.env.USERNODE_JWT_PUBLIC_KEY || "";
 const DATABASE_URL = process.env.DATABASE_URL || "";
 
 // ── Submit-a-dapp config ──────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ const SUBMISSION_FEE = Number(process.env.SUBMISSION_FEE) || 1000;
 const SUBMISSION_TTL_HOURS = Number(process.env.SUBMISSION_TTL_HOURS) || 24;
 
 // ── Micro-blog feed config ────────────────────────────────────────────────────
-// Consumes JWT_SECRET and DATABASE_URL (declared above). When DATABASE_URL is
+// Consumes USERNODE_JWT_PUBLIC_KEY and DATABASE_URL (declared above). When DATABASE_URL is
 // absent the feed degrades to an "unavailable" state and every existing public
 // surface keeps working unchanged.
 const POINTS_PER_POST = Number(process.env.POINTS_PER_POST) || 5;
@@ -1079,7 +1079,7 @@ if (pgPool) {
 
 // ── Database (per-user dapp pins) ────────────────────────────────────────────
 // The homepage itself is public, but pinning a dapp is a per-user action, so it
-// needs the platform's Postgres (DATABASE_URL) + JWT auth (JWT_SECRET). Only the
+// needs the platform's Postgres (DATABASE_URL) + JWT auth (USERNODE_JWT_PUBLIC_KEY). Only the
 // /api/pins routes consult auth/DB; every existing route stays public.
 
 let pinsPool = null;   // pg.Pool once initialised
@@ -1186,10 +1186,12 @@ async function initPinsDb() {
   }
 }
 
-// ── JWT auth (built-in crypto, HS256 only) ───────────────────────────────────
+// ── JWT auth (built-in crypto, RS256 only) ───────────────────────────────────
 // The platform shell injects a `?token=…` JWT on iframe load; the frontend
-// forwards it via the `x-usernode-token` header. We verify HS256 against
-// JWT_SECRET without pulling in a `jsonwebtoken` dependency.
+// forwards it via the `x-usernode-token` header. We verify RS256 against the
+// platform public key (USERNODE_JWT_PUBLIC_KEY), pinning the issuer/audience
+// and requiring the `pur` claim to be "iframe", without pulling in a
+// `jsonwebtoken` dependency.
 
 function b64urlToBuf(str) {
   const pad = str.length % 4 === 0 ? "" : "=".repeat(4 - (str.length % 4));
@@ -1197,7 +1199,7 @@ function b64urlToBuf(str) {
 }
 
 function verifyJwt(token) {
-  if (!token || !JWT_SECRET) return null;
+  if (!token || !USERNODE_JWT_PUBLIC_KEY) return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [headerB64, payloadB64, sigB64] = parts;
@@ -1208,16 +1210,20 @@ function verifyJwt(token) {
   } catch (_) {
     return null;
   }
-  if (!header || header.alg !== "HS256") return null;
+  if (!header || header.alg !== "RS256") return null;
 
-  const expected = crypto
-    .createHmac("sha256", JWT_SECRET)
-    .update(`${headerB64}.${payloadB64}`)
-    .digest();
-  const got = b64urlToBuf(sigB64);
-  if (expected.length !== got.length || !crypto.timingSafeEqual(expected, got)) {
+  let signatureOk = false;
+  try {
+    signatureOk = crypto.verify(
+      "sha256",
+      Buffer.from(`${headerB64}.${payloadB64}`),
+      USERNODE_JWT_PUBLIC_KEY,
+      b64urlToBuf(sigB64)
+    );
+  } catch (_) {
     return null;
   }
+  if (!signatureOk) return null;
 
   let payload;
   try {
@@ -1225,10 +1231,19 @@ function verifyJwt(token) {
   } catch (_) {
     return null;
   }
+  if (!payload || typeof payload !== "object") return null;
   // Reject expired tokens (exp is seconds since epoch, per JWT spec).
-  if (payload && typeof payload.exp === "number" && payload.exp * 1000 <= Date.now()) {
+  if (typeof payload.exp === "number" && payload.exp * 1000 <= Date.now()) {
     return null;
   }
+  // Pin issuer + audience to this app's platform-issued tokens.
+  if (payload.iss !== "usernode") return null;
+  const expectedAud = "usernode:app:" + process.env.USERNODE_APP_ID;
+  const aud = payload.aud;
+  const audOk = Array.isArray(aud) ? aud.includes(expectedAud) : aud === expectedAud;
+  if (!audOk) return null;
+  // Only iframe-purpose tokens authenticate a user here.
+  if (payload.pur !== "iframe") return null;
   return payload;
 }
 
