@@ -2738,8 +2738,9 @@
 
     <!-- Centrally-hosted Usernode bridge (used to request the fee transfer).
          The server verifies payment from chain state, so a manual transfer
-         works too if the bridge is unavailable. -->
-    <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+         works too if the bridge is unavailable. Relative: the platform serves
+         it on this app's own origin, so no hostname can go stale here. -->
+    <script src="/usernode-bridge/v1/bridge.js"></script>
     <script>
       const SORT_KEY = "dapphome:sort";
       const VIEW_KEY = "dapphome:view";
