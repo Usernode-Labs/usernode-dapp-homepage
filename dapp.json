@@ -123,5 +123,9 @@
       "default": "8",
       "staging_default": "8"
     }
-  ]
+  ],
+  "icon": {
+    "image": "brand/icon.png",
+    "emoji": "🌐"
+  }
 }
