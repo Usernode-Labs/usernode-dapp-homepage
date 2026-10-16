@@ -127,5 +127,12 @@
   "icon": {
     "image": "brand/icon.png",
     "emoji": "🌐"
-  }
+  },
+  "tests": [
+    {
+      "name": "Feed sign-in button present",
+      "path": "/",
+      "expectSelector": "#signinPrompt #signinBtn"
+    }
+  ]
 }
