@@ -2243,6 +2243,11 @@
       }
       .signinPrompt strong { font-size: 14.5px; }
       .signinPrompt span { font-size: 13px; color: var(--muted); }
+      .signinBtn { align-self: flex-start; margin-top: 8px; }
+      .signinBtn[hidden] { display: none; }
+      /* .signinPrompt's display:flex beats the default [hidden] rule, so the
+         prompt (and the button inside it) never actually hid once signed in. */
+      .signinPrompt[hidden] { display: none; }
 
       .feedLayout { display: flex; gap: 14px; align-items: flex-start; }
       .feedMain { flex: 1 1 auto; min-width: 0; display: grid; gap: 10px; }
@@ -2495,6 +2500,7 @@
           <div class="signinPrompt" id="signinPrompt" hidden>
             <strong>Sign in through Usernode to join the conversation.</strong>
             <span>Posting, liking, and earning points need your Usernode identity. You can still read the feed below.</span>
+            <button class="postBtn signinBtn" id="signinBtn" type="button" hidden>Sign In</button>
           </div>
 
           <div class="feedLayout">
@@ -5151,6 +5157,27 @@
         const postBtn = document.getElementById("postBtn");
         const composerError = document.getElementById("composerError");
         const signinPrompt = document.getElementById("signinPrompt");
+        const signinBtn = document.getElementById("signinBtn");
+
+        // Same candidate lookup as requestPaymentViaBridge: try the
+        // centrally-hosted Usernode bridge under its known globals.
+        function accountBridge() {
+          const candidates = [window.usernode, window.usernodeBridge, window.UsernodeBridge, window.bridge];
+          return candidates.find((x) => x && typeof x.askForAccount === "function") || null;
+        }
+
+        // Only offer the button when the platform's sign-in sheet can
+        // actually be opened; otherwise the prompt reads as it did before.
+        signinBtn.hidden = !accountBridge();
+        signinBtn.addEventListener("click", async () => {
+          const b = accountBridge();
+          if (!b) return;
+          try {
+            await b.askForAccount({ action: "join the conversation" });
+          } catch (e) {
+            console.warn("Sign-in request failed:", e);
+          }
+        });
 
         const feedList = document.getElementById("feedList");
         const feedEmpty = document.getElementById("feedEmpty");
