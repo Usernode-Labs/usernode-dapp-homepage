@@ -6,6 +6,7 @@
 // unit-tested for leaks.
 
 const { legalActions } = require("./engine/holdem");
+const { buildSidePots } = require("./engine/pots");
 
 function buildTableView(runtime, viewerUserId, isSpectator = false) {
   const t = runtime.table;
@@ -134,11 +135,23 @@ function youSeat(runtime, viewerUserId) {
   return null;
 }
 
-// Rough live pot total for display before showdown (sum of all commitments).
+// Live pot display before showdown. Uses buildSidePots to show main/side
+// breakdown when an all-in player is present; collapses to a single total
+// otherwise (folded dead money alone does not warrant a multi-pot display).
 function derivePots(engine) {
-  let total = 0;
-  for (const p of engine.players) total += p.committedTotal;
-  return total > 0 ? [{ amount: total, eligible: [] }] : [];
+  const contributions = {};
+  const foldedSeats = [];
+  for (const p of engine.players) {
+    contributions[p.seat] = p.committedTotal;
+    if (p.folded) foldedSeats.push(p.seat);
+  }
+  const pots = buildSidePots(contributions, foldedSeats);
+  const hasAllIn = engine.players.some((p) => p.allIn);
+  if (!hasAllIn || pots.length <= 1) {
+    const total = pots.reduce((a, p) => a + p.amount, 0);
+    return total > 0 ? [{ amount: total, eligible: [] }] : [];
+  }
+  return pots;
 }
 
 module.exports = { buildTableView };
